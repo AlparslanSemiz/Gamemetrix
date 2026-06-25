@@ -37,27 +37,33 @@ interface DualRangeProps {
 
 function DualRangeSlider({ min, max, valueMin, valueMax, onChangeMin, onChangeMax }: DualRangeProps) {
   const range = max - min || 1
-  const fillLeft = ((valueMin - min) / range) * 100
-  const fillRight = ((max - valueMax) / range) * 100
+  // Fill always spans lo→hi regardless of which thumb is where
+  const lo = Math.min(valueMin, valueMax)
+  const hi = Math.max(valueMin, valueMax)
+  const fillLeft = ((lo - min) / range) * 100
+  const fillRight = ((max - hi) / range) * 100
+  // Compensate for browser thumb offset at the edges (18px thumb width)
+  const loAdj = (0.5 - fillLeft / 100) * 18
+  const hiAdj = (0.5 - (100 - fillRight) / 100) * 18
 
   return (
     <div className="range-dual-wrapper">
-      <span className="range-floating-value" style={{ left: `clamp(16px, ${fillLeft}%, calc(100% - 16px))` }}>
-        {valueMin}
+      <span className="range-floating-value" style={{ left: `calc(${fillLeft}% + ${loAdj}px)` }}>
+        {lo}
       </span>
-      <span className="range-floating-value" style={{ left: `clamp(16px, ${100 - fillRight}%, calc(100% - 16px))` }}>
-        {valueMax}
+      <span className="range-floating-value" style={{ left: `calc(${100 - fillRight}% + ${hiAdj}px)` }}>
+        {hi}
       </span>
       <div className="range-dual-track">
         <div className="range-dual-fill" style={{ left: `${fillLeft}%`, right: `${fillRight}%` }} />
       </div>
       <input
         type="range" min={min} max={max} value={valueMin} className="range-thumb"
-        onChange={(e) => { const v = Number(e.target.value); if (v < valueMax) onChangeMin(v) }}
+        onChange={(e) => onChangeMin(Number(e.target.value))}
       />
       <input
         type="range" min={min} max={max} value={valueMax} className="range-thumb"
-        onChange={(e) => { const v = Number(e.target.value); if (v > valueMin) onChangeMax(v) }}
+        onChange={(e) => onChangeMax(Number(e.target.value))}
       />
     </div>
   )
@@ -180,10 +186,7 @@ export function FilterBar({ facets, filters, onChange, onApply }: FilterBarProps
 
       {/* Year range */}
       <div className="range-field">
-        <label>
-          Year
-          <span className="range-value-badge">{draftYearMin} — {draftYearMax}</span>
-        </label>
+        <label>Year</label>
         <div className="range-row">
           <DualRangeSlider
             min={minYear} max={maxYear}
@@ -195,10 +198,7 @@ export function FilterBar({ facets, filters, onChange, onApply }: FilterBarProps
 
       {/* Score range (dual) */}
       <div className="range-field">
-        <label>
-          Average Rating
-          <span className="range-value-badge">{draftScoreMin} — {draftScoreMax}</span>
-        </label>
+        <label>Average Rating</label>
         <div className="range-row">
           <DualRangeSlider
             min={0} max={100}

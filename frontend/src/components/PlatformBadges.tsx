@@ -15,8 +15,9 @@ function platformKind(platform: string) {
   if (value.includes('linux')) {
     return { label: 'LIN', className: 'platform-linux' }
   }
-  if (value.includes('playstation')) {
-    return { label: 'PS', className: 'platform-playstation' }
+  if (value.includes('playstation') || value.includes('ps4') || value.includes('ps5')) {
+    const label = value.includes('5') || value.includes('ps5') ? 'PS5' : value.includes('4') || value.includes('ps4') ? 'PS4' : 'PS'
+    return { label, className: 'platform-playstation' }
   }
   if (value.includes('xbox')) {
     return { label: 'XB', className: 'platform-xbox' }
@@ -25,26 +26,36 @@ function platformKind(platform: string) {
     return { label: 'NS', className: 'platform-nintendo' }
   }
   if (value.includes('ios') || value.includes('android')) {
-    return { label: 'MO', className: 'platform-mobile' }
+    return { label: 'MOB', className: 'platform-mobile' }
   }
-
   return { label: 'GM', className: 'platform-generic' }
 }
 
 export function PlatformBadges({ platforms }: PlatformBadgesProps) {
+  // Deduplicate by className so "Windows", "PC", "Steam" don't all show as PC
+  const seen = new Set<string>()
+  const badges = platforms
+    .map((p) => ({ platform: p, kind: platformKind(p) }))
+    .filter(({ kind }) => {
+      if (seen.has(kind.className)) return false
+      seen.add(kind.className)
+      return true
+    })
+    .slice(0, 5)
+
   return (
     <div className="platform-badges" aria-label="Platforms">
-      {platforms.slice(0, 5).map((platform) => {
-        const kind = platformKind(platform)
-        const Icon = kind.className === 'platform-mobile'
-          ? Smartphone
-          : ['platform-steam', 'platform-mac', 'platform-linux'].includes(kind.className)
-            ? Monitor
-            : Gamepad2
+      {badges.map(({ platform, kind }) => {
+        const Icon =
+          kind.className === 'platform-mobile'
+            ? Smartphone
+            : ['platform-steam', 'platform-mac', 'platform-linux'].includes(kind.className)
+              ? Monitor
+              : Gamepad2
 
         return (
-          <span className={`platform-badge ${kind.className}`} key={platform} title={platform}>
-            <Icon size={13} aria-hidden="true" />
+          <span className={`platform-badge ${kind.className}`} key={kind.className} title={platform}>
+            <Icon size={12} aria-hidden="true" />
             {kind.label}
           </span>
         )

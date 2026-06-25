@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Bell,
   CheckCircle2,
@@ -38,6 +38,7 @@ type UtilityPage = 'login' | 'settings' | 'alerts' | 'about'
 type ActivePage = MainPage | UtilityPage
 
 const CURRENT_YEAR = new Date().getFullYear()
+const PAGE_SIZE = 24
 
 const DEFAULT_FILTERS: GameFilters = {
   q: '',
@@ -112,6 +113,14 @@ function AppContent() {
   const [trailerGame, setTrailerGame] = useState<Game | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list')
+  const [fetchKey, setFetchKey] = useState(0)
+  const [offset, setOffset] = useState(0)
+  const [hasMore, setHasMore] = useState(true)
+  const [isLoadingMore, setIsLoadingMore] = useState(false)
+  const loaderRef = useRef<HTMLDivElement>(null)
+  // Always up to date with latest filters without being a dep of the load effect
+  const filtersRef = useRef(filters)
+  filtersRef.current = filters
 
   useEffect(() => {
     let active = true
@@ -128,30 +137,11 @@ function AppContent() {
     return () => { active = false }
   }, [])
 
-  useEffect(() => {
-    let active = true
-    async function loadGames() {
-      setIsLoading(true)
-      setError(null)
-      try {
-        const response = await getGames(filters)
-        if (active) {
-          setGames(response.games)
-          setCatalogTotal(response.total)
-        }
-      } catch {
-        if (active) {
-          setGames([])
-          setError('GameMetrix API is not reachable yet.')
-        }
-      } finally {
-        if (active) setIsLoading(false)
-      }
-    }
-    void loadGames()
-    return () => { active = false }
-  // Year/score ranges are committed via Apply (pendingApply bump); other filters are live.
+  // Filter deps → reset to page 0 and bump the fetch key
   // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    setOffset(0)
+    setFetchKey((k) => k + 1)
   }, [
     filters.q,
     filters.genre,
@@ -165,6 +155,64 @@ function AppContent() {
     filters.direction,
     pendingApply,
   ])
+
+  // Actual fetch — triggered by fetchKey (filter change) or offset (scroll)
+  useEffect(() => {
+    let active = true
+    const f = filtersRef.current
+    const isFirst = offset === 0
+    if (isFirst) {
+      setIsLoading(true)
+      setGames([])
+    } else {
+      setIsLoadingMore(true)
+    }
+    setError(null)
+
+    async function loadGames() {
+      try {
+        const response = await getGames(f, PAGE_SIZE, offset)
+        if (active) {
+          if (isFirst) {
+            setGames(response.games)
+          } else {
+            setGames((prev) => [...prev, ...response.games])
+          }
+          setCatalogTotal(response.total)
+          setHasMore(offset + response.games.length < response.total)
+        }
+      } catch {
+        if (active) {
+          if (isFirst) setGames([])
+          setError('GameMetrix API is not reachable yet.')
+        }
+      } finally {
+        if (active) {
+          if (isFirst) setIsLoading(false)
+          else setIsLoadingMore(false)
+        }
+      }
+    }
+    void loadGames()
+    return () => { active = false }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fetchKey, offset])
+
+  // IntersectionObserver — load next page when sentinel enters viewport
+  useEffect(() => {
+    const el = loaderRef.current
+    if (!el) return
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting && hasMore && !isLoadingMore && !isLoading) {
+          setOffset((prev) => prev + PAGE_SIZE)
+        }
+      },
+      { rootMargin: '300px' },
+    )
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [hasMore, isLoadingMore, isLoading])
 
   const visibleGames = useMemo(() => {
     if (activePage === 'suggestions') {
@@ -232,7 +280,7 @@ function AppContent() {
               title={label}
               onClick={() => setActivePage(id)}
             >
-              <Icon size={21} aria-hidden="true" />
+              <Icon size={26} aria-hidden="true" />
               <span>{label}</span>
             </button>
           ))}
@@ -246,7 +294,7 @@ function AppContent() {
               title={label}
               onClick={() => setActivePage(id)}
             >
-              <Icon size={21} aria-hidden="true" />
+              <Icon size={26} aria-hidden="true" />
               <span>{label}</span>
             </button>
           ))}
@@ -297,16 +345,16 @@ function AppContent() {
           </section>
         ) : (
           <section className="catalog" id="catalog">
-            <div className="page-heading">
-              <h1>{pageTitle}</h1>
-              <p>
-                {activePage === 'catalog'
-                  ? 'Scores are Bayesian-weighted — review volume and source quality both matter.'
-                  : activePage === 'suggestions'
+            {activePage !== 'catalog' && (
+              <div className="page-heading">
+                <h1>{pageTitle}</h1>
+                <p>
+                  {activePage === 'suggestions'
                     ? 'High-scoring games you have not marked as seen, liked, or favorite yet.'
                     : `Your local ${pageTitle.toLowerCase()} list.`}
-              </p>
-            </div>
+                </p>
+              </div>
+            )}
 
             {filters.developer || filters.publisher || filters.genre || filters.platform ? (
               <div className="active-filter-row" aria-label="Active filters">
@@ -435,6 +483,9 @@ function AppContent() {
                   onToggleCollection={toggleCollection}
                 />
               ))}
+            </div>
+            <div ref={loaderRef} className="scroll-sentinel" aria-hidden="true">
+              {isLoadingMore ? <p className="status">Loading more…</p> : null}
             </div>
           </section>
         )}
