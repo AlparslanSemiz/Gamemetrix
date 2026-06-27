@@ -1,7 +1,7 @@
 from datetime import date
-from typing import Any
 
 import httpx
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..models import Game, infer_content_type
@@ -9,68 +9,73 @@ from ..models import Game, infer_content_type
 
 STEAMSPY_URL = "https://steamspy.com/api.php"
 
+_HTTP_TIMEOUT = 30
+_DEFAULT_SCORE_FLOOR = 60.0
+_SCORE_POPULAR_GENRE = 72.0
+_SCORE_DEFAULT = 68.0
+
 
 def _slugify(value: str, suffix: str) -> str:
-    slug = "".join(character.lower() if character.isalnum() else "-" for character in value)
+    slug = "".join(ch.lower() if ch.isalnum() else "-" for ch in value)
     slug = "-".join(part for part in slug.split("-") if part)
     return f"{slug}-{suffix}"
 
 
-def _score(game: dict[str, Any]) -> float:
+def _score(game: dict[str, int | str]) -> float:
     positive = int(game.get("positive") or 0)
     negative = int(game.get("negative") or 0)
     total = positive + negative
     if total == 0:
-        return 60.0
-
+        return _DEFAULT_SCORE_FLOOR
     return round((positive / total) * 100, 1)
 
 
 def _genres(value: str | None) -> list[str]:
     if not value:
         return ["Steam"]
-
     return [genre.strip() for genre in value.split(",") if genre.strip()][:4] or ["Steam"]
 
 
-def _to_game(app_id: str, raw_game: dict[str, Any]) -> Game:
-    title = raw_game.get("name") or f"Steam App {app_id}"
-    score = _score(raw_game)
+def _build_summary(title: str, raw_game: dict[str, int | str]) -> str:
     owners = raw_game.get("owners") or "unknown ownership"
     average_playtime = int(raw_game.get("average_forever") or 0)
+    developer = raw_game.get("developer") or "Unknown developer"
+    publisher = raw_game.get("publisher") or "Unknown publisher"
+
     playtime_text = (
         f"Average recorded playtime is about {round(average_playtime / 60, 1)} hours."
         if average_playtime > 0
         else "Average playtime is not yet available."
     )
-    developer = raw_game.get("developer") or "Unknown developer"
-    publisher = raw_game.get("publisher") or "Unknown publisher"
-
     genre_text = (raw_game.get("genre") or "PC").split(",")[0].strip().lower() or "pc"
     descriptor = "PC game" if genre_text in {"game", "steam", "pc"} else f"{genre_text} game"
-    creator_text = ""
-    if developer != "Unknown developer":
-        creator_text = f" developed by {developer}"
-    publisher_text = ""
-    if publisher != "Unknown publisher" and publisher != developer:
-        publisher_text = f" and published by {publisher}"
-    summary = (
+    creator_text = f" developed by {developer}" if developer != "Unknown developer" else ""
+    publisher_text = (
+        f" and published by {publisher}"
+        if publisher != "Unknown publisher" and publisher != developer
+        else ""
+    )
+    return (
         f"{title} is a {descriptor}{creator_text}{publisher_text}. "
         f"It is available on PC through Steam, with estimated ownership around {owners}. "
         f"{playtime_text}"
     )
 
+
+def _to_game(app_id: str, raw_game: dict[str, int | str]) -> Game:
+    title = raw_game.get("name") or f"Steam App {app_id}"
+    score = _score(raw_game)
     positive = int(raw_game.get("positive") or 0)
     negative = int(raw_game.get("negative") or 0)
     total_reviews = positive + negative
-
-    developer = raw_game.get("developer") or None
-    publisher = raw_game.get("publisher") or None
+    average_playtime = int(raw_game.get("average_forever") or 0)
+    developer: str | None = raw_game.get("developer") or None
+    publisher: str | None = raw_game.get("publisher") or None
 
     game = Game(
         title=title,
         slug=_slugify(title, app_id),
-        summary=summary,
+        summary=_build_summary(title, raw_game),
         cover_url=f"https://cdn.akamai.steamstatic.com/steam/apps/{app_id}/header.jpg",
         release_date=date(1970, 1, 1),
         release_year=1970,
@@ -82,16 +87,14 @@ def _to_game(app_id: str, raw_game: dict[str, Any]) -> Game:
         developer=developer,
         publisher=publisher,
         playtime_minutes=average_playtime,
-        source_scores=[
-            {
-                "source": "SteamSpy",
-                "score": score,
-                "scale": 100,
-                "status": "live",
-                "review_count": total_reviews,
-                "detail": f"{positive:,} positive / {negative:,} negative Steam reviews",
-            }
-        ],
+        source_scores=[{
+            "source": "SteamSpy",
+            "score": score,
+            "scale": 100,
+            "status": "live",
+            "review_count": total_reviews,
+            "detail": f"{positive:,} positive / {negative:,} negative Steam reviews",
+        }],
     )
     game.content_type = infer_content_type(game)
     return game
@@ -103,7 +106,7 @@ async def import_steamspy_games(db: Session, target: int = 2000) -> dict[str, in
     page = 0
     headers = {"User-Agent": "GameMetrix/0.1 (local-development)"}
 
-    async with httpx.AsyncClient(timeout=30, headers=headers) as client:
+    async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT, headers=headers) as client:
         while imported < target:
             response = await client.get(
                 STEAMSPY_URL,
@@ -120,7 +123,7 @@ async def import_steamspy_games(db: Session, target: int = 2000) -> dict[str, in
                     break
 
                 game = _to_game(str(app_id), raw_game)
-                existing = db.query(Game).filter(Game.slug == game.slug).first()
+                existing = db.scalar(select(Game).where(Game.slug == game.slug))
                 if existing:
                     skipped += 1
                     continue

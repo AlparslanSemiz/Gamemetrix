@@ -171,8 +171,8 @@ def _bayesian_adjust(
 
 
 def _confidence(
-    scoring: list[dict],
-    primary: list[dict],
+    scoring: list[dict[str, str | float | int]],
+    primary: list[dict[str, str | float | int]],
     evidence_total: float,
 ) -> float:
     available_weight = sum(SOURCE_WEIGHTS.get(str(s.get("source", "")), 0.05) for s in scoring)

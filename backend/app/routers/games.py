@@ -47,6 +47,8 @@ from ..services.rawg_import import apply_rawg_to_game, game_from_rawg_search
 
 router = APIRouter(tags=["games"])
 
+_RAWG_SEARCH_TIMEOUT = 15
+
 
 @router.get("/api/search", response_model=GameRead)
 async def search_game(
@@ -81,7 +83,7 @@ async def search_game(
 
 async def _fetch_rawg_search(api_key: str, base_url: str, query: str) -> dict:
     try:
-        async with httpx.AsyncClient(timeout=15) as client:
+        async with httpx.AsyncClient(timeout=_RAWG_SEARCH_TIMEOUT) as client:
             resp = await client.get(
                 base_url,
                 params={"key": api_key, "search": query, "page_size": 1},

@@ -12,6 +12,16 @@ from .integrations.source_registry import (
     USER_RATING_SOURCES,
     applicable_for_game,
 )
+# Confidence level thresholds
+_STRONG_MIN_REVIEWS = 500
+_SOLID_CRITIC_MIN_REVIEWS = 50
+_SOLID_USER_MIN_REVIEWS = 25_000
+
+# Popularity label thresholds (total review count)
+_POPULARITY_VERY_HIGH = 100_000
+_POPULARITY_HIGH = 20_000
+_POPULARITY_MEDIUM = 5_000
+
 SOFTWARE_GENRE_TERMS = {
     "animation",
     "audio production",
@@ -133,13 +143,13 @@ class Game(Base):
             and float(s.get("score", 0)) > 0
             for s in self.source_scores
         )
-        if has_critic and has_user and total_reviews >= 500:
+        if has_critic and has_user and total_reviews >= _STRONG_MIN_REVIEWS:
             return "Strong"
         if has_critic and has_user:
             return "Solid"
-        if has_critic and total_reviews >= 50:
+        if has_critic and total_reviews >= _SOLID_CRITIC_MIN_REVIEWS:
             return "Solid"
-        if total_reviews >= 25000:
+        if total_reviews >= _SOLID_USER_MIN_REVIEWS:
             return "Solid"
         if has_critic or has_user:
             return "Limited"
@@ -168,11 +178,11 @@ class Game(Base):
             if s.get("source") not in {"Steam", "SteamSpy"}:
                 continue
             count = int(s.get("review_count", 0))
-            if count >= 100_000:
+            if count >= _POPULARITY_VERY_HIGH:
                 return "Very High"
-            if count >= 20_000:
+            if count >= _POPULARITY_HIGH:
                 return "High"
-            if count >= 5_000:
+            if count >= _POPULARITY_MEDIUM:
                 return "Medium"
         return None
 

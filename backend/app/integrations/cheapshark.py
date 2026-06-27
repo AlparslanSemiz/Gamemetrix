@@ -1,7 +1,7 @@
 from datetime import UTC, date, datetime
-from typing import Any
 
 import httpx
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -12,9 +12,12 @@ from .sync import calculate_metrix_score
 CHEAPSHARK_DEALS_URL = "https://www.cheapshark.com/api/1.0/deals"
 STEAM_APP_PATTERN = "/steam/apps/"
 
+_HTTP_TIMEOUT = 20
+_DEFAULT_SCORE_FLOOR = 60.0
+
 
 def _slugify(value: str, suffix: str) -> str:
-    slug = "".join(character.lower() if character.isalnum() else "-" for character in value)
+    slug = "".join(ch.lower() if ch.isalnum() else "-" for ch in value)
     slug = "-".join(part for part in slug.split("-") if part)
     return f"{slug}-{suffix}"
 
@@ -31,53 +34,53 @@ def _date_from_unix(value: str | int | None) -> date:
     return datetime.fromtimestamp(timestamp, tz=UTC).date()
 
 
-def _source_scores(deal: dict[str, Any]) -> list[dict[str, str | float | int]]:
+def _source_scores(deal: dict[str, str | float | int]) -> list[dict[str, str | float | int]]:
     scores: list[dict[str, str | float | int]] = []
 
     metacritic = float(deal.get("metacriticScore") or 0)
     if metacritic > 0:
-        scores.append(
-            {
-                "source": "Metacritic",
-                "score": metacritic,
-                "scale": 100,
-                "status": "live",
-            }
-        )
+        scores.append({
+            "source": "Metacritic",
+            "score": metacritic,
+            "scale": 100,
+            "status": "live",
+        })
 
     steam_rating = float(deal.get("steamRatingPercent") or 0)
     steam_review_count = int(deal.get("steamRatingCount") or 0)
     if steam_rating > 0:
-        scores.append(
-            {
-                "source": "Steam",
-                "score": steam_rating,
-                "scale": 100,
-                "status": "live",
-                "review_count": steam_review_count,
-                "detail": f"{deal.get('steamRatingText') or 'Steam rating'} ({steam_review_count:,} reviews) via CheapShark",
-            }
-        )
+        scores.append({
+            "source": "Steam",
+            "score": steam_rating,
+            "scale": 100,
+            "status": "live",
+            "review_count": steam_review_count,
+            "detail": (
+                f"{deal.get('steamRatingText') or 'Steam rating'} "
+                f"({steam_review_count:,} reviews) via CheapShark"
+            ),
+        })
 
     deal_rating = float(deal.get("dealRating") or 0)
     if deal_rating > 0:
-        scores.append(
-            {
-                "source": "CheapShark",
-                "score": round(deal_rating * 10, 1),
-                "scale": 100,
-                "status": "live",
-                "detail": f"Current deal ${deal.get('salePrice')} from store {deal.get('storeID')}",
-            }
-        )
+        scores.append({
+            "source": "CheapShark",
+            "score": round(deal_rating * 10, 1),
+            "scale": 100,
+            "status": "live",
+            "detail": f"Current deal ${deal.get('salePrice')} from store {deal.get('storeID')}",
+        })
 
-    return scores or [{"source": "CheapShark", "score": 60, "scale": 100, "status": "live"}]
+    return scores or [{
+        "source": "CheapShark",
+        "score": _DEFAULT_SCORE_FLOOR,
+        "scale": 100,
+        "status": "live",
+    }]
 
 
-def _hd_cover(deal: dict[str, Any]) -> str:
-    """Upgrade thumb URL to a full-size Steam header image when possible."""
+def _hd_cover(deal: dict[str, str | float | int]) -> str:
     thumb = deal.get("thumb") or ""
-    # CheapShark thumbs can come from cdn.akamai or shared.fastly Steam hosts.
     if "steamstatic.com" in thumb and STEAM_APP_PATTERN in thumb:
         parts = thumb.split(STEAM_APP_PATTERN)
         if len(parts) == 2:
@@ -86,7 +89,7 @@ def _hd_cover(deal: dict[str, Any]) -> str:
     return thumb
 
 
-def _to_game(deal: dict[str, Any]) -> Game:
+def _to_game(deal: dict[str, str | float | int]) -> Game:
     title = deal.get("title") or "Untitled Deal"
     released = _date_from_unix(deal.get("releaseDate"))
     source_scores = _source_scores(deal)
@@ -130,10 +133,9 @@ async def import_cheapshark_deals(
     skipped = 0
     page = 0
     seen_slugs: set[str] = set()
-
     headers = {"User-Agent": "GameMetrix/0.1 (local-development)"}
 
-    async with httpx.AsyncClient(timeout=20, headers=headers) as client:
+    async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT, headers=headers) as client:
         while imported < target:
             response = await client.get(
                 CHEAPSHARK_DEALS_URL,
@@ -158,7 +160,7 @@ async def import_cheapshark_deals(
                 seen_slugs.add(game.slug)
 
                 with db.no_autoflush:
-                    existing = db.query(Game).filter(Game.slug == game.slug).first()
+                    existing = db.scalar(select(Game).where(Game.slug == game.slug))
                 if existing:
                     skipped += 1
                     continue

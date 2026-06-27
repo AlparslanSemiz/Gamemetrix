@@ -1,11 +1,14 @@
 import asyncio
+import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import select, text
+from sqlalchemy.engine import Connection
 
+from sqlalchemy.orm import Session
 from .database import Base, SessionLocal, engine
 from .models import Game, infer_content_type
 from .seed import patch_roguelike_genres, seed_games
@@ -16,18 +19,21 @@ from .routers.ratings import router as ratings_router
 from .services.background import daily_refresh_loop
 
 
+log = logging.getLogger(__name__)
+
+
 # ── SQLite column migrations ───────────────────────────────────────────────────
 
 
-def _add_column_if_missing(conn, table: str, column: str, col_type: str) -> None:
+def _add_column_if_missing(conn: Connection, table: str, column: str, col_type: str) -> None:
     try:
         conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}"))
         conn.commit()
     except Exception:
-        pass  # column already exists
+        log.debug("Column %s.%s already exists (skipping)", table, column)
 
 
-def _run_migrations(conn) -> None:
+def _run_migrations(conn: Connection) -> None:
     migrations = [
         ("games", "developer", "VARCHAR(200)"),
         ("games", "publisher", "VARCHAR(200)"),
@@ -47,7 +53,7 @@ def _run_migrations(conn) -> None:
 # ── Startup seed / classify ────────────────────────────────────────────────────
 
 
-def _seed_and_classify(db) -> None:
+def _seed_and_classify(db: Session) -> None:
     seed_games(db)
     patch_roguelike_genres(db)
     for game in db.scalars(select(Game)).all():

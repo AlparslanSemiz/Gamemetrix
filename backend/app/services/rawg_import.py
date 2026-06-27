@@ -200,6 +200,58 @@ def apply_rawg_metadata(game: Game, raw_game: dict) -> bool:
     return changed
 
 
+def game_from_rawg_list(raw_game: dict) -> Game:
+    """Create a Game from a RAWG paginated list result (bulk import, may include developer/publisher)."""
+    title = raw_game.get("name") or "Untitled Game"
+    released = parse_rawg_date(raw_game.get("released"))
+    metacritic_score = raw_game.get("metacritic")
+    if metacritic_score is not None:
+        metacritic_score = int(metacritic_score)
+
+    rawg_rating = float(raw_game.get("rating") or 0)
+    if rawg_rating > 0 and metacritic_score is None:
+        source_scores: list[dict] = [{
+            "source": "RAWG", "score": round(rawg_rating * 20, 1),
+            "scale": 100, "status": "live",
+        }]
+    else:
+        source_scores = rawg_source_scores(metacritic_score)
+
+    developers = raw_game.get("developers") or []
+    developer: str | None = (
+        developers[0].get("name") if developers and isinstance(developers[0], dict) else None
+    )
+    publishers = raw_game.get("publishers") or []
+    publisher: str | None = (
+        publishers[0].get("name") if publishers and isinstance(publishers[0], dict) else None
+    )
+
+    metrix_score = calculate_metrix_score(source_scores)
+    rawg_id = raw_game.get("id") or _slugify(title)
+    image_url = raw_game.get("background_image") or ""
+
+    game = Game(
+        title=title,
+        slug=f"{_slugify(title)}-{rawg_id}",
+        summary=f"{title} is part of the imported RAWG catalog.",
+        cover_url=image_url,
+        release_date=released,
+        release_year=released.year,
+        metacritic_score=metacritic_score,
+        image_url=image_url or None,
+        metrix_score=metrix_score,
+        critic_score=float(metacritic_score or 0),
+        user_score=round(rawg_rating * 20, 1),
+        genres=_extract_genres(raw_game) or ["Uncategorized"],
+        platforms=_extract_platforms_normalized(raw_game) or ["Unknown"],
+        source_scores=source_scores,
+        developer=developer,
+        publisher=publisher,
+    )
+    game.content_type = infer_content_type(game)
+    return game
+
+
 def _apply_metacritic_score(game: Game, metacritic_score: int) -> None:
     game.metacritic_score = metacritic_score
     by_source = {str(s.get("source")): s for s in game.source_scores}
