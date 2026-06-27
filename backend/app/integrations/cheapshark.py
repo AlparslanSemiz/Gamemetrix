@@ -2,13 +2,15 @@ from datetime import UTC, date, datetime
 from typing import Any
 
 import httpx
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from ..models import Game
+from ..models import Game, infer_content_type
 from .sync import calculate_metrix_score
 
 
 CHEAPSHARK_DEALS_URL = "https://www.cheapshark.com/api/1.0/deals"
+STEAM_APP_PATTERN = "/steam/apps/"
 
 
 def _slugify(value: str, suffix: str) -> str:
@@ -75,9 +77,9 @@ def _source_scores(deal: dict[str, Any]) -> list[dict[str, str | float | int]]:
 def _hd_cover(deal: dict[str, Any]) -> str:
     """Upgrade thumb URL to a full-size Steam header image when possible."""
     thumb = deal.get("thumb") or ""
-    # CheapShark thumb pattern: https://cdn.akamai.steamstatic.com/steam/apps/{id}/capsule_sm_120.jpg
-    if "steamstatic.com/steam/apps/" in thumb:
-        parts = thumb.split("/steam/apps/")
+    # CheapShark thumbs can come from cdn.akamai or shared.fastly Steam hosts.
+    if "steamstatic.com" in thumb and STEAM_APP_PATTERN in thumb:
+        parts = thumb.split(STEAM_APP_PATTERN)
         if len(parts) == 2:
             app_id = parts[1].split("/")[0]
             return f"https://cdn.akamai.steamstatic.com/steam/apps/{app_id}/header.jpg"
@@ -93,12 +95,13 @@ def _to_game(deal: dict[str, Any]) -> Game:
     rating_text = deal.get("steamRatingText") or "not listed"
 
     summary = (
-        f"{title} is currently available via CheapShark at "
-        f"${deal.get('salePrice')} (normal: ${deal.get('normalPrice')}). "
-        f"Steam user sentiment: {rating_text} across {rating_count:,} ratings."
+        f"{title} is a PC game with live store and Steam audience data. "
+        f"Current tracked sale price is ${deal.get('salePrice')} "
+        f"(normal: ${deal.get('normalPrice')}). "
+        f"Steam user sentiment is {rating_text} across {rating_count:,} ratings."
     )
 
-    return Game(
+    game = Game(
         title=title,
         slug=_slugify(title, str(deal.get("gameID") or deal.get("dealID"))),
         summary=summary,
@@ -114,6 +117,8 @@ def _to_game(deal: dict[str, Any]) -> Game:
         developer=None,
         publisher=None,
     )
+    game.content_type = infer_content_type(game)
+    return game
 
 
 async def import_cheapshark_deals(
@@ -124,6 +129,7 @@ async def import_cheapshark_deals(
     imported = 0
     skipped = 0
     page = 0
+    seen_slugs: set[str] = set()
 
     headers = {"User-Agent": "GameMetrix/0.1 (local-development)"}
 
@@ -146,15 +152,25 @@ async def import_cheapshark_deals(
 
             for deal in deals:
                 game = _to_game(deal)
-                existing = db.query(Game).filter(Game.slug == game.slug).first()
+                if game.slug in seen_slugs:
+                    skipped += 1
+                    continue
+                seen_slugs.add(game.slug)
+
+                with db.no_autoflush:
+                    existing = db.query(Game).filter(Game.slug == game.slug).first()
                 if existing:
                     skipped += 1
                     continue
 
                 db.add(game)
-                imported += 1
+                try:
+                    db.commit()
+                    imported += 1
+                except IntegrityError:
+                    db.rollback()
+                    skipped += 1
 
-            db.commit()
             page += 1
 
     return {"imported": imported, "skipped": skipped}

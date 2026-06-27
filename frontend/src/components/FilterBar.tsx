@@ -22,7 +22,7 @@ const MIN_RATINGS_OPTIONS = [
 const QUALITY_OPTIONS = [
   { label: 'Any', minSources: 0, critic: false },
   { label: 'Critic score', minSources: 1, critic: true },
-  { label: '2+ sources', minSources: 2, critic: false },
+  { label: '2+ primary', minSources: 2, critic: false },
   { label: 'Critic + 2 src', minSources: 2, critic: true },
 ]
 
@@ -198,7 +198,7 @@ export function FilterBar({ facets, filters, onChange, onApply }: FilterBarProps
 
       {/* Score range (dual) */}
       <div className="range-field">
-        <label>Average Rating</label>
+        <label>GameMetrix Score</label>
         <div className="range-row">
           <DualRangeSlider
             min={0} max={100}

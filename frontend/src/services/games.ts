@@ -5,9 +5,10 @@ import type {
   GameListResponse,
   ProviderStatus,
   ScoreWeightsResponse,
+  TrailerResponse,
 } from '../types/game'
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000'
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8002'
 
 const CURRENT_YEAR = new Date().getFullYear()
 
@@ -32,8 +33,10 @@ export async function getGames(
   if (scoreLo > 0) params.set('min_score', String(scoreLo))
   if (scoreHi < 100) params.set('max_score', String(scoreHi))
   if (filters.minRatings > 0) params.set('min_ratings', String(filters.minRatings))
+  if (filters.maxRatings > 0) params.set('max_ratings', String(filters.maxRatings))
   if (filters.minLiveSources > 0) params.set('min_live_sources', String(filters.minLiveSources))
   if (filters.requireCritic) params.set('require_critic', 'true')
+  if (filters.hasAward) params.set('has_award', 'true')
   params.set('sort', filters.sort)
   params.set('direction', filters.direction)
   params.set('limit', String(limit))
@@ -61,6 +64,12 @@ export async function refreshGameScores(slug: string): Promise<Game> {
     method: 'POST',
   })
   if (!response.ok) throw new Error('Failed to refresh scores')
+  return response.json()
+}
+
+export async function getGameTrailer(slug: string): Promise<TrailerResponse> {
+  const response = await fetch(`${API_BASE_URL}/api/games/${slug}/trailer`)
+  if (!response.ok) throw new Error('Failed to fetch trailer')
   return response.json()
 }
 

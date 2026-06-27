@@ -2,6 +2,16 @@ import { Gamepad2, Monitor, Smartphone } from 'lucide-react'
 
 interface PlatformBadgesProps {
   platforms: string[]
+  slug: string
+  title: string
+}
+
+const steamAppIds: Record<string, number> = {
+  'baldurs-gate-3': 1086940,
+  'elden-ring': 1245620,
+  hades: 1145360,
+  'disco-elysium-the-final-cut': 632470,
+  'hi-fi-rush': 1817230,
 }
 
 function platformKind(platform: string) {
@@ -31,7 +41,29 @@ function platformKind(platform: string) {
   return { label: 'GM', className: 'platform-generic' }
 }
 
-export function PlatformBadges({ platforms }: PlatformBadgesProps) {
+function platformHref(className: string, slug: string, title: string): string | undefined {
+  if (className === 'platform-steam') {
+    const steamAppId = steamAppIds[slug]
+    if (steamAppId) return `https://store.steampowered.com/app/${steamAppId}`
+    return `https://store.steampowered.com/search/?term=${encodeURIComponent(title)}`
+  }
+
+  if (className === 'platform-playstation') {
+    return `https://store.playstation.com/search/${encodeURIComponent(title)}`
+  }
+
+  if (className === 'platform-xbox') {
+    return `https://www.xbox.com/search?q=${encodeURIComponent(title)}`
+  }
+
+  if (className === 'platform-nintendo') {
+    return `https://www.nintendo.com/search/#q=${encodeURIComponent(title)}&p=1&cat=gme`
+  }
+
+  return undefined
+}
+
+export function PlatformBadges({ platforms, slug, title }: PlatformBadgesProps) {
   // Deduplicate by className so "Windows", "PC", "Steam" don't all show as PC
   const seen = new Set<string>()
   const badges = platforms
@@ -53,10 +85,29 @@ export function PlatformBadges({ platforms }: PlatformBadgesProps) {
               ? Monitor
               : Gamepad2
 
-        return (
-          <span className={`platform-badge ${kind.className}`} key={kind.className} title={platform}>
+        const href = platformHref(kind.className, slug, title)
+        const className = `platform-badge ${kind.className}`
+        const content = (
+          <>
             <Icon size={12} aria-hidden="true" />
             {kind.label}
+          </>
+        )
+
+        return href ? (
+          <a
+            className={className}
+            href={href}
+            key={kind.className}
+            target="_blank"
+            rel="noreferrer"
+            title={`${platform} store`}
+          >
+            {content}
+          </a>
+        ) : (
+          <span className={className} key={kind.className} title={platform}>
+            {content}
           </span>
         )
       })}

@@ -7,7 +7,7 @@ from .models import Game
 
 
 def _steam(app_id: int) -> str:
-    return f"https://cdn.akamai.steamstatic.com/steam/apps/{app_id}/header.jpg"
+    return f"https://cdn.akamai.steamstatic.com/steam/apps/{app_id}/capsule_616x353.jpg"
 
 
 SEED_GAMES = [
@@ -27,6 +27,9 @@ SEED_GAMES = [
         "developer": "Larian Studios",
         "publisher": "Larian Studios",
         "playtime_minutes": 4500,
+        "award_count": 9,
+        "award_nominations": 42,
+        "goty_year": 2023,
         "source_scores": [
             {"source": "Metacritic", "score": 96, "scale": 100, "status": "live", "review_count": 113},
             {"source": "OpenCritic", "score": 96, "scale": 100, "status": "live", "review_count": 208},
@@ -48,6 +51,9 @@ SEED_GAMES = [
         "developer": "FromSoftware",
         "publisher": "Bandai Namco",
         "playtime_minutes": 3600,
+        "award_count": 8,
+        "award_nominations": 36,
+        "goty_year": 2022,
         "source_scores": [
             {"source": "Metacritic", "score": 96, "scale": 100, "status": "live", "review_count": 95},
             {"source": "OpenCritic", "score": 95, "scale": 100, "status": "live", "review_count": 177},
@@ -69,6 +75,8 @@ SEED_GAMES = [
         "developer": "Supergiant Games",
         "publisher": "Supergiant Games",
         "playtime_minutes": 1500,
+        "award_count": 3,
+        "award_nominations": 20,
         "source_scores": [
             {"source": "Metacritic", "score": 93, "scale": 100, "status": "live", "review_count": 78},
             {"source": "OpenCritic", "score": 94, "scale": 100, "status": "live", "review_count": 107},
@@ -90,6 +98,9 @@ SEED_GAMES = [
         "developer": "CD Projekt Red",
         "publisher": "CD Projekt",
         "playtime_minutes": 6000,
+        "award_count": 7,
+        "award_nominations": 28,
+        "goty_year": 2015,
         "source_scores": [
             {"source": "Metacritic", "score": 92, "scale": 100, "status": "live", "review_count": 125},
             {"source": "OpenCritic", "score": 91, "scale": 100, "status": "live", "review_count": 89},
@@ -111,6 +122,8 @@ SEED_GAMES = [
         "developer": "Rockstar Games",
         "publisher": "Rockstar Games",
         "playtime_minutes": 6000,
+        "award_count": 5,
+        "award_nominations": 22,
         "source_scores": [
             {"source": "Metacritic", "score": 97, "scale": 100, "status": "live", "review_count": 54},
             {"source": "OpenCritic", "score": 97, "scale": 100, "status": "live", "review_count": 68},
@@ -237,6 +250,8 @@ SEED_GAMES = [
         "developer": "Maddy Makes Games",
         "publisher": "Matt Makes Games",
         "playtime_minutes": 720,
+        "award_count": 2,
+        "award_nominations": 10,
         "source_scores": [
             {"source": "Metacritic", "score": 94, "scale": 100, "status": "live", "review_count": 48},
             {"source": "OpenCritic", "score": 94, "scale": 100, "status": "live", "review_count": 67},
@@ -322,6 +337,9 @@ SEED_GAMES = [
         "developer": "Santa Monica Studio",
         "publisher": "Sony Interactive Entertainment",
         "playtime_minutes": 1500,
+        "award_count": 8,
+        "award_nominations": 24,
+        "goty_year": 2018,
         "source_scores": [
             {"source": "Metacritic", "score": 95, "scale": 100, "status": "live", "review_count": 121},
             {"source": "OpenCritic", "score": 95, "scale": 100, "status": "live", "review_count": 137},
@@ -343,6 +361,8 @@ SEED_GAMES = [
         "developer": "Santa Monica Studio",
         "publisher": "Sony Interactive Entertainment",
         "playtime_minutes": 1800,
+        "award_count": 3,
+        "award_nominations": 25,
         "source_scores": [
             {"source": "Metacritic", "score": 94, "scale": 100, "status": "live", "review_count": 140},
             {"source": "OpenCritic", "score": 94, "scale": 100, "status": "live", "review_count": 148},
@@ -428,6 +448,8 @@ SEED_GAMES = [
         "developer": "Valve",
         "publisher": "Valve",
         "playtime_minutes": 480,
+        "award_count": 4,
+        "award_nominations": 14,
         "source_scores": [
             {"source": "Metacritic", "score": 95, "scale": 100, "status": "live", "review_count": 51},
             {"source": "OpenCritic", "score": 95, "scale": 100, "status": "live", "review_count": 73},
@@ -449,6 +471,8 @@ SEED_GAMES = [
         "developer": "Valve",
         "publisher": "Valve",
         "playtime_minutes": 720,
+        "award_count": 7,
+        "award_nominations": 18,
         "source_scores": [
             {"source": "Metacritic", "score": 96, "scale": 100, "status": "live", "review_count": 80},
             {"source": "OpenCritic", "score": 95, "scale": 100, "status": "live", "review_count": 44},
@@ -491,6 +515,9 @@ SEED_GAMES = [
         "developer": "FromSoftware",
         "publisher": "Activision",
         "playtime_minutes": 2100,
+        "award_count": 4,
+        "award_nominations": 18,
+        "goty_year": 2019,
         "source_scores": [
             {"source": "Metacritic", "score": 91, "scale": 100, "status": "live", "review_count": 82},
             {"source": "OpenCritic", "score": 91, "scale": 100, "status": "live", "review_count": 103},
@@ -768,6 +795,27 @@ SEED_GAMES = [
             {"source": "Metacritic", "score": 93, "scale": 100, "status": "live", "review_count": 88},
             {"source": "OpenCritic", "score": 93, "scale": 100, "status": "live", "review_count": 121},
             {"source": "Steam", "score": 95, "scale": 100, "status": "live", "review_count": 112000},
+        ],
+    },
+    {
+        "title": "Resident Evil 4",
+        "slug": "resident-evil-4",
+        "summary": "A genre-defining action-horror game following US agent Leon Kennedy on a mission to rescue the president's daughter from a rural European village. Introduced over-the-shoulder aiming, context-sensitive actions, and a merchant upgrade system that became templates for the following decade of action game design.",
+        "cover_url": _steam(254700),
+        "release_date": date(2005, 1, 11),
+        "release_year": 2005,
+        "metrix_score": 95.8,
+        "critic_score": 96.0,
+        "user_score": 94.0,
+        "genres": ["Action", "Horror", "Survival"],
+        "platforms": ["PC", "PlayStation 2", "GameCube", "PlayStation 4", "Nintendo Switch"],
+        "developer": "Capcom",
+        "publisher": "Capcom",
+        "playtime_minutes": 720,
+        "source_scores": [
+            {"source": "Metacritic", "score": 96, "scale": 100, "status": "live", "review_count": 52},
+            {"source": "OpenCritic", "score": 96, "scale": 100, "status": "live", "review_count": 12},
+            {"source": "Steam", "score": 93, "scale": 100, "status": "live", "review_count": 98000},
         ],
     },
     {
@@ -1080,6 +1128,8 @@ SEED_GAMES = [
         "developer": "Irrational Games",
         "publisher": "2K Games",
         "playtime_minutes": 720,
+        "award_count": 5,
+        "award_nominations": 15,
         "source_scores": [
             {"source": "Metacritic", "score": 96, "scale": 100, "status": "live", "review_count": 56},
             {"source": "IGDB", "score": 92, "scale": 100, "status": "live", "review_count": 510},
@@ -1122,6 +1172,9 @@ SEED_GAMES = [
         "developer": "BioWare",
         "publisher": "Electronic Arts",
         "playtime_minutes": 6000,
+        "award_count": 6,
+        "award_nominations": 21,
+        "goty_year": 2014,
         "source_scores": [
             {"source": "Metacritic", "score": 85, "scale": 100, "status": "live", "review_count": 51},
             {"source": "OpenCritic", "score": 86, "scale": 100, "status": "live", "review_count": 73},
@@ -1647,6 +1700,9 @@ SEED_GAMES = [
         "developer": "Hazelight Studios",
         "publisher": "Electronic Arts",
         "playtime_minutes": 840,
+        "award_count": 5,
+        "award_nominations": 20,
+        "goty_year": 2021,
         "source_scores": [
             {"source": "Metacritic", "score": 88, "scale": 100, "status": "live", "review_count": 59},
             {"source": "OpenCritic", "score": 89, "scale": 100, "status": "live", "review_count": 80},
@@ -2089,6 +2145,9 @@ SEED_GAMES = [
         "developer": "Nintendo",
         "publisher": "Nintendo",
         "playtime_minutes": 3000,
+        "award_count": 10,
+        "award_nominations": 30,
+        "goty_year": 2017,
         "source_scores": [
             {"source": "Metacritic", "score": 97, "scale": 100, "status": "live", "review_count": 109},
             {"source": "OpenCritic", "score": 97, "scale": 100, "status": "live", "review_count": 130},
@@ -2103,9 +2162,48 @@ def seed_games(db: Session) -> None:
         game = db.scalar(select(Game).where(Game.slug == game_data["slug"]))
         if game is None:
             db.add(Game(**game_data))
-            continue
+        else:
+            if (
+                game_data.get("cover_url")
+                and game.cover_url
+                and game.cover_url.endswith("/header.jpg")
+            ):
+                game.cover_url = game_data["cover_url"]
+            # Always sync award fields from seed — this is the authoritative source
+            award_count = game_data.get("award_count", 0)
+            award_nominations = game_data.get("award_nominations", 0)
+            goty_year = game_data.get("goty_year")
+            if game.award_count != award_count:
+                game.award_count = award_count
+            if game.award_nominations != award_nominations:
+                game.award_nominations = award_nominations
+            if game.goty_year != goty_year:
+                game.goty_year = goty_year
 
-        for key, value in game_data.items():
-            setattr(game, key, value)
+    db.commit()
 
+
+# Slugs whose genres should always be patched from seed (API sources misclassify these)
+_GENRE_PATCH_SLUGS = {
+    "hades",            # RAWG drops Roguelike; our seed is authoritative
+    "dead-cells",
+    "binding-of-isaac-rebirth",
+    "enter-the-gungeon",
+    "spelunky-2",
+    "risk-of-rain-2",
+}
+
+
+def patch_roguelike_genres(db: Session) -> None:
+    """Ensure seed-authoritative genres are written to the DB for known roguelikes."""
+    slug_to_genres: dict[str, list[str]] = {
+        g["slug"]: g["genres"]
+        for g in SEED_GAMES
+        if g["slug"] in _GENRE_PATCH_SLUGS
+    }
+    for slug, genres in slug_to_genres.items():
+        from sqlalchemy import select as _select
+        game = db.scalar(_select(Game).where(Game.slug == slug))
+        if game and game.genres != genres:
+            game.genres = genres
     db.commit()

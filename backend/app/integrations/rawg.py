@@ -6,7 +6,7 @@ from typing import Any
 import httpx
 from sqlalchemy.orm import Session
 
-from ..models import Game
+from ..models import Game, infer_content_type
 from .sync import calculate_metrix_score
 
 
@@ -103,7 +103,7 @@ def _game_from_rawg(raw_game: dict[str, Any]) -> Game:
     publishers = raw_game.get("publishers") or []
     publisher = publishers[0]["name"] if publishers and publishers[0].get("name") else None
 
-    return Game(
+    game = Game(
         title=title,
         slug=f"{_slugify(title)}-{raw_game.get('id')}",
         summary=summary,
@@ -119,6 +119,8 @@ def _game_from_rawg(raw_game: dict[str, Any]) -> Game:
         developer=developer,
         publisher=publisher,
     )
+    game.content_type = infer_content_type(game)
+    return game
 
 
 async def import_rawg_games(db: Session, target: int = 2000, page_size: int = 40) -> dict[str, int]:

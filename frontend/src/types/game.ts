@@ -16,6 +16,16 @@ export interface Game {
   cover_url: string
   release_date: string
   release_year: number
+  metacritic_score?: number | null
+  image_url?: string | null
+  ratings_refreshed_at?: string | null
+  content_type: string
+  live_primary_source_count: number
+  applicable_source_count?: number
+  applicable_sources?: string[]
+  confidence_level: string
+  score_profile: string
+  popularity_label?: string | null
   metrix_score: number
   critic_score: number
   user_score: number
@@ -25,6 +35,9 @@ export interface Game {
   developer?: string | null
   publisher?: string | null
   playtime_minutes: number
+  award_count: number
+  award_nominations: number
+  goty_year?: number | null
 }
 
 export interface GameListResponse {
@@ -68,12 +81,19 @@ export interface GameFilters {
   minScore: number
   maxScore: number
   minRatings: number
+  maxRatings: number
   minLiveSources: number
   requireCritic: boolean
+  hasAward: boolean
   sort: GameSort
   direction: SortDirection
 }
 
 export interface ScoreWeightsResponse {
   weights: Record<string, number>
+}
+
+export interface TrailerResponse {
+  video_id: string | null
+  watch_url: string | null
 }

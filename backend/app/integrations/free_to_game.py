@@ -4,7 +4,7 @@ from typing import Any
 import httpx
 from sqlalchemy.orm import Session
 
-from ..models import Game
+from ..models import Game, infer_content_type
 
 
 FREE_TO_GAME_URL = "https://www.freetogame.com/api/games"
@@ -60,10 +60,10 @@ def _to_game(raw_game: dict[str, Any]) -> Game:
     summary = (
         f"{raw_game.get('short_description') or title} "
         f"Developer: {developer}. Publisher: {publisher}. "
-        "Imported from FreeToGame, a public free-to-play games catalog."
+        "Free-to-play availability and platform data are tracked from the public catalog."
     )
 
-    return Game(
+    game = Game(
         title=title,
         slug=_slugify(title, int(raw_game["id"])),
         summary=summary,
@@ -75,6 +75,8 @@ def _to_game(raw_game: dict[str, Any]) -> Game:
         user_score=score,
         genres=[genre],
         platforms=platform_values,
+        developer=developer if developer != "Unknown developer" else None,
+        publisher=publisher if publisher != "Unknown publisher" else None,
         source_scores=[
             {
                 "source": "FreeToGame",
@@ -85,6 +87,8 @@ def _to_game(raw_game: dict[str, Any]) -> Game:
             }
         ],
     )
+    game.content_type = infer_content_type(game)
+    return game
 
 
 async def import_free_to_game_games(db: Session, target: int = 500) -> dict[str, int]:

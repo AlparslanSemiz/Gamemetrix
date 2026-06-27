@@ -6,20 +6,28 @@ from .types import ExternalScore
 
 
 OC_DEFAULT_BASE = "https://api.opencritic.com/api"
+OC_RAPIDAPI_BASE = "https://opencritic-api.p.rapidapi.com/api"
 
 
 async def get_opencritic_score(title: str) -> ExternalScore:
-    api_base = (os.getenv("OPENCRITIC_API_BASE") or OC_DEFAULT_BASE).rstrip("/")
-    api_key = os.getenv("OPENCRITIC_API_KEY")
+    api_key = os.getenv("OPENCRITIC_API_KEY") or os.getenv("RAPIDAPI_KEY")
+    if not api_key:
+        return ExternalScore(
+            source="OpenCritic",
+            score=0,
+            status="unavailable",
+            detail="Set OPENCRITIC_API_KEY or RAPIDAPI_KEY to enable OpenCritic.",
+        )
+
+    api_base = (os.getenv("OPENCRITIC_API_BASE") or OC_RAPIDAPI_BASE).rstrip("/")
 
     headers: dict[str, str] = {"User-Agent": "GameMetrix/0.1"}
-    if api_key:
-        # Support both RapidAPI format and a plain Bearer token.
-        if "rapidapi" in api_base.lower() or "rapidapi" in (api_key or ""):
-            headers["X-RapidAPI-Key"] = api_key
-            headers["X-RapidAPI-Host"] = "opencritic-api.p.rapidapi.com"
-        else:
-            headers["Authorization"] = f"Bearer {api_key}"
+    # Support both RapidAPI format and a plain Bearer token.
+    if "rapidapi" in api_base.lower():
+        headers["X-RapidAPI-Key"] = api_key
+        headers["X-RapidAPI-Host"] = "opencritic-api.p.rapidapi.com"
+    else:
+        headers["Authorization"] = f"Bearer {api_key}"
 
     async with httpx.AsyncClient(timeout=14, headers=headers) as client:
         search_response = await client.get(
@@ -67,7 +75,10 @@ async def get_opencritic_score(title: str) -> ExternalScore:
     tier = str(game.get("tier") or "")
     percent_recommended = game.get("percentRecommended")
 
-    if top_critic_score is None or float(top_critic_score) < 0:
+    if (
+        (percent_recommended is None or float(percent_recommended) < 0)
+        and (top_critic_score is None or float(top_critic_score) < 0)
+    ):
         return ExternalScore(
             source="OpenCritic",
             score=0,
@@ -76,16 +87,22 @@ async def get_opencritic_score(title: str) -> ExternalScore:
         )
 
     detail_parts = []
+    if percent_recommended is not None:
+        detail_parts.append(f"{percent_recommended:.0f}% recommended")
+    if top_critic_score is not None:
+        detail_parts.append(f"Top Critic Avg {float(top_critic_score):.0f}")
     if tier:
         detail_parts.append(tier)
     if num_reviews:
         detail_parts.append(f"{num_reviews} critic reviews")
-    if percent_recommended is not None:
-        detail_parts.append(f"{percent_recommended:.0f}% recommended")
 
     return ExternalScore(
         source="OpenCritic",
-        score=round(float(top_critic_score), 1),
+        score=round(float(percent_recommended or top_critic_score), 1),
         review_count=num_reviews,
         detail=" — ".join(detail_parts) or None,
+        raw={
+            "opencritic_top_critic_score": round(float(top_critic_score or 0), 1),
+            "opencritic_percent_recommended": round(float(percent_recommended or 0), 1),
+        },
     )

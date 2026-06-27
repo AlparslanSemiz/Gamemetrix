@@ -77,11 +77,11 @@ async def get_igdb_score(title: str) -> ExternalScore:
 
     game = games[0]
 
-    # Prefer aggregated (critic) rating, then total rating, then user rating.
+    # IGDB is our niche/user signal: prefer user rating first.
     raw_score = (
-        game.get("aggregated_rating")
+        game.get("rating")
         or game.get("total_rating")
-        or game.get("rating")
+        or game.get("aggregated_rating")
     )
     if raw_score is None:
         return ExternalScore(
@@ -92,9 +92,9 @@ async def get_igdb_score(title: str) -> ExternalScore:
         )
 
     review_count = int(
-        game.get("aggregated_rating_count")
+        game.get("rating_count")
         or game.get("total_rating_count")
-        or game.get("rating_count")
+        or game.get("aggregated_rating_count")
         or 0
     )
 
@@ -102,5 +102,5 @@ async def get_igdb_score(title: str) -> ExternalScore:
         source="IGDB",
         score=round(float(raw_score), 1),
         review_count=review_count,
-        detail=f"{review_count} reviews" if review_count else None,
+        detail=f"IGDB user rating ({review_count} ratings)" if review_count else "IGDB user rating",
     )

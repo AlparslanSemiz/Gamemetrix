@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
@@ -38,6 +38,16 @@ class GameRead(BaseModel):
     cover_url: str
     release_date: date
     release_year: int
+    metacritic_score: int | None = None
+    image_url: str | None = None
+    ratings_refreshed_at: datetime | None = None
+    content_type: str = "game"
+    live_primary_source_count: int = 0
+    applicable_source_count: int = 4
+    applicable_sources: list[str] = []
+    confidence_level: str = "Limited"
+    score_profile: str = "sparse"
+    popularity_label: str | None = None
     metrix_score: float
     critic_score: float
     user_score: float
@@ -47,6 +57,9 @@ class GameRead(BaseModel):
     developer: str | None = None
     publisher: str | None = None
     playtime_minutes: int = 0
+    award_count: int = 0
+    award_nominations: int = 0
+    goty_year: int | None = None
 
 
 class GameListResponse(BaseModel):
@@ -87,3 +100,18 @@ class ScoreWeightsUpdate(BaseModel):
 
 class RecalculateResponse(BaseModel):
     recalculated: int
+
+
+class RatingsEnrichResponse(BaseModel):
+    enriched: int
+    skipped: int
+
+
+class MetadataFixResponse(BaseModel):
+    fixed: int
+    skipped: int
+
+
+class TrailerResponse(BaseModel):
+    video_id: str | None
+    watch_url: str | None

@@ -4,7 +4,7 @@ from typing import Any
 import httpx
 from sqlalchemy.orm import Session
 
-from ..models import Game
+from ..models import Game, infer_content_type
 
 
 STEAMSPY_URL = "https://steamspy.com/api.php"
@@ -46,10 +46,18 @@ def _to_game(app_id: str, raw_game: dict[str, Any]) -> Game:
     developer = raw_game.get("developer") or "Unknown developer"
     publisher = raw_game.get("publisher") or "Unknown publisher"
 
+    genre_text = (raw_game.get("genre") or "PC").split(",")[0].strip().lower() or "pc"
+    descriptor = "PC game" if genre_text in {"game", "steam", "pc"} else f"{genre_text} game"
+    creator_text = ""
+    if developer != "Unknown developer":
+        creator_text = f" developed by {developer}"
+    publisher_text = ""
+    if publisher != "Unknown publisher" and publisher != developer:
+        publisher_text = f" and published by {publisher}"
     summary = (
-        f"{title} is a Steam catalog entry tracked by SteamSpy. "
-        f"Developer: {developer}. Publisher: {publisher}. "
-        f"Estimated owners: {owners}. {playtime_text}"
+        f"{title} is a {descriptor}{creator_text}{publisher_text}. "
+        f"It is available on PC through Steam, with estimated ownership around {owners}. "
+        f"{playtime_text}"
     )
 
     positive = int(raw_game.get("positive") or 0)
@@ -59,7 +67,7 @@ def _to_game(app_id: str, raw_game: dict[str, Any]) -> Game:
     developer = raw_game.get("developer") or None
     publisher = raw_game.get("publisher") or None
 
-    return Game(
+    game = Game(
         title=title,
         slug=_slugify(title, app_id),
         summary=summary,
@@ -85,6 +93,8 @@ def _to_game(app_id: str, raw_game: dict[str, Any]) -> Game:
             }
         ],
     )
+    game.content_type = infer_content_type(game)
+    return game
 
 
 async def import_steamspy_games(db: Session, target: int = 2000) -> dict[str, int]:

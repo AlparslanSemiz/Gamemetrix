@@ -1,6 +1,6 @@
 import { createContext } from 'react'
 
-export type CollectionKey = 'watchlist' | 'seen' | 'liked' | 'favorites'
+export type CollectionKey = 'watchlist' | 'playing' | 'seen' | 'completed' | 'liked' | 'favorites'
 
 export type Collections = Record<CollectionKey, string[]>
 
@@ -11,7 +11,9 @@ export interface CollectionsContextValue {
 
 export const emptyCollections: Collections = {
   watchlist: [],
+  playing: [],
   seen: [],
+  completed: [],
   liked: [],
   favorites: [],
 }
