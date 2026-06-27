@@ -10,10 +10,16 @@ load_dotenv()
 
 DATABASE_URL = os.getenv(
     "DATABASE_URL",
-    "postgresql+psycopg://admin:password123@localhost:5432/gamemetrix",
+    "sqlite:///./gamemetrix.dev.db",
 )
 
-engine = create_engine(DATABASE_URL, pool_pre_ping=True)
+_is_sqlite = DATABASE_URL.startswith("sqlite")
+_engine_kwargs: dict = {"pool_pre_ping": True}
+if _is_sqlite:
+    # SQLite requires check_same_thread=False for FastAPI's async request model.
+    _engine_kwargs["connect_args"] = {"check_same_thread": False}
+
+engine = create_engine(DATABASE_URL, **_engine_kwargs)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 
 

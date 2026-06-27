@@ -1,7 +1,7 @@
 """
 Game list filtering, sorting, and deduplication.
 
-All filter functions accept list[Game] → list[Game].
+All filter functions accept list[Game] and return a filtered list[Game].
 Each function does exactly one thing.
 
 Public API:
@@ -25,6 +25,11 @@ import re
 from ..models import Game
 from ..integrations.source_registry import CRITIC_SOURCES
 
+
+# Year tolerance for deduplication: editions of the same game within this
+# many years are treated as the same title and the better-scored entry wins.
+_SAME_TITLE_YEAR_TOLERANCE = 4    # exact title match (e.g. same game, two imports)
+_EDITION_YEAR_TOLERANCE = 10      # canonical title match (e.g. Remastered 10 years later)
 
 _EDITION_SUFFIX_RE = re.compile(
     r"[\s:–—\-]+(?:"
@@ -89,11 +94,11 @@ def dedupe_near_duplicates(games: list[Game]) -> list[Game]:
         norm = normalized_title(game.title)
         canon = canonical_title(game.title)
         for idx in idx_by_key.get(norm, []):
-            if abs(deduped[idx].release_year - game.release_year) <= 4:
+            if abs(deduped[idx].release_year - game.release_year) <= _SAME_TITLE_YEAR_TOLERANCE:
                 return idx
         if canon != norm:
             for idx in idx_by_key.get(canon, []):
-                if abs(deduped[idx].release_year - game.release_year) <= 10:
+                if abs(deduped[idx].release_year - game.release_year) <= _EDITION_YEAR_TOLERANCE:
                     return idx
         return None
 

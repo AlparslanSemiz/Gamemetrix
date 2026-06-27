@@ -9,6 +9,7 @@ Public API:
 """
 
 import html
+import logging
 import re
 from datetime import date
 
@@ -17,12 +18,23 @@ from ..integrations.rawg_score import get_rawg_game_metadata, get_rawg_release_d
 from ..integrations.steam import extract_steam_app_id, get_steam_release_date
 
 
-# Multi-byte UTF-8 sequences misread as Latin-1 — replace with correct characters.
+log = logging.getLogger(__name__)
+
+# Summary quality thresholds
+_MIN_SUMMARY_CHARS = 80       # shorter than this → not a real description
+_MAX_SUMMARY_CHARS = 520      # hard cap before truncation
+_TITLE_INJECT_MAX = 420       # only prepend title if summary is still short after truncation
+_SENTENCES_TO_KEEP = 3        # max sentences to retain from the source text
+_ENRICHMENT_MIN_CHARS = 120   # summaries below this length are considered weak
+_RAWG_DESC_MIN_CHARS = 60     # minimum useful length for a RAWG description payload
+_RAWG_DESC_MAX_CHARS = 3000   # cap stored description to avoid bloating the DB row
+
+# Multi-byte UTF-8 sequences misread as Latin-1 (mojibake). Replace with correct characters.
 _MOJIBAKE: dict[str, str] = {
-    "â": "‘",  # left single quotation mark
-    "â": "’",  # right single quotation mark
-    "â": "“",  # left double quotation mark
-    "â": "”",  # right double quotation mark
+    "â": "‘",  # left single quote
+    "â": "’",  # right single quote
+    "â": "“",  # left double quote
+    "â": "”",  # right double quote
     "â": "–",  # en dash
     "â": "—",  # em dash
     "â¦": "…",  # ellipsis
@@ -50,23 +62,23 @@ def clean_game_summary(value: str | None, title: str) -> str | None:
         return None
 
     normalized = html.unescape(re.sub(r"\s+", " ", value)).strip()
-    for bad, replacement in _MOJIBAKE.items():
-        normalized = normalized.replace(bad, replacement)
-    if len(normalized) < 80:
+    for bad, good in _MOJIBAKE.items():
+        normalized = normalized.replace(bad, good)
+    if len(normalized) < _MIN_SUMMARY_CHARS:
         return None
 
     sentences = re.split(r"(?<=[.!?])\s+", normalized)
-    summary = " ".join(sentences[:3]).strip()
-    if len(summary) > 520:
-        summary = summary[:520].rsplit(" ", 1)[0].rstrip(".,;:") + "."
-    if title.lower() not in summary.lower() and len(summary) < 420:
+    summary = " ".join(sentences[:_SENTENCES_TO_KEEP]).strip()
+    if len(summary) > _MAX_SUMMARY_CHARS:
+        summary = summary[:_MAX_SUMMARY_CHARS].rsplit(" ", 1)[0].rstrip(".,;:") + "."
+    if title.lower() not in summary.lower() and len(summary) < _TITLE_INJECT_MAX:
         summary = f"{title}: {summary}"
 
     return summary
 
 
 def summary_needs_enrichment(game: Game) -> bool:
-    if len(game.summary.strip()) < 120:
+    if len(game.summary.strip()) < _ENRICHMENT_MIN_CHARS:
         return True
     return any(marker in game.summary for marker in _WEAK_SUMMARY_MARKERS)
 
@@ -79,13 +91,13 @@ async def enrich_game_summary(game: Game) -> None:
         if not metadata:
             return
         raw_desc = metadata.get("description_raw") or ""
-        if len(raw_desc) < 60:
+        if len(raw_desc) < _RAWG_DESC_MIN_CHARS:
             raw_desc = re.sub(r"<[^>]+>", " ", metadata.get("description") or "")
             raw_desc = html.unescape(raw_desc).strip()
-        if len(raw_desc) > 60:
-            game.summary = raw_desc[:3000].strip()
+        if len(raw_desc) >= _RAWG_DESC_MIN_CHARS:
+            game.summary = raw_desc[:_RAWG_DESC_MAX_CHARS].strip()
     except Exception:
-        pass
+        log.debug("Summary enrichment failed for %r", game.title, exc_info=True)
 
 
 async def fix_game_year(game: Game) -> bool:

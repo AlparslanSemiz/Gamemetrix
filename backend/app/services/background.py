@@ -3,12 +3,13 @@ Background tasks: periodic rating refresh and metadata fixing.
 
 Public API:
   rating_refresh_candidates(db)   -> list[Game]
-  refresh_rating_batch(limit)     -> Awaitable[dict]
-  fix_year_batch(limit)           -> Awaitable[dict]
+  refresh_rating_batch(limit)     -> Awaitable[dict[str, int]]
+  fix_year_batch(limit)           -> Awaitable[dict[str, int]]
   daily_refresh_loop()            -> Awaitable[None]  (runs forever; cancel to stop)
 """
 
 import asyncio
+import logging
 from datetime import UTC, datetime
 
 from sqlalchemy import desc, select
@@ -22,6 +23,9 @@ from ..integrations.steam import extract_steam_app_id, get_steam_release_dates
 from .metadata import fix_game_year
 
 
+log = logging.getLogger(__name__)
+
+
 def rating_refresh_candidates(db: Session) -> list[Game]:
     games = list(db.scalars(select(Game).order_by(desc(Game.metrix_score))).all())
     now = datetime.now(UTC)
@@ -29,9 +33,8 @@ def rating_refresh_candidates(db: Session) -> list[Game]:
     return sorted(stale, key=_refresh_priority_key)
 
 
-def _refresh_priority_key(game: Game) -> tuple:
-    ts = _refreshed_timestamp(game)
-    return (game.ratings_refreshed_at is not None, ts, -game.metrix_score)
+def _refresh_priority_key(game: Game) -> tuple[int, float, float]:
+    return (game.ratings_refreshed_at is not None, _refreshed_timestamp(game), -game.metrix_score)
 
 
 def _refreshed_timestamp(game: Game) -> float:
@@ -70,7 +73,9 @@ async def fix_year_batch(limit: int) -> dict[str, int]:
                 .limit(limit)
             ).all()
         )
-        fixed, skipped = await _fix_steam_dates(db, games)
+        steam_fixed, _ = await _fix_steam_dates(db, games)
+        fixed += steam_fixed
+
         fixed_ids = {g.id for g in games if g.release_year != 1970}
         for game in games:
             if game.id in fixed_ids:
@@ -80,6 +85,7 @@ async def fix_year_batch(limit: int) -> dict[str, int]:
                 fixed += 1
             else:
                 skipped += 1
+
         db.commit()
     return {"fixed": fixed, "skipped": skipped}
 
@@ -110,13 +116,13 @@ async def daily_refresh_loop() -> None:
         try:
             await refresh_rating_batch(cfg.STARTUP_RATING_REFRESH_LIMIT)
         except Exception:
-            pass
+            log.exception("Startup rating refresh failed")
 
     if cfg.STARTUP_METADATA_FIX_LIMIT > 0:
         try:
             await fix_year_batch(cfg.STARTUP_METADATA_FIX_LIMIT)
         except Exception:
-            pass
+            log.exception("Startup metadata fix failed")
 
     while True:
         await asyncio.sleep(cfg.RATING_REFRESH_INTERVAL_SECONDS)
@@ -124,9 +130,9 @@ async def daily_refresh_loop() -> None:
             try:
                 await refresh_rating_batch(cfg.DAILY_RATING_REFRESH_LIMIT)
             except Exception:
-                pass
+                log.exception("Daily rating refresh failed")
         if cfg.DAILY_METADATA_FIX_LIMIT > 0:
             try:
                 await fix_year_batch(cfg.DAILY_METADATA_FIX_LIMIT)
             except Exception:
-                pass
+                log.exception("Daily metadata fix failed")

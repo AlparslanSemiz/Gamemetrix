@@ -4,8 +4,9 @@ from urllib.parse import quote_plus
 import httpx
 
 
-YOUTUBE_SEARCH_URL = "https://www.youtube.com/results"
-VIDEO_ID_RE = re.compile(r"watch\?v=([A-Za-z0-9_-]{11})")
+_YOUTUBE_SEARCH_URL = "https://www.youtube.com/results"
+_VIDEO_ID_RE = re.compile(r"watch\?v=([A-Za-z0-9_-]{11})")
+_HTTP_TIMEOUT = 12
 
 
 async def find_trailer_video_id(title: str) -> str | None:
@@ -15,17 +16,15 @@ async def find_trailer_video_id(title: str) -> str | None:
         "User-Agent": "Mozilla/5.0 GameMetrix/0.1",
     }
 
-    async with httpx.AsyncClient(timeout=12, headers=headers, follow_redirects=True) as client:
-        response = await client.get(f"{YOUTUBE_SEARCH_URL}?search_query={query}")
+    async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT, headers=headers, follow_redirects=True) as client:
+        response = await client.get(f"{_YOUTUBE_SEARCH_URL}?search_query={query}")
         if not response.is_success:
             return None
 
     seen: set[str] = set()
-    for match in VIDEO_ID_RE.finditer(response.text):
+    for match in _VIDEO_ID_RE.finditer(response.text):
         video_id = match.group(1)
-        if video_id in seen:
-            continue
-        seen.add(video_id)
-        return video_id
-
+        if video_id not in seen:
+            seen.add(video_id)
+            return video_id
     return None

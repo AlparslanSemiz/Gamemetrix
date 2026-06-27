@@ -14,7 +14,7 @@ import datetime
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import asc, desc, select
+from sqlalchemy import Select, asc, desc, select
 from sqlalchemy.orm import Session
 
 from ..config import get_settings
@@ -140,7 +140,7 @@ def _build_db_query(
     max_score: float | None,
     sort: str,
     direction: str,
-):
+) -> Select[tuple[Game]]:
     query = select(Game)
     if content_type != "all":
         query = query.where(Game.content_type == content_type)
@@ -157,7 +157,7 @@ def _build_db_query(
     return _apply_db_sort(query, sort, direction)
 
 
-def _apply_db_sort(query, sort: str, direction: str):
+def _apply_db_sort(query: Select[tuple[Game]], sort: str, direction: str) -> Select[tuple[Game]]:
     if sort == "title":
         return query.order_by(asc(Game.title))
     if sort == "release_year":
