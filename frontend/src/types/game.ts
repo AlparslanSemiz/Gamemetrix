@@ -13,20 +13,28 @@ export interface Game {
   title: string
   slug: string
   summary: string
+  summary_short?: string | null
   cover_url: string
   release_date: string
   release_year: number
+  early_access_date?: string | null
+  official_release_date?: string | null
   metacritic_score?: number | null
   image_url?: string | null
   ratings_refreshed_at?: string | null
+  metadata_refreshed_at?: string | null
   content_type: string
   live_primary_source_count: number
   applicable_source_count?: number
   applicable_sources?: string[]
   confidence_level: string
+  data_strength: string
   score_profile: string
   popularity_label?: string | null
   metrix_score: number
+  rank_score: number
+  is_rankable: boolean
+  rank_exclusion_reason?: string | null
   critic_score: number
   user_score: number
   genres: string[]
@@ -38,6 +46,48 @@ export interface Game {
   award_count: number
   award_nominations: number
   goty_year?: number | null
+  screenshots: string[]
+  system_requirements: SystemRequirement[]
+  dlcs: RelatedGame[]
+  similar_games: RelatedGame[]
+  price_snapshots: PriceSnapshot[]
+}
+
+export interface SystemRequirement {
+  platform: string
+  minimum: string
+  recommended: string
+}
+
+export interface RelatedGame {
+  id?: number | string | null
+  title: string
+  slug?: string | null
+  release_date?: string | null
+  release_year?: number | null
+  cover_url?: string | null
+  metacritic_score?: number | null
+  rating?: number | null
+  url?: string | null
+}
+
+export interface PriceSnapshot {
+  source: string
+  store: string
+  platform?: string | null
+  region: string
+  currency: string
+  list_price?: number | null
+  sale_price?: number | null
+  discount_percent?: number | null
+  historical_low?: number | null
+  historical_low_date?: string | null
+  sale_end_date?: string | null
+  is_free: boolean
+  is_subscription_included: boolean
+  subscription_service?: string | null
+  url?: string | null
+  fetched_at: string
 }
 
 export interface GameListResponse {
@@ -58,6 +108,7 @@ export interface ProviderStatus {
 }
 
 export type GameSort =
+  | 'rank_score'
   | 'metrix_score'
   | 'release_year'
   | 'title'

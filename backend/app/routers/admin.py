@@ -11,6 +11,7 @@ Endpoints:
   GET  /admin/source-test/{source}?q=title   — live smoke test for one source
   GET  /admin/external-ids/{game_id}         — external IDs for a game
   GET  /admin/rating-snapshots/{game_id}     — rating history for a game
+  GET  /admin/source-snapshots/{game_id}      — raw source fetch snapshots for a game
   POST /admin/import/prices/itad             — fetch + store ITAD prices for a game
   POST /admin/import/prices/cheapshark       — fetch + store CheapShark prices for a game
   POST /admin/match/external-ids             — match game to external sources
@@ -299,6 +300,36 @@ def get_rating_snapshots(game_id: int, db: Session = Depends(get_db)) -> dict:
                 "is_applicable": r.is_applicable,
                 "confidence": r.confidence,
                 "fetched_at": r.fetched_at.isoformat(),
+                "raw_payload": r.raw_payload,
+            }
+            for r in rows
+        ],
+    }
+
+
+@router.get("/source-snapshots/{game_id}")
+def get_source_snapshots(game_id: int, db: Session = Depends(get_db)) -> dict:
+    game = db.scalar(select(Game).where(Game.id == game_id))
+    if not game:
+        raise HTTPException(status_code=404, detail="Game not found")
+
+    rows = db.scalars(
+        select(SourceSnapshot)
+        .where(SourceSnapshot.query == game.title)
+        .order_by(SourceSnapshot.fetched_at.desc())
+    ).all()
+    return {
+        "game_id": game_id,
+        "title": game.title,
+        "snapshots": [
+            {
+                "source": r.source,
+                "endpoint": r.endpoint,
+                "query": r.query,
+                "external_id": r.external_id,
+                "status_code": r.status_code,
+                "fetched_at": r.fetched_at.isoformat(),
+                "raw_payload": r.raw_payload,
             }
             for r in rows
         ],

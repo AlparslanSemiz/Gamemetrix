@@ -179,4 +179,6 @@ def sort_in_memory(games: list[Game], sort: str, direction: str) -> list[Game]:
         return sorted(games, key=lambda g: _source_score(g, src), reverse=reverse)
     if sort == "title" and direction == "desc":
         return sorted(games, key=lambda g: g.title.lower(), reverse=True)
+    if sort == "rank_score":
+        return sorted(games, key=lambda g: g.rank_score, reverse=reverse)
     return games

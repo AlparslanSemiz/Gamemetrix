@@ -34,6 +34,15 @@ STEAM_APP_IDS: dict[str, int] = {
     "disco-elysium-the-final-cut": 632470,
     "hi-fi-rush": 1817230,
     "red-dead-redemption-2": 1174180,
+    "resident-evil-4-remake": 2050650,
+    "resident-evil-4": 254700,
+    "resident-evil-2-remake": 883710,
+    "resident-evil-village": 1196590,
+    "sekiro-shadows-die-twice": 814380,
+    "dark-souls-3": 374320,
+    "cyberpunk-2077": 1091500,
+    "god-of-war-2018": 1593500,
+    "god-of-war-ragnarok": 2322010,
 }
 
 STEAM_APP_ID_RE = re.compile(r"(?:steam/apps/|/app/|^|[-_])(\d{3,})(?:/|$)")
@@ -44,6 +53,8 @@ def extract_steam_app_id(*values: str | None) -> int | None:
     for value in values:
         if not value:
             continue
+        if value in STEAM_APP_IDS:
+            return STEAM_APP_IDS[value]
         match = STEAM_APP_ID_RE.search(value)
         if match:
             return int(match.group(1))
@@ -107,7 +118,8 @@ async def get_steam_score(
         )
         response.raise_for_status()
 
-    summary = response.json().get("query_summary", {})
+    payload = response.json()
+    summary = payload.get("query_summary", {})
     total_reviews = int(summary.get("total_reviews") or 0)
     total_positive = int(summary.get("total_positive") or 0)
     review_label = str(summary.get("review_score_desc") or "Steam review score")
@@ -128,8 +140,34 @@ async def get_steam_score(
         raw={
             "steam_app_id": app_id,
             "steam_review_summary": review_label,
+            "query_summary": summary,
+            "response": payload,
         },
     )
+
+
+_MAX_SCREENSHOTS = 16
+
+
+async def fetch_steam_screenshots(app_id: int) -> list[str]:
+    """Return up to _MAX_SCREENSHOTS full-resolution screenshot URLs for a Steam app."""
+    async with httpx.AsyncClient(timeout=_TIMEOUT_DETAILS) as client:
+        response = await client.get(
+            _STEAM_APP_DETAILS_URL,
+            params={"appids": app_id, "filters": "screenshots"},
+        )
+        if not response.is_success:
+            return []
+
+    payload = response.json().get(str(app_id), {})
+    if not payload.get("success"):
+        return []
+
+    return [
+        s["path_full"]
+        for s in (payload.get("data", {}).get("screenshots") or [])
+        if isinstance(s, dict) and s.get("path_full")
+    ][:_MAX_SCREENSHOTS]
 
 
 async def get_steam_release_date(app_id: int) -> date | None:

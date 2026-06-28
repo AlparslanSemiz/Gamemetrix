@@ -5,6 +5,7 @@ from pydantic import BaseModel, ConfigDict
 
 
 GameSort = Literal[
+    "rank_score",
     "metrix_score",
     "release_year",
     "title",
@@ -28,6 +29,27 @@ class SourceScore(BaseModel):
     review_count: int = 0
 
 
+class PriceSnapshotRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    source: str
+    store: str
+    platform: str | None = None
+    region: str = "US"
+    currency: str = "USD"
+    list_price: float | None = None
+    sale_price: float | None = None
+    discount_percent: int | None = None
+    historical_low: float | None = None
+    historical_low_date: date | None = None
+    sale_end_date: datetime | None = None
+    is_free: bool = False
+    is_subscription_included: bool = False
+    subscription_service: str | None = None
+    url: str | None = None
+    fetched_at: datetime
+
+
 class GameRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -35,20 +57,28 @@ class GameRead(BaseModel):
     title: str
     slug: str
     summary: str
+    summary_short: str | None = None
     cover_url: str
     release_date: date
     release_year: int
+    early_access_date: date | None = None
+    official_release_date: date | None = None
     metacritic_score: int | None = None
     image_url: str | None = None
     ratings_refreshed_at: datetime | None = None
+    metadata_refreshed_at: datetime | None = None
     content_type: str = "game"
     live_primary_source_count: int = 0
     applicable_source_count: int = 4
     applicable_sources: list[str] = []
     confidence_level: str = "Limited"
+    data_strength: str = "CATALOG_ONLY"
     score_profile: str = "sparse"
     popularity_label: str | None = None
     metrix_score: float
+    rank_score: float = 0.0
+    is_rankable: bool = False
+    rank_exclusion_reason: str | None = None
     critic_score: float
     user_score: float
     genres: list[str]
@@ -60,6 +90,11 @@ class GameRead(BaseModel):
     award_count: int = 0
     award_nominations: int = 0
     goty_year: int | None = None
+    screenshots: list[str] = []
+    system_requirements: list[dict] = []
+    dlcs: list[dict] = []
+    similar_games: list[dict] = []
+    price_snapshots: list[PriceSnapshotRead] = []
 
 
 class GameListResponse(BaseModel):

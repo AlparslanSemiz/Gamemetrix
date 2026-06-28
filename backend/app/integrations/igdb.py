@@ -64,8 +64,10 @@ async def get_igdb_score(title: str) -> ExternalScore:
 
     token = await _get_access_token(cfg.IGDB_CLIENT_ID, cfg.IGDB_CLIENT_SECRET)
     query = (
-        "fields name,rating,rating_count,aggregated_rating,aggregated_rating_count,"
-        "total_rating,total_rating_count; "
+        "fields id,slug,url,name,rating,rating_count,aggregated_rating,aggregated_rating_count,"
+        "total_rating,total_rating_count,first_release_date,genres.name,platforms.name,"
+        "involved_companies.company.name,involved_companies.developer,involved_companies.publisher,"
+        "cover.url,screenshots.url,summary; "
         f'search "{title}"; '
         "where version_parent = null; "
         "limit 1;"
@@ -77,6 +79,8 @@ async def get_igdb_score(title: str) -> ExternalScore:
 
     async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT) as client:
         response = await client.post(_IGDB_GAMES_URL, headers=headers, content=query)
+        if response.status_code == 429:
+            return _unavailable("IGDB rate limit hit — retry later.")
         response.raise_for_status()
 
     games = response.json()
@@ -94,4 +98,10 @@ async def get_igdb_score(title: str) -> ExternalScore:
         score=round(float(raw_score), 1),
         review_count=review_count,
         detail=f"IGDB user rating ({review_count} ratings)" if review_count else "IGDB user rating",
+        raw={
+            "igdb_id": int(game.get("id") or 0),
+            "igdb_slug": game.get("slug"),
+            "igdb_url": game.get("url"),
+            "response": game,
+        },
     )

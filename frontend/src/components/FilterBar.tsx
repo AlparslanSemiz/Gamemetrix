@@ -99,9 +99,11 @@ export function FilterBar({ facets, filters, onChange, onApply }: FilterBarProps
       minScore: 0,
       maxScore: 100,
       minRatings: 0,
+      maxRatings: 0,
       minLiveSources: 0,
       requireCritic: false,
-      sort: 'metrix_score',
+      hasAward: false,
+      sort: 'rank_score',
       direction: 'desc',
     })
   }

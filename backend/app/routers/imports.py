@@ -16,7 +16,7 @@ from ..database import get_db
 from ..schemas import ImportResponse, MultiImportResponse
 from ..integrations.cheapshark import import_cheapshark_deals
 from ..integrations.free_to_game import import_free_to_game_games
-from ..integrations.rawg import import_rawg_games
+from ..integrations.rawg import import_catalog_to_size, import_rawg_games
 from ..integrations.steamspy import import_steamspy_games
 
 router = APIRouter(prefix="/api/import", tags=["imports"])
@@ -24,11 +24,22 @@ router = APIRouter(prefix="/api/import", tags=["imports"])
 
 @router.post("/rawg", response_model=ImportResponse)
 async def import_from_rawg(
-    target: int = Query(default=3000, ge=1, le=5000),
+    target: int = Query(default=3000, ge=1, le=10000),
     db: Session = Depends(get_db),
 ) -> dict[str, int]:
     try:
         return await import_rawg_games(db, target=target)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/catalog")
+async def import_catalog(
+    target_total: int = Query(default=10000, ge=1, le=10000),
+    db: Session = Depends(get_db),
+) -> dict[str, object]:
+    try:
+        return await import_catalog_to_size(db, target_total=target_total)
     except RuntimeError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 

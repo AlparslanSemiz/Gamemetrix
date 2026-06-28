@@ -2,17 +2,18 @@
 Background tasks: periodic rating refresh and metadata fixing.
 
 Public API:
-  rating_refresh_candidates(db)   -> list[Game]
-  refresh_rating_batch(limit)     -> Awaitable[dict[str, int]]
-  fix_year_batch(limit)           -> Awaitable[dict[str, int]]
-  daily_refresh_loop()            -> Awaitable[None]  (runs forever; cancel to stop)
+  rating_refresh_candidates(db)                -> list[Game]
+  refresh_rating_batch(limit)                  -> Awaitable[dict[str, int]]
+  refresh_all_games(concurrency, force)        -> Awaitable[dict[str, int]]
+  fix_year_batch(limit)                        -> Awaitable[dict[str, int]]
+  daily_refresh_loop()                         -> Awaitable[None]  (runs forever; cancel to stop)
 """
 
 import asyncio
 import logging
 from datetime import UTC, datetime
 
-from sqlalchemy import desc, select
+from sqlalchemy import asc, desc, select
 from sqlalchemy.orm import Session
 
 from ..config import get_settings
@@ -44,6 +45,69 @@ def _refreshed_timestamp(game: Game) -> float:
     if ts.tzinfo is None:
         ts = ts.replace(tzinfo=UTC)
     return ts.timestamp()
+
+
+_REFRESH_ALL_LOCK = asyncio.Lock()
+
+
+async def refresh_all_games(
+    concurrency: int = 3,
+    force: bool = False,
+    inter_game_delay: float = 0.3,
+) -> dict[str, int]:
+    """
+    Refresh every game in the DB concurrently (semaphore-bounded).
+
+    Only one run at a time (guarded by _REFRESH_ALL_LOCK).
+    Non-force: skips games that game_needs_rating_refresh() considers fresh.
+    Force: refreshes all regardless of cache state.
+    inter_game_delay: seconds to sleep after acquiring the semaphore slot,
+                      spreading requests over time to respect API rate limits.
+    """
+    if _REFRESH_ALL_LOCK.locked():
+        return {"enriched": 0, "skipped": 0, "status": "already_running"}  # type: ignore[return-value]
+
+    async with _REFRESH_ALL_LOCK:
+        with SessionLocal() as db:
+            all_games = list(
+                db.scalars(
+                    select(Game)
+                    .where(Game.content_type == "game")
+                    .order_by(asc(Game.ratings_refreshed_at))
+                ).all()
+            )
+
+        sem = asyncio.Semaphore(concurrency)
+        enriched = 0
+        skipped = 0
+        now = datetime.now(UTC)
+
+        async def _refresh_one(game_id: int) -> bool:
+            async with sem:
+                if inter_game_delay > 0:
+                    await asyncio.sleep(inter_game_delay)
+                with SessionLocal() as db:
+                    game = db.get(Game, game_id)
+                    if game is None:
+                        return False
+                    if not force and not game_needs_rating_refresh(game, now):
+                        return False
+                    try:
+                        await refresh_game_sources(db, game)
+                        return True
+                    except Exception:
+                        log.debug("refresh_all_games: failed for game_id=%d", game_id, exc_info=True)
+                        return False
+
+        results = await asyncio.gather(*[_refresh_one(g.id) for g in all_games])
+        for did_refresh in results:
+            if did_refresh:
+                enriched += 1
+            else:
+                skipped += 1
+
+        log.info("refresh_all_games done: %d refreshed, %d skipped", enriched, skipped)
+        return {"enriched": enriched, "skipped": skipped}
 
 
 async def refresh_rating_batch(limit: int) -> dict[str, int]:
@@ -109,14 +173,26 @@ async def _fix_steam_dates(db: Session, games: list[Game]) -> tuple[int, int]:
 
 
 async def daily_refresh_loop() -> None:
+    """
+    Runs forever. On startup, then every REFRESH_ALL_INTERVAL_HOURS:
+      1. refresh_all_games — fetches missing/stale scores for all games,
+         respecting per-source daily budgets and inter-game delay.
+      2. fix_year_batch   — corrects games still showing release_year=1970.
+
+    The rate limiter resets at midnight, so the next cycle after midnight
+    will pick up sources that were budget-exhausted in earlier cycles.
+    """
     cfg = get_settings()
     await asyncio.sleep(8)
 
-    if cfg.STARTUP_RATING_REFRESH_LIMIT > 0:
-        try:
-            await refresh_rating_batch(cfg.STARTUP_RATING_REFRESH_LIMIT)
-        except Exception:
-            log.exception("Startup rating refresh failed")
+    concurrency = cfg.REFRESH_ALL_CONCURRENCY
+    delay = cfg.REFRESH_ALL_INTER_GAME_DELAY
+
+    # Startup pass
+    try:
+        await refresh_all_games(concurrency=concurrency, force=False, inter_game_delay=delay)
+    except Exception:
+        log.exception("Startup full refresh failed")
 
     if cfg.STARTUP_METADATA_FIX_LIMIT > 0:
         try:
@@ -124,15 +200,16 @@ async def daily_refresh_loop() -> None:
         except Exception:
             log.exception("Startup metadata fix failed")
 
+    interval_seconds = int(cfg.REFRESH_ALL_INTERVAL_HOURS * 3600)
     while True:
-        await asyncio.sleep(cfg.RATING_REFRESH_INTERVAL_SECONDS)
-        if cfg.DAILY_RATING_REFRESH_LIMIT > 0:
-            try:
-                await refresh_rating_batch(cfg.DAILY_RATING_REFRESH_LIMIT)
-            except Exception:
-                log.exception("Daily rating refresh failed")
+        await asyncio.sleep(interval_seconds)
+        log.info("Periodic refresh starting (every %.1fh)", cfg.REFRESH_ALL_INTERVAL_HOURS)
+        try:
+            await refresh_all_games(concurrency=concurrency, force=False, inter_game_delay=delay)
+        except Exception:
+            log.exception("Periodic full refresh failed")
         if cfg.DAILY_METADATA_FIX_LIMIT > 0:
             try:
                 await fix_year_batch(cfg.DAILY_METADATA_FIX_LIMIT)
             except Exception:
-                log.exception("Daily metadata fix failed")
+                log.exception("Periodic metadata fix failed")

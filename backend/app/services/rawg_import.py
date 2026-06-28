@@ -86,6 +86,44 @@ def _extract_platforms_normalized(raw_game: dict) -> list[str]:
     })
 
 
+def _extract_screenshots(raw_game: dict) -> list[str]:
+    return [
+        s["image"]
+        for s in (raw_game.get("short_screenshots") or [])
+        if isinstance(s, dict) and s.get("image")
+    ]
+
+
+def _extract_system_requirements(raw_game: dict) -> list[dict]:
+    return [
+        {
+            "platform": entry["platform"]["name"],
+            "minimum": entry["requirements"].get("minimum") or "",
+            "recommended": entry["requirements"].get("recommended") or "",
+        }
+        for entry in (raw_game.get("platforms") or [])
+        if isinstance(entry, dict)
+        and isinstance(entry.get("platform"), dict)
+        and isinstance(entry.get("requirements"), dict)
+        and (entry["requirements"].get("minimum") or entry["requirements"].get("recommended"))
+    ]
+
+
+def _compact_related(raw_game: dict) -> dict:
+    released = raw_game.get("released")
+    return {
+        "id": raw_game.get("id"),
+        "title": raw_game.get("name") or "Untitled Game",
+        "slug": raw_game.get("slug"),
+        "release_date": released,
+        "release_year": parse_rawg_date(released).year if released else None,
+        "cover_url": raw_game.get("background_image"),
+        "metacritic_score": raw_game.get("metacritic"),
+        "rating": raw_game.get("rating"),
+        "url": f"https://rawg.io/games/{raw_game.get('slug')}" if raw_game.get("slug") else None,
+    }
+
+
 def game_from_rawg_search(raw_game: dict) -> Game:
     title = raw_game.get("name") or "Untitled Game"
     released = parse_rawg_date(raw_game.get("released"))
@@ -108,6 +146,7 @@ def game_from_rawg_search(raw_game: dict) -> Game:
         cover_url=image_url,
         release_date=released,
         release_year=released.year,
+        official_release_date=released if released.year > 1970 else None,
         metacritic_score=metacritic_score,
         image_url=image_url or None,
         metrix_score=metrix_score,
@@ -116,6 +155,8 @@ def game_from_rawg_search(raw_game: dict) -> Game:
         genres=_extract_genres(raw_game) or ["Uncategorized"],
         platforms=_extract_platforms_raw(raw_game) or ["Unknown"],
         source_scores=source_scores,
+        screenshots=_extract_screenshots(raw_game),
+        system_requirements=_extract_system_requirements(raw_game),
     )
     game.content_type = infer_content_type(game)
     return game
@@ -136,6 +177,8 @@ def apply_rawg_to_game(game: Game, raw_game: dict) -> Game:
 
     game.release_date = released
     game.release_year = released.year
+    if released.year > 1970:
+        game.official_release_date = released
     game.metacritic_score = metacritic_score
     game.image_url = image_url or None
     game.cover_url = image_url or game.cover_url
@@ -196,7 +239,36 @@ def apply_rawg_metadata(game: Game, raw_game: dict) -> bool:
         _apply_metacritic_score(game, int(meta_score))
         changed = True
 
+    if released.year > 1970 and game.official_release_date != released:
+        game.official_release_date = released
+        changed = True
+
+    screenshots = _extract_screenshots(raw_game)
+    if screenshots and not getattr(game, "screenshots", None):
+        game.screenshots = screenshots
+        changed = True
+
+    sysreqs = _extract_system_requirements(raw_game)
+    if sysreqs and not getattr(game, "system_requirements", None):
+        game.system_requirements = sysreqs
+        changed = True
+
     game.content_type = infer_content_type(game)
+    return changed
+
+
+def apply_rawg_related(game: Game, additions: list[dict], similar: list[dict]) -> bool:
+    changed = False
+    dlcs = [_compact_related(item) for item in additions if isinstance(item, dict)]
+    related = [_compact_related(item) for item in similar if isinstance(item, dict)]
+
+    if dlcs and not getattr(game, "dlcs", None):
+        game.dlcs = dlcs[:12]
+        changed = True
+    if related and not getattr(game, "similar_games", None):
+        game.similar_games = related[:12]
+        changed = True
+
     return changed
 
 
@@ -237,6 +309,7 @@ def game_from_rawg_list(raw_game: dict) -> Game:
         cover_url=image_url,
         release_date=released,
         release_year=released.year,
+        official_release_date=released if released.year > 1970 else None,
         metacritic_score=metacritic_score,
         image_url=image_url or None,
         metrix_score=metrix_score,
@@ -247,6 +320,8 @@ def game_from_rawg_list(raw_game: dict) -> Game:
         source_scores=source_scores,
         developer=developer,
         publisher=publisher,
+        screenshots=_extract_screenshots(raw_game),
+        system_requirements=_extract_system_requirements(raw_game),
     )
     game.content_type = infer_content_type(game)
     return game

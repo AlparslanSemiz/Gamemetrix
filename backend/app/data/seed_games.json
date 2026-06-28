@@ -1,0 +1,4890 @@
+[
+  {
+    "title": "Baldur's Gate 3",
+    "slug": "baldurs-gate-3",
+    "summary": "A party-based role-playing epic set in the Forgotten Realms, where every dialogue choice, combat decision, and companion relationship can reshape the campaign. Turn-based tactical encounters meet unusually reactive quest design, making player agency feel visible from small village disputes to world-ending threats.",
+    "cover_url": "https://cdn.akamai.steamstatic.com/steam/apps/1086940/capsule_616x353.jpg",
+    "release_date": "2023-08-03",
+    "release_year": 2023,
+    "metrix_score": 96.4,
+    "critic_score": 96.0,
+    "user_score": 94.0,
+    "genres": [
+      "RPG",
+      "Strategy",
+      "Adventure"
+    ],
+    "platforms": [
+      "PC",
+      "PlayStation 5",
+      "Xbox Series X/S"
+    ],
+    "developer": "Larian Studios",
+    "publisher": "Larian Studios",
+    "playtime_minutes": 4500,
+    "award_count": 9,
+    "award_nominations": 42,
+    "goty_year": 2023,
+    "source_scores": [
+      {
+        "source": "Metacritic",
+        "score": 96,
+        "scale": 100,
+        "status": "live",
+        "review_count": 113
+      },
+      {
+        "source": "OpenCritic",
+        "score": 96,
+        "scale": 100,
+        "status": "live",
+        "review_count": 208
+      },
+      {
+        "source": "Steam",
+        "score": 95,
+        "scale": 100,
+        "status": "live",
+        "review_count": 620000
+      }
+    ]
+  },
+  {
+    "title": "Elden Ring",
+    "slug": "elden-ring",
+    "summary": "A vast action RPG across the Lands Between, rewarding curiosity with hidden dungeons, strange characters, and demanding boss fights. Its flexible build system lets players approach brutal combat through magic, stealth, summons, heavy weapons, or pure reflex.",
+    "cover_url": "https://cdn.akamai.steamstatic.com/steam/apps/1245620/capsule_616x353.jpg",
+    "release_date": "2022-02-25",
+    "release_year": 2022,
+    "metrix_score": 95.7,
+    "critic_score": 96.0,
+    "user_score": 91.0,
+    "genres": [
+      "Action",
+      "RPG",
+      "Soulslike",
+      "Open World"
+    ],
+    "platforms": [
+      "PC",
+      "PlayStation 4",
+      "PlayStation 5",
+      "Xbox One",
+      "Xbox Series X/S"
+    ],
+    "developer": "FromSoftware",
+    "publisher": "Bandai Namco",
+    "playtime_minutes": 3600,
+    "award_count": 8,
+    "award_nominations": 36,
+    "goty_year": 2022,
+    "source_scores": [
+      {
+        "source": "Metacritic",
+        "score": 96,
+        "scale": 100,
+        "status": "live",
+        "review_count": 95
+      },
+      {
+        "source": "OpenCritic",
+        "score": 95,
+        "scale": 100,
+        "status": "live",
+        "review_count": 177
+      },
+      {
+        "source": "Steam",
+        "score": 92,
+        "scale": 100,
+        "status": "live",
+        "review_count": 780000
+      }
+    ]
+  },
+  {
+    "title": "Hades",
+    "slug": "hades",
+    "summary": "A fast roguelike about escaping the underworld, where each failed run feeds character relationships, weapon mastery, and story progression. Combat is immediate and expressive, but the lasting hook is how every return reveals new dialogue, rivalries, and emotional texture.",
+    "cover_url": "https://cdn.akamai.steamstatic.com/steam/apps/1145360/capsule_616x353.jpg",
+    "release_date": "2020-09-17",
+    "release_year": 2020,
+    "metrix_score": 93.8,
+    "critic_score": 93.0,
+    "user_score": 97.0,
+    "genres": [
+      "Action",
+      "Roguelike",
+      "Indie"
+    ],
+    "platforms": [
+      "PC",
+      "Nintendo Switch",
+      "PlayStation 4",
+      "PlayStation 5",
+      "Xbox One",
+      "Xbox Series X/S"
+    ],
+    "developer": "Supergiant Games",
+    "publisher": "Supergiant Games",
+    "playtime_minutes": 1500,
+    "award_count": 3,
+    "award_nominations": 20,
+    "source_scores": [
+      {
+        "source": "Metacritic",
+        "score": 93,
+        "scale": 100,
+        "status": "live",
+        "review_count": 78
+      },
+      {
+        "source": "OpenCritic",
+        "score": 94,
+        "scale": 100,
+        "status": "live",
+        "review_count": 107
+      },
+      {
+        "source": "Steam",
+        "score": 98,
+        "scale": 100,
+        "status": "live",
+        "review_count": 290000
+      }
+    ]
+  },
+  {
+    "title": "The Witcher 3: Wild Hunt",
+    "slug": "the-witcher-3",
+    "summary": "An enormous open-world RPG following monster hunter Geralt of Rivia across war-ravaged lands. Dense with consequential choices, morally complex side quests, and two massive expansions, it set a benchmark for narrative scope in open-world design.",
+    "cover_url": "https://cdn.akamai.steamstatic.com/steam/apps/292030/capsule_616x353.jpg",
+    "release_date": "2015-05-19",
+    "release_year": 2015,
+    "metrix_score": 93.0,
+    "critic_score": 92.0,
+    "user_score": 91.0,
+    "genres": [
+      "RPG",
+      "Adventure",
+      "Action"
+    ],
+    "platforms": [
+      "PC",
+      "PlayStation 4",
+      "PlayStation 5",
+      "Xbox One",
+      "Xbox Series X/S",
+      "Nintendo Switch"
+    ],
+    "developer": "CD Projekt Red",
+    "publisher": "CD Projekt",
+    "playtime_minutes": 6000,
+    "award_count": 7,
+    "award_nominations": 28,
+    "goty_year": 2015,
+    "source_scores": [
+      {
+        "source": "Metacritic",
+        "score": 92,
+        "scale": 100,
+        "status": "live",
+        "review_count": 125
+      },
+      {
+        "source": "OpenCritic",
+        "score": 91,
+        "scale": 100,
+        "status": "live",
+        "review_count": 89
+      },
+      {
+        "source": "Steam",
+        "score": 97,
+        "scale": 100,
+        "status": "live",
+        "review_count": 380000
+      }
+    ]
+  },
+  {
+    "title": "Red Dead Redemption 2",
+    "slug": "red-dead-redemption-2",
+    "summary": "An open-world western epic following outlaw Arthur Morgan in the twilight of the American frontier. Its world is richly simulated and emotionally weighted, with a story that takes its characters seriously even as it stages spectacular set pieces.",
+    "cover_url": "https://cdn.akamai.steamstatic.com/steam/apps/1174180/capsule_616x353.jpg",
+    "release_date": "2018-10-26",
+    "release_year": 2018,
+    "metrix_score": 93.0,
+    "critic_score": 97.0,
+    "user_score": 80.0,
+    "genres": [
+      "Action",
+      "Adventure",
+      "Open World"
+    ],
+    "platforms": [
+      "PC",
+      "PlayStation 4",
+      "Xbox One"
+    ],
+    "developer": "Rockstar Games",
+    "publisher": "Rockstar Games",
+    "playtime_minutes": 6000,
+    "award_count": 5,
+    "award_nominations": 22,
+    "source_scores": [
+      {
+        "source": "Metacritic",
+        "score": 97,
+        "scale": 100,
+        "status": "live",
+        "review_count": 54
+      },
+      {
+        "source": "OpenCritic",
+        "score": 97,
+        "scale": 100,
+        "status": "live",
+        "review_count": 68
+      },
+      {
+        "source": "Steam",
+        "score": 80,
+        "scale": 100,
+        "status": "live",
+        "review_count": 210000
+      }
+    ]
+  },
+  {
+    "title": "Disco Elysium: The Final Cut",
+    "slug": "disco-elysium-the-final-cut",
+    "summary": "A dialogue-rich detective RPG about a broken investigator solving a murder while rebuilding his own identity. Instead of combat, it uses internal voices, political instincts, dice rolls, and deeply written conversations to turn thought, shame, ideology, and empathy into mechanics.",
+    "cover_url": "https://cdn.akamai.steamstatic.com/steam/apps/632470/capsule_616x353.jpg",
+    "release_date": "2021-03-30",
+    "release_year": 2021,
+    "metrix_score": 92.9,
+    "critic_score": 92.0,
+    "user_score": 91.0,
+    "genres": [
+      "RPG",
+      "Adventure",
+      "Narrative"
+    ],
+    "platforms": [
+      "PC",
+      "PlayStation 4",
+      "PlayStation 5"
+    ],
+    "developer": "ZA/UM",
+    "publisher": "ZA/UM",
+    "playtime_minutes": 1800,
+    "source_scores": [
+      {
+        "source": "Metacritic",
+        "score": 92,
+        "scale": 100,
+        "status": "live",
+        "review_count": 62
+      },
+      {
+        "source": "OpenCritic",
+        "score": 92,
+        "scale": 100,
+        "status": "live",
+        "review_count": 88
+      },
+      {
+        "source": "Steam",
+        "score": 93,
+        "scale": 100,
+        "status": "live",
+        "review_count": 68000
+      }
+    ]
+  },
+  {
+    "title": "Alan Wake 2",
+    "slug": "alan-wake-2",
+    "summary": "A survival horror sequel splitting its story between an FBI investigation and a nightmare writer's room. Tense resource management, crime-scene deduction, live-action fragments, and surreal shifting spaces create a thriller where narrative structure itself becomes part of the threat.",
+    "cover_url": "https://cdn.akamai.steamstatic.com/steam/apps/1903780/capsule_616x353.jpg",
+    "release_date": "2023-10-27",
+    "release_year": 2023,
+    "metrix_score": 89.6,
+    "critic_score": 89.0,
+    "user_score": 86.0,
+    "genres": [
+      "Horror",
+      "Adventure",
+      "Action"
+    ],
+    "platforms": [
+      "PC",
+      "PlayStation 5",
+      "Xbox Series X/S"
+    ],
+    "developer": "Remedy Entertainment",
+    "publisher": "Epic Games Publishing",
+    "playtime_minutes": 1080,
+    "source_scores": [
+      {
+        "source": "Metacritic",
+        "score": 89,
+        "scale": 100,
+        "status": "live",
+        "review_count": 72
+      },
+      {
+        "source": "OpenCritic",
+        "score": 90,
+        "scale": 100,
+        "status": "live",
+        "review_count": 130
+      },
+      {
+        "source": "Steam",
+        "score": 86,
+        "scale": 100,
+        "status": "live",
+        "review_count": 38000
+      }
+    ]
+  },
+  {
+    "title": "Hi-Fi Rush",
+    "slug": "hi-fi-rush",
+    "summary": "A rhythm-action brawler where attacks, dodges, enemy patterns, and environmental motion snap to the beat. Wraps character-action timing in a bright rock-band tone, rewarding stylish play without making rhythm mastery punishing for newcomers.",
+    "cover_url": "https://cdn.akamai.steamstatic.com/steam/apps/1817230/capsule_616x353.jpg",
+    "release_date": "2023-01-25",
+    "release_year": 2023,
+    "metrix_score": 88.7,
+    "critic_score": 89.0,
+    "user_score": 91.0,
+    "genres": [
+      "Action",
+      "Rhythm",
+      "Adventure"
+    ],
+    "platforms": [
+      "PC",
+      "PlayStation 5",
+      "Xbox Series X/S"
+    ],
+    "developer": "Tango Gameworks",
+    "publisher": "Bethesda Softworks",
+    "playtime_minutes": 660,
+    "source_scores": [
+      {
+        "source": "Metacritic",
+        "score": 89,
+        "scale": 100,
+        "status": "live",
+        "review_count": 58
+      },
+      {
+        "source": "OpenCritic",
+        "score": 88,
+        "scale": 100,
+        "status": "live",
+        "review_count": 84
+      },
+      {
+        "source": "Steam",
+        "score": 96,
+        "scale": 100,
+        "status": "live",
+        "review_count": 52000
+      }
+    ]
+  },
+  {
+    "title": "Hollow Knight",
+    "slug": "hollow-knight",
+    "summary": "A hand-drawn action-adventure through the vast underground kingdom of Hallownest. Tight combat, precise platforming, and a hauntingly atmospheric world with over 40 hours of content hidden in its interconnected map.",
+    "cover_url": "https://cdn.akamai.steamstatic.com/steam/apps/367520/capsule_616x353.jpg",
+    "release_date": "2017-02-24",
+    "release_year": 2017,
+    "metrix_score": 90.0,
+    "critic_score": 87.0,
+    "user_score": 96.0,
+    "genres": [
+      "Action",
+      "Adventure",
+      "Metroidvania",
+      "Indie"
+    ],
+    "platforms": [
+      "PC",
+      "Nintendo Switch",
+      "PlayStation 4",
+      "Xbox One"
+    ],
+    "developer": "Team Cherry",
+    "publisher": "Team Cherry",
+    "playtime_minutes": 2520,
+    "source_scores": [
+      {
+        "source": "Metacritic",
+        "score": 87,
+        "scale": 100,
+        "status": "live",
+        "review_count": 27
+      },
+      {
+        "source": "OpenCritic",
+        "score": 87,
+        "scale": 100,
+        "status": "live",
+        "review_count": 41
+      },
+      {
+        "source": "Steam",
+        "score": 98,
+        "scale": 100,
+        "status": "live",
+        "review_count": 145000
+      }
+    ]
+  },
+  {
+    "title": "Monster Hunter: World",
+    "slug": "monster-hunter-world",
+    "summary": "A seamless open-world hunting game where players track, study, and battle massive creatures across living ecosystems. The deep weapon and build system rewards mastery, while co-op hunts with up to four players scale the challenge meaningfully.",
+    "cover_url": "https://cdn.akamai.steamstatic.com/steam/apps/582010/capsule_616x353.jpg",
+    "release_date": "2018-08-09",
+    "release_year": 2018,
+    "metrix_score": 88.0,
+    "critic_score": 88.0,
+    "user_score": 86.0,
+    "genres": [
+      "Action",
+      "RPG",
+      "Co-op"
+    ],
+    "platforms": [
+      "PC",
+      "PlayStation 4",
+      "Xbox One"
+    ],
+    "developer": "Capcom",
+    "publisher": "Capcom",
+    "playtime_minutes": 4800,
+    "source_scores": [
+      {
+        "source": "Metacritic",
+        "score": 88,
+        "scale": 100,
+        "status": "live",
+        "review_count": 63
+      },
+      {
+        "source": "OpenCritic",
+        "score": 88,
+        "scale": 100,
+        "status": "live",
+        "review_count": 72
+      },
+      {
+        "source": "Steam",
+        "score": 87,
+        "scale": 100,
+        "status": "live",
+        "review_count": 220000
+      }
+    ]
+  },
+  {
+    "title": "Celeste",
+    "slug": "celeste",
+    "summary": "A precision platformer about climbing a mountain and confronting mental health. Each screen is a tightly designed puzzle of momentum and timing, while the story treats its themes with genuine care rather than using them as decoration.",
+    "cover_url": "https://cdn.akamai.steamstatic.com/steam/apps/504230/capsule_616x353.jpg",
+    "release_date": "2018-01-25",
+    "release_year": 2018,
+    "metrix_score": 92.0,
+    "critic_score": 94.0,
+    "user_score": 92.0,
+    "genres": [
+      "Platformer",
+      "Indie",
+      "Adventure"
+    ],
+    "platforms": [
+      "PC",
+      "Nintendo Switch",
+      "PlayStation 4",
+      "Xbox One"
+    ],
+    "developer": "Maddy Makes Games",
+    "publisher": "Matt Makes Games",
+    "playtime_minutes": 720,
+    "award_count": 2,
+    "award_nominations": 10,
+    "source_scores": [
+      {
+        "source": "Metacritic",
+        "score": 94,
+        "scale": 100,
+        "status": "live",
+        "review_count": 48
+      },
+      {
+        "source": "OpenCritic",
+        "score": 94,
+        "scale": 100,
+        "status": "live",
+        "review_count": 67
+      },
+      {
+        "source": "Steam",
+        "score": 98,
+        "scale": 100,
+        "status": "live",
+        "review_count": 82000
+      }
+    ]
+  },
+  {
+    "title": "Dark Souls III",
+    "slug": "dark-souls-3",
+    "summary": "The concluding chapter of the Dark Souls trilogy, combining the intricate world design of the first game with the fast, fluid combat of Bloodborne. A dense collection of boss fights, cryptic lore, and punishing-but-fair encounters.",
+    "cover_url": "https://cdn.akamai.steamstatic.com/steam/apps/374320/capsule_616x353.jpg",
+    "release_date": "2016-04-12",
+    "release_year": 2016,
+    "metrix_score": 89.0,
+    "critic_score": 89.0,
+    "user_score": 85.0,
+    "genres": [
+      "Action",
+      "RPG",
+      "Soulslike"
+    ],
+    "platforms": [
+      "PC",
+      "PlayStation 4",
+      "Xbox One"
+    ],
+    "developer": "FromSoftware",
+    "publisher": "Bandai Namco",
+    "playtime_minutes": 2400,
+    "source_scores": [
+      {
+        "source": "Metacritic",
+        "score": 89,
+        "scale": 100,
+        "status": "live",
+        "review_count": 60
+      },
+      {
+        "source": "OpenCritic",
+        "score": 89,
+        "scale": 100,
+        "status": "live",
+        "review_count": 78
+      },
+      {
+        "source": "Steam",
+        "score": 91,
+        "scale": 100,
+        "status": "live",
+        "review_count": 175000
+      }
+    ]
+  },
+  {
+    "title": "Bloodborne",
+    "slug": "bloodborne",
+    "summary": "A gothic action RPG set in the plague-ridden city of Yharnam, where hunters explore Lovecraftian nightmares through aggressive, fast-paced combat that punishes passivity. Its interconnected world design, eldritch lore, and demanding bosses make it FromSoftware's most atmospheric and relentlessly offensive entry.",
+    "cover_url": "https://media.rawg.io/media/games/214/214b29aeff13a0ae6a70fc4426e85991.jpg",
+    "release_date": "2015-03-24",
+    "release_year": 2015,
+    "metrix_score": 92.0,
+    "critic_score": 92.0,
+    "user_score": 91.0,
+    "genres": [
+      "Action",
+      "RPG",
+      "Soulslike",
+      "Horror"
+    ],
+    "platforms": [
+      "PlayStation 4"
+    ],
+    "developer": "FromSoftware",
+    "publisher": "Sony Interactive Entertainment",
+    "playtime_minutes": 1800,
+    "source_scores": [
+      {
+        "source": "Metacritic",
+        "score": 92,
+        "scale": 100,
+        "status": "live",
+        "review_count": 83
+      },
+      {
+        "source": "OpenCritic",
+        "score": 90,
+        "scale": 100,
+        "status": "live",
+        "review_count": 37
+      },
+      {
+        "source": "IGDB",
+        "score": 88,
+        "scale": 100,
+        "status": "live",
+        "review_count": 1480
+      }
+    ]
+  },
+  {
+    "title": "Civilization VI",
+    "slug": "civilization-vi",
+    "summary": "A turn-based strategy game of building empires from ancient settlements to space-age superpowers. Districts, unstacked cities, and a variety of agendas for AI leaders add fresh strategic layers to the classic formula of explore, expand, exploit, exterminate.",
+    "cover_url": "https://cdn.akamai.steamstatic.com/steam/apps/289070/capsule_616x353.jpg",
+    "release_date": "2016-10-21",
+    "release_year": 2016,
+    "metrix_score": 88.0,
+    "critic_score": 88.0,
+    "user_score": 73.0,
+    "genres": [
+      "Strategy",
+      "4X",
+      "Turn-Based"
+    ],
+    "platforms": [
+      "PC",
+      "Nintendo Switch",
+      "PlayStation 4",
+      "Xbox One"
+    ],
+    "developer": "Firaxis Games",
+    "publisher": "2K Games",
+    "playtime_minutes": 9000,
+    "source_scores": [
+      {
+        "source": "Metacritic",
+        "score": 88,
+        "scale": 100,
+        "status": "live",
+        "review_count": 72
+      },
+      {
+        "source": "OpenCritic",
+        "score": 87,
+        "scale": 100,
+        "status": "live",
+        "review_count": 61
+      },
+      {
+        "source": "Steam",
+        "score": 82,
+        "scale": 100,
+        "status": "live",
+        "review_count": 165000
+      }
+    ]
+  },
+  {
+    "title": "Europa Universalis IV",
+    "slug": "europa-universalis-iv",
+    "summary": "A grand-strategy game spanning 400 years of world history from 1444 to 1821. Manage diplomacy, colonization, trade, warfare, and religion across a detailed map of hundreds of nations, with near-limitless depth through dozens of expansions.",
+    "cover_url": "https://cdn.akamai.steamstatic.com/steam/apps/236850/capsule_616x353.jpg",
+    "release_date": "2013-08-13",
+    "release_year": 2013,
+    "metrix_score": 84.0,
+    "critic_score": 84.0,
+    "user_score": 82.0,
+    "genres": [
+      "Strategy",
+      "4X",
+      "Grand Strategy",
+      "Historical"
+    ],
+    "platforms": [
+      "PC"
+    ],
+    "developer": "Paradox Development Studio",
+    "publisher": "Paradox Interactive",
+    "playtime_minutes": 18000,
+    "source_scores": [
+      {
+        "source": "Metacritic",
+        "score": 84,
+        "scale": 100,
+        "status": "live",
+        "review_count": 45
+      },
+      {
+        "source": "OpenCritic",
+        "score": 82,
+        "scale": 100,
+        "status": "live",
+        "review_count": 22
+      },
+      {
+        "source": "Steam",
+        "score": 86,
+        "scale": 100,
+        "status": "live",
+        "review_count": 120000
+      }
+    ]
+  },
+  {
+    "title": "God of War (2018)",
+    "slug": "god-of-war-2018",
+    "summary": "A reimagining of Kratos in Norse mythology, as he travels with his young son Atreus across the Nine Realms. The shift to over-the-shoulder combat, deep world-building, and an emotionally grounded story redefined what the series could be.",
+    "cover_url": "https://cdn.akamai.steamstatic.com/steam/apps/1593500/capsule_616x353.jpg",
+    "release_date": "2018-04-20",
+    "release_year": 2018,
+    "metrix_score": 95.0,
+    "critic_score": 95.0,
+    "user_score": 91.0,
+    "genres": [
+      "Action",
+      "Adventure",
+      "Hack and Slash"
+    ],
+    "platforms": [
+      "PlayStation 4",
+      "PC"
+    ],
+    "developer": "Santa Monica Studio",
+    "publisher": "Sony Interactive Entertainment",
+    "playtime_minutes": 1500,
+    "award_count": 8,
+    "award_nominations": 24,
+    "goty_year": 2018,
+    "source_scores": [
+      {
+        "source": "Metacritic",
+        "score": 95,
+        "scale": 100,
+        "status": "live",
+        "review_count": 121
+      },
+      {
+        "source": "OpenCritic",
+        "score": 95,
+        "scale": 100,
+        "status": "live",
+        "review_count": 137
+      },
+      {
+        "source": "Steam",
+        "score": 96,
+        "scale": 100,
+        "status": "live",
+        "review_count": 97000
+      }
+    ]
+  },
+  {
+    "title": "God of War: Ragnarök",
+    "slug": "god-of-war-ragnarok",
+    "summary": "Kratos and Atreus face the coming of Fimbulwinter and the Norse apocalypse. A larger, more emotionally complex sequel that expands combat depth, world scope, and the relationship at the story's core.",
+    "cover_url": "https://cdn.akamai.steamstatic.com/steam/apps/2322010/capsule_616x353.jpg",
+    "release_date": "2022-11-09",
+    "release_year": 2022,
+    "metrix_score": 94.0,
+    "critic_score": 94.0,
+    "user_score": 90.0,
+    "genres": [
+      "Action",
+      "Adventure",
+      "Hack and Slash"
+    ],
+    "platforms": [
+      "PlayStation 4",
+      "PlayStation 5",
+      "PC"
+    ],
+    "developer": "Santa Monica Studio",
+    "publisher": "Sony Interactive Entertainment",
+    "playtime_minutes": 1800,
+    "award_count": 3,
+    "award_nominations": 25,
+    "source_scores": [
+      {
+        "source": "Metacritic",
+        "score": 94,
+        "scale": 100,
+        "status": "live",
+        "review_count": 140
+      },
+      {
+        "source": "OpenCritic",
+        "score": 94,
+        "scale": 100,
+        "status": "live",
+        "review_count": 148
+      },
+      {
+        "source": "IGDB",
+        "score": 92,
+        "scale": 100,
+        "status": "live",
+        "review_count": 87
+      }
+    ]
+  },
+  {
+    "title": "The Last of Us Part I",
+    "slug": "the-last-of-us-part-i",
+    "summary": "A post-apocalyptic action-adventure following smuggler Joel and teenage survivor Ellie across a collapsed America. Praised for its emotionally devastating story, nuanced characters, and tense stealth-combat encounters.",
+    "cover_url": "https://cdn.akamai.steamstatic.com/steam/apps/1888930/capsule_616x353.jpg",
+    "release_date": "2013-06-14",
+    "release_year": 2013,
+    "metrix_score": 95.0,
+    "critic_score": 96.0,
+    "user_score": 88.0,
+    "genres": [
+      "Action",
+      "Adventure",
+      "Horror",
+      "Survival"
+    ],
+    "platforms": [
+      "PlayStation 3",
+      "PlayStation 4",
+      "PlayStation 5",
+      "PC"
+    ],
+    "developer": "Naughty Dog",
+    "publisher": "Sony Interactive Entertainment",
+    "playtime_minutes": 900,
+    "source_scores": [
+      {
+        "source": "Metacritic",
+        "score": 96,
+        "scale": 100,
+        "status": "live",
+        "review_count": 98
+      },
+      {
+        "source": "OpenCritic",
+        "score": 95,
+        "scale": 100,
+        "status": "live",
+        "review_count": 72
+      },
+      {
+        "source": "Steam",
+        "score": 88,
+        "scale": 100,
+        "status": "live",
+        "review_count": 62000
+      }
+    ]
+  },
+  {
+    "title": "Ghost of Tsushima",
+    "slug": "ghost-of-tsushima",
+    "summary": "An open-world samurai epic set during the Mongol invasion of Tsushima in 1274. Known for its stunning visual presentation, fluid katana combat, and haiku-punctuated exploration of Japanese countryside.",
+    "cover_url": "https://cdn.akamai.steamstatic.com/steam/apps/2215430/capsule_616x353.jpg",
+    "release_date": "2020-07-17",
+    "release_year": 2020,
+    "metrix_score": 84.0,
+    "critic_score": 84.0,
+    "user_score": 91.0,
+    "genres": [
+      "Action",
+      "Adventure",
+      "Open World"
+    ],
+    "platforms": [
+      "PlayStation 4",
+      "PlayStation 5",
+      "PC"
+    ],
+    "developer": "Sucker Punch Productions",
+    "publisher": "Sony Interactive Entertainment",
+    "playtime_minutes": 2160,
+    "source_scores": [
+      {
+        "source": "Metacritic",
+        "score": 84,
+        "scale": 100,
+        "status": "live",
+        "review_count": 101
+      },
+      {
+        "source": "OpenCritic",
+        "score": 86,
+        "scale": 100,
+        "status": "live",
+        "review_count": 115
+      },
+      {
+        "source": "Steam",
+        "score": 97,
+        "scale": 100,
+        "status": "live",
+        "review_count": 44000
+      }
+    ]
+  },
+  {
+    "title": "Returnal",
+    "slug": "returnal",
+    "summary": "A third-person bullet-hell roguelike in which astronaut Selene crashes on an alien world and is forced to relive the same cycle of death and discovery. Fast, demanding combat meets Lovecraftian horror and loop-based narrative mystery.",
+    "cover_url": "https://cdn.akamai.steamstatic.com/steam/apps/1649240/capsule_616x353.jpg",
+    "release_date": "2021-04-30",
+    "release_year": 2021,
+    "metrix_score": 86.0,
+    "critic_score": 86.0,
+    "user_score": 82.0,
+    "genres": [
+      "Action",
+      "Roguelike",
+      "Shooter",
+      "Horror"
+    ],
+    "platforms": [
+      "PlayStation 5",
+      "PC"
+    ],
+    "developer": "Housemarque",
+    "publisher": "Sony Interactive Entertainment",
+    "playtime_minutes": 1800,
+    "source_scores": [
+      {
+        "source": "Metacritic",
+        "score": 86,
+        "scale": 100,
+        "status": "live",
+        "review_count": 80
+      },
+      {
+        "source": "OpenCritic",
+        "score": 86,
+        "scale": 100,
+        "status": "live",
+        "review_count": 97
+      },
+      {
+        "source": "Steam",
+        "score": 79,
+        "scale": 100,
+        "status": "live",
+        "review_count": 18000
+      }
+    ]
+  },
+  {
+    "title": "Portal 2",
+    "slug": "portal-2",
+    "summary": "A co-op and single-player puzzle game using portals to warp space. Its sequel expands on the original with two-player co-operation, a villain with more personality than most game protagonists, and a final act that escalates both in scale and absurdity.",
+    "cover_url": "https://cdn.akamai.steamstatic.com/steam/apps/620/capsule_616x353.jpg",
+    "release_date": "2011-04-19",
+    "release_year": 2011,
+    "metrix_score": 96.0,
+    "critic_score": 95.0,
+    "user_score": 97.0,
+    "genres": [
+      "Puzzle",
+      "Adventure",
+      "Co-op"
+    ],
+    "platforms": [
+      "PC",
+      "PlayStation 3",
+      "Xbox 360"
+    ],
+    "developer": "Valve",
+    "publisher": "Valve",
+    "playtime_minutes": 480,
+    "award_count": 4,
+    "award_nominations": 14,
+    "source_scores": [
+      {
+        "source": "Metacritic",
+        "score": 95,
+        "scale": 100,
+        "status": "live",
+        "review_count": 51
+      },
+      {
+        "source": "OpenCritic",
+        "score": 95,
+        "scale": 100,
+        "status": "live",
+        "review_count": 73
+      },
+      {
+        "source": "Steam",
+        "score": 98,
+        "scale": 100,
+        "status": "live",
+        "review_count": 90000
+      }
+    ]
+  },
+  {
+    "title": "Half-Life 2",
+    "slug": "half-life-2",
+    "summary": "A first-person shooter set in the dystopian City 17, where physicist Gordon Freeman leads a resistance against an alien empire. Its gravity gun, seamless world, and narrative-through-environment approach set a benchmark that the genre spent the next decade trying to reach.",
+    "cover_url": "https://cdn.akamai.steamstatic.com/steam/apps/220/capsule_616x353.jpg",
+    "release_date": "2004-11-16",
+    "release_year": 2004,
+    "metrix_score": 96.0,
+    "critic_score": 96.0,
+    "user_score": 95.0,
+    "genres": [
+      "Action",
+      "Shooter",
+      "Adventure"
+    ],
+    "platforms": [
+      "PC",
+      "Xbox 360",
+      "PlayStation 3"
+    ],
+    "developer": "Valve",
+    "publisher": "Valve",
+    "playtime_minutes": 720,
+    "award_count": 7,
+    "award_nominations": 18,
+    "source_scores": [
+      {
+        "source": "Metacritic",
+        "score": 96,
+        "scale": 100,
+        "status": "live",
+        "review_count": 80
+      },
+      {
+        "source": "OpenCritic",
+        "score": 95,
+        "scale": 100,
+        "status": "live",
+        "review_count": 44
+      },
+      {
+        "source": "Steam",
+        "score": 98,
+        "scale": 100,
+        "status": "live",
+        "review_count": 285000
+      }
+    ]
+  },
+  {
+    "title": "Persona 5 Royal",
+    "slug": "persona-5-royal",
+    "summary": "A JRPG following a group of high-school outcasts who awaken to supernatural powers and spend their nights infiltrating the distorted desires of corrupt adults. Stylish turn-based combat, social simulation, and one of the most distinctive visual identities in modern games.",
+    "cover_url": "https://cdn.akamai.steamstatic.com/steam/apps/1687950/capsule_616x353.jpg",
+    "release_date": "2019-10-31",
+    "release_year": 2019,
+    "metrix_score": 95.0,
+    "critic_score": 95.0,
+    "user_score": 96.0,
+    "genres": [
+      "RPG",
+      "JRPG",
+      "Adventure"
+    ],
+    "platforms": [
+      "PC",
+      "PlayStation 4",
+      "PlayStation 5",
+      "Nintendo Switch",
+      "Xbox One",
+      "Xbox Series X/S"
+    ],
+    "developer": "Atlus",
+    "publisher": "Sega",
+    "playtime_minutes": 6600,
+    "source_scores": [
+      {
+        "source": "Metacritic",
+        "score": 95,
+        "scale": 100,
+        "status": "live",
+        "review_count": 58
+      },
+      {
+        "source": "OpenCritic",
+        "score": 96,
+        "scale": 100,
+        "status": "live",
+        "review_count": 87
+      },
+      {
+        "source": "Steam",
+        "score": 97,
+        "scale": 100,
+        "status": "live",
+        "review_count": 41000
+      }
+    ]
+  },
+  {
+    "title": "Sekiro: Shadows Die Twice",
+    "slug": "sekiro-shadows-die-twice",
+    "summary": "A samurai action game demanding precise deflection and posture management rather than stamina or builds. Set in a fantastical Sengoku Japan, its punishing bosses reward patience and reading patterns over grinding, making each victory feel genuinely earned.",
+    "cover_url": "https://cdn.akamai.steamstatic.com/steam/apps/814380/capsule_616x353.jpg",
+    "release_date": "2019-03-22",
+    "release_year": 2019,
+    "metrix_score": 91.5,
+    "critic_score": 91.0,
+    "user_score": 87.0,
+    "genres": [
+      "Action",
+      "Soulslike",
+      "Stealth"
+    ],
+    "platforms": [
+      "PC",
+      "PlayStation 4",
+      "Xbox One"
+    ],
+    "developer": "FromSoftware",
+    "publisher": "Activision",
+    "playtime_minutes": 2100,
+    "award_count": 4,
+    "award_nominations": 18,
+    "goty_year": 2019,
+    "source_scores": [
+      {
+        "source": "Metacritic",
+        "score": 91,
+        "scale": 100,
+        "status": "live",
+        "review_count": 82
+      },
+      {
+        "source": "OpenCritic",
+        "score": 91,
+        "scale": 100,
+        "status": "live",
+        "review_count": 103
+      },
+      {
+        "source": "Steam",
+        "score": 93,
+        "scale": 100,
+        "status": "live",
+        "review_count": 185000
+      }
+    ]
+  },
+  {
+    "title": "Divinity: Original Sin 2",
+    "slug": "divinity-original-sin-2",
+    "summary": "A deep party-based RPG with full four-player co-op, a highly reactive world, and tactical turn-based combat that emphasizes elemental combinations and positioning. Every character has a custom origin story that changes how the world responds to them.",
+    "cover_url": "https://cdn.akamai.steamstatic.com/steam/apps/435150/capsule_616x353.jpg",
+    "release_date": "2017-09-14",
+    "release_year": 2017,
+    "metrix_score": 94.0,
+    "critic_score": 93.0,
+    "user_score": 96.0,
+    "genres": [
+      "RPG",
+      "Strategy",
+      "Co-op"
+    ],
+    "platforms": [
+      "PC",
+      "PlayStation 4",
+      "Xbox One",
+      "Nintendo Switch"
+    ],
+    "developer": "Larian Studios",
+    "publisher": "Larian Studios",
+    "playtime_minutes": 6000,
+    "source_scores": [
+      {
+        "source": "Metacritic",
+        "score": 93,
+        "scale": 100,
+        "status": "live",
+        "review_count": 64
+      },
+      {
+        "source": "OpenCritic",
+        "score": 93,
+        "scale": 100,
+        "status": "live",
+        "review_count": 86
+      },
+      {
+        "source": "Steam",
+        "score": 97,
+        "scale": 100,
+        "status": "live",
+        "review_count": 95000
+      }
+    ]
+  },
+  {
+    "title": "Yakuza 0",
+    "slug": "yakuza-0",
+    "summary": "A prequel set in 1988 Japan following Kazuma Kiryu and Goro Majima as they fight their way through neon-soaked Kamurocho and Sotenbori. An ideal entry to the series — cinematic melodrama, absurdist side quests, and brawler combat wrapped in a surprisingly sincere story about honour and betrayal.",
+    "cover_url": "https://cdn.akamai.steamstatic.com/steam/apps/638970/capsule_616x353.jpg",
+    "release_date": "2015-03-12",
+    "release_year": 2015,
+    "metrix_score": 91.0,
+    "critic_score": 91.0,
+    "user_score": 96.0,
+    "genres": [
+      "Action",
+      "Adventure",
+      "Beat 'em Up"
+    ],
+    "platforms": [
+      "PC",
+      "PlayStation 4",
+      "Xbox One"
+    ],
+    "developer": "Ryu Ga Gotoku Studio",
+    "publisher": "Sega",
+    "playtime_minutes": 1920,
+    "source_scores": [
+      {
+        "source": "Metacritic",
+        "score": 91,
+        "scale": 100,
+        "status": "live",
+        "review_count": 42
+      },
+      {
+        "source": "OpenCritic",
+        "score": 89,
+        "scale": 100,
+        "status": "live",
+        "review_count": 61
+      },
+      {
+        "source": "Steam",
+        "score": 97,
+        "scale": 100,
+        "status": "live",
+        "review_count": 102000
+      }
+    ]
+  },
+  {
+    "title": "NieR: Automata",
+    "slug": "nier-automata",
+    "summary": "An action RPG about androids fighting machines in a post-apocalyptic future, told across multiple playthroughs that recontextualize everything prior. Genre-switching combat sits beneath a layered meditation on purpose, war, and what it means to be alive.",
+    "cover_url": "https://cdn.akamai.steamstatic.com/steam/apps/524220/capsule_616x353.jpg",
+    "release_date": "2017-02-23",
+    "release_year": 2017,
+    "metrix_score": 88.5,
+    "critic_score": 88.0,
+    "user_score": 94.0,
+    "genres": [
+      "Action",
+      "RPG",
+      "Hack and Slash"
+    ],
+    "platforms": [
+      "PC",
+      "PlayStation 4",
+      "Xbox One",
+      "Nintendo Switch"
+    ],
+    "developer": "PlatinumGames",
+    "publisher": "Square Enix",
+    "playtime_minutes": 1320,
+    "source_scores": [
+      {
+        "source": "Metacritic",
+        "score": 88,
+        "scale": 100,
+        "status": "live",
+        "review_count": 52
+      },
+      {
+        "source": "OpenCritic",
+        "score": 88,
+        "scale": 100,
+        "status": "live",
+        "review_count": 68
+      },
+      {
+        "source": "Steam",
+        "score": 96,
+        "scale": 100,
+        "status": "live",
+        "review_count": 145000
+      }
+    ]
+  },
+  {
+    "title": "Stardew Valley",
+    "slug": "stardew-valley",
+    "summary": "A farming RPG built entirely by one developer, set in a small town where players restore their grandfather's farm while building relationships with villagers. Its gentle pace, satisfying progression loops, and emotional depth make it one of the best-selling indie games ever made.",
+    "cover_url": "https://cdn.akamai.steamstatic.com/steam/apps/413150/capsule_616x353.jpg",
+    "release_date": "2016-02-26",
+    "release_year": 2016,
+    "metrix_score": 92.0,
+    "critic_score": 89.0,
+    "user_score": 98.0,
+    "genres": [
+      "RPG",
+      "Simulation",
+      "Indie"
+    ],
+    "platforms": [
+      "PC",
+      "Nintendo Switch",
+      "PlayStation 4",
+      "Xbox One",
+      "iOS",
+      "Android"
+    ],
+    "developer": "ConcernedApe",
+    "publisher": "ConcernedApe",
+    "playtime_minutes": 6000,
+    "source_scores": [
+      {
+        "source": "Metacritic",
+        "score": 89,
+        "scale": 100,
+        "status": "live",
+        "review_count": 32
+      },
+      {
+        "source": "OpenCritic",
+        "score": 90,
+        "scale": 100,
+        "status": "live",
+        "review_count": 44
+      },
+      {
+        "source": "Steam",
+        "score": 99,
+        "scale": 100,
+        "status": "live",
+        "review_count": 720000
+      }
+    ]
+  },
+  {
+    "title": "Outer Wilds",
+    "slug": "outer-wilds",
+    "summary": "An exploration mystery set in a hand-crafted solar system trapped in a 22-minute time loop ending in supernova. Progress comes entirely from knowledge rather than equipment — the only thing that carries between loops is what you've understood about the world.",
+    "cover_url": "https://cdn.akamai.steamstatic.com/steam/apps/753640/capsule_616x353.jpg",
+    "release_date": "2019-05-30",
+    "release_year": 2019,
+    "metrix_score": 88.0,
+    "critic_score": 85.0,
+    "user_score": 94.0,
+    "genres": [
+      "Adventure",
+      "Mystery",
+      "Exploration"
+    ],
+    "platforms": [
+      "PC",
+      "PlayStation 4",
+      "Xbox One",
+      "Nintendo Switch"
+    ],
+    "developer": "Mobius Digital",
+    "publisher": "Annapurna Interactive",
+    "playtime_minutes": 900,
+    "source_scores": [
+      {
+        "source": "Metacritic",
+        "score": 85,
+        "scale": 100,
+        "status": "live",
+        "review_count": 48
+      },
+      {
+        "source": "OpenCritic",
+        "score": 86,
+        "scale": 100,
+        "status": "live",
+        "review_count": 62
+      },
+      {
+        "source": "Steam",
+        "score": 97,
+        "scale": 100,
+        "status": "live",
+        "review_count": 58000
+      }
+    ]
+  },
+  {
+    "title": "Dead Cells",
+    "slug": "dead-cells",
+    "summary": "A roguelike Metroidvania combining precise real-time combat with procedurally generated levels that guarantee a different run every time. Fast movement, dozens of weapons with unique synergies, and punishing difficulty that rewards skill over luck.",
+    "cover_url": "https://cdn.akamai.steamstatic.com/steam/apps/588650/capsule_616x353.jpg",
+    "release_date": "2018-08-07",
+    "release_year": 2018,
+    "metrix_score": 91.0,
+    "critic_score": 89.0,
+    "user_score": 96.0,
+    "genres": [
+      "Action",
+      "Roguelike",
+      "Metroidvania",
+      "Indie"
+    ],
+    "platforms": [
+      "PC",
+      "Nintendo Switch",
+      "PlayStation 4",
+      "Xbox One",
+      "iOS",
+      "Android"
+    ],
+    "developer": "Motion Twin",
+    "publisher": "Motion Twin",
+    "playtime_minutes": 1500,
+    "source_scores": [
+      {
+        "source": "Metacritic",
+        "score": 89,
+        "scale": 100,
+        "status": "live",
+        "review_count": 52
+      },
+      {
+        "source": "OpenCritic",
+        "score": 90,
+        "scale": 100,
+        "status": "live",
+        "review_count": 71
+      },
+      {
+        "source": "Steam",
+        "score": 97,
+        "scale": 100,
+        "status": "live",
+        "review_count": 98000
+      }
+    ]
+  },
+  {
+    "title": "Cuphead",
+    "slug": "cuphead",
+    "summary": "A run-and-gun boss rush rendered entirely in hand-drawn 1930s cartoon animation. Every level is a boss encounter demanding precise pattern recognition, reflexes, and patience — each one an animated short that would stand alone as a piece of art.",
+    "cover_url": "https://cdn.akamai.steamstatic.com/steam/apps/268910/capsule_616x353.jpg",
+    "release_date": "2017-09-29",
+    "release_year": 2017,
+    "metrix_score": 88.0,
+    "critic_score": 87.0,
+    "user_score": 96.0,
+    "genres": [
+      "Action",
+      "Platformer",
+      "Indie"
+    ],
+    "platforms": [
+      "PC",
+      "Xbox One",
+      "Nintendo Switch",
+      "PlayStation 4"
+    ],
+    "developer": "Studio MDHR",
+    "publisher": "Studio MDHR",
+    "playtime_minutes": 900,
+    "source_scores": [
+      {
+        "source": "Metacritic",
+        "score": 87,
+        "scale": 100,
+        "status": "live",
+        "review_count": 56
+      },
+      {
+        "source": "OpenCritic",
+        "score": 87,
+        "scale": 100,
+        "status": "live",
+        "review_count": 72
+      },
+      {
+        "source": "Steam",
+        "score": 97,
+        "scale": 100,
+        "status": "live",
+        "review_count": 74000
+      }
+    ]
+  },
+  {
+    "title": "Doom Eternal",
+    "slug": "doom-eternal",
+    "summary": "A relentless first-person shooter demanding constant movement, resource management, and weapon switching to survive its tightly choreographed demon encounters. Strips away everything passive and makes aggression a survival mechanic — killing enemies restores health, chainsaw kills give ammo, and standing still is death.",
+    "cover_url": "https://cdn.akamai.steamstatic.com/steam/apps/782330/capsule_616x353.jpg",
+    "release_date": "2020-03-20",
+    "release_year": 2020,
+    "metrix_score": 88.0,
+    "critic_score": 88.0,
+    "user_score": 88.0,
+    "genres": [
+      "Action",
+      "Shooter",
+      "FPS"
+    ],
+    "platforms": [
+      "PC",
+      "PlayStation 4",
+      "Xbox One",
+      "Nintendo Switch"
+    ],
+    "developer": "id Software",
+    "publisher": "Bethesda Softworks",
+    "playtime_minutes": 720,
+    "source_scores": [
+      {
+        "source": "Metacritic",
+        "score": 88,
+        "scale": 100,
+        "status": "live",
+        "review_count": 54
+      },
+      {
+        "source": "OpenCritic",
+        "score": 88,
+        "scale": 100,
+        "status": "live",
+        "review_count": 79
+      },
+      {
+        "source": "Steam",
+        "score": 91,
+        "scale": 100,
+        "status": "live",
+        "review_count": 170000
+      }
+    ]
+  },
+  {
+    "title": "Control",
+    "slug": "control",
+    "summary": "A third-person action game set in the brutalist Federal Bureau of Control, a government agency that studies paranormal phenomena. Telekinetic combat, a labyrinthine building full of strange cases, and an atmosphere soaked in the New Weird make it one of Remedy's strangest and most compelling works.",
+    "cover_url": "https://cdn.akamai.steamstatic.com/steam/apps/870780/capsule_616x353.jpg",
+    "release_date": "2019-08-27",
+    "release_year": 2019,
+    "metrix_score": 82.0,
+    "critic_score": 82.0,
+    "user_score": 84.0,
+    "genres": [
+      "Action",
+      "Adventure",
+      "Horror"
+    ],
+    "platforms": [
+      "PC",
+      "PlayStation 4",
+      "PlayStation 5",
+      "Xbox One",
+      "Xbox Series X/S"
+    ],
+    "developer": "Remedy Entertainment",
+    "publisher": "505 Games",
+    "playtime_minutes": 720,
+    "source_scores": [
+      {
+        "source": "Metacritic",
+        "score": 82,
+        "scale": 100,
+        "status": "live",
+        "review_count": 75
+      },
+      {
+        "source": "OpenCritic",
+        "score": 83,
+        "scale": 100,
+        "status": "live",
+        "review_count": 97
+      },
+      {
+        "source": "Steam",
+        "score": 84,
+        "scale": 100,
+        "status": "live",
+        "review_count": 68000
+      }
+    ]
+  },
+  {
+    "title": "Ori and the Will of the Wisps",
+    "slug": "ori-and-the-will-of-the-wisps",
+    "summary": "A Metroidvania platformer following the spirit Ori through a lush, decaying forest. Builds on the first game with more fluid combat, deeper upgrade systems, and an orchestral score that swells to match the beauty of its hand-painted world.",
+    "cover_url": "https://cdn.akamai.steamstatic.com/steam/apps/1057090/capsule_616x353.jpg",
+    "release_date": "2020-03-11",
+    "release_year": 2020,
+    "metrix_score": 89.0,
+    "critic_score": 90.0,
+    "user_score": 95.0,
+    "genres": [
+      "Platformer",
+      "Metroidvania",
+      "Adventure",
+      "Indie"
+    ],
+    "platforms": [
+      "PC",
+      "Xbox One",
+      "Xbox Series X/S",
+      "Nintendo Switch"
+    ],
+    "developer": "Moon Studios",
+    "publisher": "Xbox Game Studios",
+    "playtime_minutes": 480,
+    "source_scores": [
+      {
+        "source": "Metacritic",
+        "score": 90,
+        "scale": 100,
+        "status": "live",
+        "review_count": 54
+      },
+      {
+        "source": "OpenCritic",
+        "score": 90,
+        "scale": 100,
+        "status": "live",
+        "review_count": 69
+      },
+      {
+        "source": "Steam",
+        "score": 97,
+        "scale": 100,
+        "status": "live",
+        "review_count": 58000
+      }
+    ]
+  },
+  {
+    "title": "Vampire Survivors",
+    "slug": "vampire-survivors",
+    "summary": "A gothic horror reverse bullet-hell where you survive waves of enemies by auto-attacking and choosing power-up combinations every few levels. Mechanically simple and wildly addictive — responsible for spawning an entire genre of games and costing about the price of a coffee.",
+    "cover_url": "https://cdn.akamai.steamstatic.com/steam/apps/1794680/capsule_616x353.jpg",
+    "release_date": "2022-10-20",
+    "release_year": 2022,
+    "metrix_score": 87.0,
+    "critic_score": 86.0,
+    "user_score": 97.0,
+    "genres": [
+      "Action",
+      "Roguelike",
+      "Indie"
+    ],
+    "platforms": [
+      "PC",
+      "Xbox One",
+      "Xbox Series X/S",
+      "Nintendo Switch",
+      "iOS",
+      "Android"
+    ],
+    "developer": "poncle",
+    "publisher": "poncle",
+    "playtime_minutes": 1800,
+    "source_scores": [
+      {
+        "source": "Metacritic",
+        "score": 86,
+        "scale": 100,
+        "status": "live",
+        "review_count": 18
+      },
+      {
+        "source": "OpenCritic",
+        "score": 87,
+        "scale": 100,
+        "status": "live",
+        "review_count": 24
+      },
+      {
+        "source": "Steam",
+        "score": 97,
+        "scale": 100,
+        "status": "live",
+        "review_count": 198000
+      }
+    ]
+  },
+  {
+    "title": "Titanfall 2",
+    "slug": "titanfall-2",
+    "summary": "A first-person shooter with one of the most inventive single-player campaigns in the genre, featuring time manipulation, wall-running mobility, and a giant mech companion. Its multiplayer is still considered among the best-feeling gunplay in competitive shooters.",
+    "cover_url": "https://cdn.akamai.steamstatic.com/steam/apps/1237970/capsule_616x353.jpg",
+    "release_date": "2016-10-28",
+    "release_year": 2016,
+    "metrix_score": 90.0,
+    "critic_score": 89.0,
+    "user_score": 96.0,
+    "genres": [
+      "Action",
+      "Shooter",
+      "FPS"
+    ],
+    "platforms": [
+      "PC",
+      "PlayStation 4",
+      "Xbox One"
+    ],
+    "developer": "Respawn Entertainment",
+    "publisher": "Electronic Arts",
+    "playtime_minutes": 600,
+    "source_scores": [
+      {
+        "source": "Metacritic",
+        "score": 89,
+        "scale": 100,
+        "status": "live",
+        "review_count": 44
+      },
+      {
+        "source": "OpenCritic",
+        "score": 89,
+        "scale": 100,
+        "status": "live",
+        "review_count": 58
+      },
+      {
+        "source": "Steam",
+        "score": 97,
+        "scale": 100,
+        "status": "live",
+        "review_count": 140000
+      }
+    ]
+  },
+  {
+    "title": "Resident Evil 4 Remake",
+    "slug": "resident-evil-4-remake",
+    "summary": "A modernized reimagining of the 2005 classic, following Leon Kennedy on a rescue mission through rural Spain. Preserves the pacing and encounter design of the original while adding parry mechanics, expanded merchant interactions, and a dramatically higher visual fidelity.",
+    "cover_url": "https://cdn.akamai.steamstatic.com/steam/apps/2050650/capsule_616x353.jpg",
+    "release_date": "2023-03-24",
+    "release_year": 2023,
+    "metrix_score": 93.5,
+    "critic_score": 93.0,
+    "user_score": 93.0,
+    "genres": [
+      "Action",
+      "Horror",
+      "Survival"
+    ],
+    "platforms": [
+      "PC",
+      "PlayStation 4",
+      "PlayStation 5",
+      "Xbox Series X/S"
+    ],
+    "developer": "Capcom",
+    "publisher": "Capcom",
+    "playtime_minutes": 960,
+    "source_scores": [
+      {
+        "source": "Metacritic",
+        "score": 93,
+        "scale": 100,
+        "status": "live",
+        "review_count": 88
+      },
+      {
+        "source": "OpenCritic",
+        "score": 93,
+        "scale": 100,
+        "status": "live",
+        "review_count": 121
+      },
+      {
+        "source": "Steam",
+        "score": 95,
+        "scale": 100,
+        "status": "live",
+        "review_count": 112000
+      }
+    ]
+  },
+  {
+    "title": "Resident Evil 4",
+    "slug": "resident-evil-4",
+    "summary": "A genre-defining action-horror game following US agent Leon Kennedy on a mission to rescue the president's daughter from a rural European village. Introduced over-the-shoulder aiming, context-sensitive actions, and a merchant upgrade system that became templates for the following decade of action game design.",
+    "cover_url": "https://cdn.akamai.steamstatic.com/steam/apps/254700/library_hero.jpg",
+    "release_date": "2005-01-11",
+    "release_year": 2005,
+    "metrix_score": 95.8,
+    "critic_score": 96.0,
+    "user_score": 94.0,
+    "genres": [
+      "Action",
+      "Horror",
+      "Survival"
+    ],
+    "platforms": [
+      "PC",
+      "PlayStation 2",
+      "GameCube",
+      "PlayStation 4",
+      "Nintendo Switch"
+    ],
+    "developer": "Capcom",
+    "publisher": "Capcom",
+    "playtime_minutes": 720,
+    "source_scores": [
+      {
+        "source": "Metacritic",
+        "score": 96,
+        "scale": 100,
+        "status": "live",
+        "review_count": 52
+      },
+      {
+        "source": "OpenCritic",
+        "score": 96,
+        "scale": 100,
+        "status": "live",
+        "review_count": 12
+      },
+      {
+        "source": "Steam",
+        "score": 93,
+        "scale": 100,
+        "status": "live",
+        "review_count": 98000
+      }
+    ]
+  },
+  {
+    "title": "Resident Evil 2 Remake",
+    "slug": "resident-evil-2-remake",
+    "summary": "A third-person remake of the 1998 survival horror classic, following Leon Kennedy and Claire Redfield through a zombie-infested Raccoon City police department. Tense resource management, clever puzzle design, and a relentless stalker enemy that cannot be killed.",
+    "cover_url": "https://cdn.akamai.steamstatic.com/steam/apps/883710/capsule_616x353.jpg",
+    "release_date": "2019-01-25",
+    "release_year": 2019,
+    "metrix_score": 92.0,
+    "critic_score": 91.0,
+    "user_score": 93.0,
+    "genres": [
+      "Action",
+      "Horror",
+      "Survival"
+    ],
+    "platforms": [
+      "PC",
+      "PlayStation 4",
+      "Xbox One"
+    ],
+    "developer": "Capcom",
+    "publisher": "Capcom",
+    "playtime_minutes": 480,
+    "source_scores": [
+      {
+        "source": "Metacritic",
+        "score": 91,
+        "scale": 100,
+        "status": "live",
+        "review_count": 68
+      },
+      {
+        "source": "OpenCritic",
+        "score": 93,
+        "scale": 100,
+        "status": "live",
+        "review_count": 94
+      },
+      {
+        "source": "Steam",
+        "score": 95,
+        "scale": 100,
+        "status": "live",
+        "review_count": 160000
+      }
+    ]
+  },
+  {
+    "title": "Mass Effect Legendary Edition",
+    "slug": "mass-effect-legendary-edition",
+    "summary": "A remastered collection of all three Mass Effect games, following Commander Shepard across a galaxy-spanning story where your choices persist across three entries. A benchmark for long-form narrative video games, with some of the most beloved companion characters in the medium.",
+    "cover_url": "https://cdn.akamai.steamstatic.com/steam/apps/1328670/capsule_616x353.jpg",
+    "release_date": "2021-05-14",
+    "release_year": 2021,
+    "metrix_score": 90.0,
+    "critic_score": 87.0,
+    "user_score": 95.0,
+    "genres": [
+      "RPG",
+      "Action",
+      "Shooter",
+      "Adventure"
+    ],
+    "platforms": [
+      "PC",
+      "PlayStation 4",
+      "Xbox One"
+    ],
+    "developer": "BioWare",
+    "publisher": "Electronic Arts",
+    "playtime_minutes": 5400,
+    "source_scores": [
+      {
+        "source": "Metacritic",
+        "score": 87,
+        "scale": 100,
+        "status": "live",
+        "review_count": 49
+      },
+      {
+        "source": "OpenCritic",
+        "score": 87,
+        "scale": 100,
+        "status": "live",
+        "review_count": 68
+      },
+      {
+        "source": "Steam",
+        "score": 95,
+        "scale": 100,
+        "status": "live",
+        "review_count": 72000
+      }
+    ]
+  },
+  {
+    "title": "BioShock Infinite",
+    "slug": "bioshock-infinite",
+    "summary": "A first-person shooter set in the floating city of Columbia in 1912, following a Pinkerton agent and his mysterious charge Elizabeth through a city tearing itself apart. Its storytelling ambition, alternate history setting, and quantum-mechanics ending remain divisive and memorable in equal measure.",
+    "cover_url": "https://cdn.akamai.steamstatic.com/steam/apps/8870/capsule_616x353.jpg",
+    "release_date": "2013-03-26",
+    "release_year": 2013,
+    "metrix_score": 92.0,
+    "critic_score": 94.0,
+    "user_score": 83.0,
+    "genres": [
+      "Action",
+      "Shooter",
+      "FPS"
+    ],
+    "platforms": [
+      "PC",
+      "PlayStation 3",
+      "Xbox 360"
+    ],
+    "developer": "Irrational Games",
+    "publisher": "2K Games",
+    "playtime_minutes": 720,
+    "source_scores": [
+      {
+        "source": "Metacritic",
+        "score": 94,
+        "scale": 100,
+        "status": "live",
+        "review_count": 57
+      },
+      {
+        "source": "OpenCritic",
+        "score": 94,
+        "scale": 100,
+        "status": "live",
+        "review_count": 38
+      },
+      {
+        "source": "Steam",
+        "score": 88,
+        "scale": 100,
+        "status": "live",
+        "review_count": 98000
+      }
+    ]
+  },
+  {
+    "title": "Metal Gear Solid V: The Phantom Pain",
+    "slug": "metal-gear-solid-v",
+    "summary": "An open-world stealth game following mercenary leader Venom Snake in Cold War Afghanistan. Offers near-infinite tactical flexibility in approach, with systems for base-building, troop management, and dynamic mission design — surrounding one of the most obtuse but compelling stories in the series.",
+    "cover_url": "https://cdn.akamai.steamstatic.com/steam/apps/287700/capsule_616x353.jpg",
+    "release_date": "2015-09-01",
+    "release_year": 2015,
+    "metrix_score": 93.0,
+    "critic_score": 95.0,
+    "user_score": 85.0,
+    "genres": [
+      "Action",
+      "Stealth",
+      "Open World"
+    ],
+    "platforms": [
+      "PC",
+      "PlayStation 4",
+      "PlayStation 3",
+      "Xbox One",
+      "Xbox 360"
+    ],
+    "developer": "Kojima Productions",
+    "publisher": "Konami",
+    "playtime_minutes": 2700,
+    "source_scores": [
+      {
+        "source": "Metacritic",
+        "score": 95,
+        "scale": 100,
+        "status": "live",
+        "review_count": 50
+      },
+      {
+        "source": "OpenCritic",
+        "score": 95,
+        "scale": 100,
+        "status": "live",
+        "review_count": 61
+      },
+      {
+        "source": "Steam",
+        "score": 88,
+        "scale": 100,
+        "status": "live",
+        "review_count": 115000
+      }
+    ]
+  },
+  {
+    "title": "DOOM (2016)",
+    "slug": "doom-2016",
+    "summary": "A revival of the classic shooter that turned aggression back into a survival mechanic — health pickups only drop from glory kills, forcing constant close-quarters violence. Fast, brutal, and relentlessly kinetic, it rejuvenated an entire subgenre of arena shooters.",
+    "cover_url": "https://cdn.akamai.steamstatic.com/steam/apps/379720/capsule_616x353.jpg",
+    "release_date": "2016-05-13",
+    "release_year": 2016,
+    "metrix_score": 86.0,
+    "critic_score": 85.0,
+    "user_score": 92.0,
+    "genres": [
+      "Action",
+      "Shooter",
+      "FPS"
+    ],
+    "platforms": [
+      "PC",
+      "PlayStation 4",
+      "Xbox One",
+      "Nintendo Switch"
+    ],
+    "developer": "id Software",
+    "publisher": "Bethesda Softworks",
+    "playtime_minutes": 780,
+    "source_scores": [
+      {
+        "source": "Metacritic",
+        "score": 85,
+        "scale": 100,
+        "status": "live",
+        "review_count": 54
+      },
+      {
+        "source": "OpenCritic",
+        "score": 87,
+        "scale": 100,
+        "status": "live",
+        "review_count": 72
+      },
+      {
+        "source": "Steam",
+        "score": 95,
+        "scale": 100,
+        "status": "live",
+        "review_count": 205000
+      }
+    ]
+  },
+  {
+    "title": "Cyberpunk 2077",
+    "slug": "cyberpunk-2077",
+    "summary": "An open-world RPG set in the dystopian Night City, following mercenary V through a story of corporate power and digital immortality. After a turbulent launch, extensive updates and the Phantom Liberty expansion transformed it into a showcase for dense world-building and reactive quest design.",
+    "cover_url": "https://cdn.akamai.steamstatic.com/steam/apps/1091500/capsule_616x353.jpg",
+    "release_date": "2020-12-10",
+    "release_year": 2020,
+    "metrix_score": 86.0,
+    "critic_score": 86.0,
+    "user_score": 87.0,
+    "genres": [
+      "RPG",
+      "Action",
+      "Open World"
+    ],
+    "platforms": [
+      "PC",
+      "PlayStation 4",
+      "PlayStation 5",
+      "Xbox One",
+      "Xbox Series X/S"
+    ],
+    "developer": "CD Projekt Red",
+    "publisher": "CD Projekt",
+    "playtime_minutes": 1500,
+    "source_scores": [
+      {
+        "source": "Metacritic",
+        "score": 86,
+        "scale": 100,
+        "status": "live",
+        "review_count": 98
+      },
+      {
+        "source": "OpenCritic",
+        "score": 86,
+        "scale": 100,
+        "status": "live",
+        "review_count": 134
+      },
+      {
+        "source": "Steam",
+        "score": 87,
+        "scale": 100,
+        "status": "live",
+        "review_count": 620000
+      }
+    ]
+  },
+  {
+    "title": "Grand Theft Auto V",
+    "slug": "grand-theft-auto-v",
+    "summary": "An open-world crime epic following three playable protagonists across the sprawling fictional city of Los Santos. Its interlocking heist missions, satirical script, and decade-long online mode make it one of the most commercially successful entertainment products ever created.",
+    "cover_url": "https://cdn.akamai.steamstatic.com/steam/apps/271590/capsule_616x353.jpg",
+    "release_date": "2013-09-17",
+    "release_year": 2013,
+    "metrix_score": 91.0,
+    "critic_score": 96.0,
+    "user_score": 79.0,
+    "genres": [
+      "Action",
+      "Adventure",
+      "Open World"
+    ],
+    "platforms": [
+      "PC",
+      "PlayStation 3",
+      "PlayStation 4",
+      "PlayStation 5",
+      "Xbox 360",
+      "Xbox One"
+    ],
+    "developer": "Rockstar North",
+    "publisher": "Rockstar Games",
+    "playtime_minutes": 1800,
+    "source_scores": [
+      {
+        "source": "Metacritic",
+        "score": 96,
+        "scale": 100,
+        "status": "live",
+        "review_count": 45
+      },
+      {
+        "source": "OpenCritic",
+        "score": 97,
+        "scale": 100,
+        "status": "live",
+        "review_count": 62
+      },
+      {
+        "source": "Steam",
+        "score": 80,
+        "scale": 100,
+        "status": "live",
+        "review_count": 1100000
+      }
+    ]
+  },
+  {
+    "title": "Death Stranding",
+    "slug": "death-stranding",
+    "summary": "A walking simulator-meets-logistics game set in a post-apocalyptic America, where courier Sam Porter Bridges reconnects isolated settlements by physically carrying cargo across treacherous terrain. Divisive for its pacing, but unique in treating delivery and connection as profound acts.",
+    "cover_url": "https://cdn.akamai.steamstatic.com/steam/apps/1190460/capsule_616x353.jpg",
+    "release_date": "2019-11-08",
+    "release_year": 2019,
+    "metrix_score": 83.0,
+    "critic_score": 82.0,
+    "user_score": 89.0,
+    "genres": [
+      "Action",
+      "Adventure",
+      "Survival"
+    ],
+    "platforms": [
+      "PC",
+      "PlayStation 4",
+      "PlayStation 5"
+    ],
+    "developer": "Kojima Productions",
+    "publisher": "Sony Interactive Entertainment",
+    "playtime_minutes": 2400,
+    "source_scores": [
+      {
+        "source": "Metacritic",
+        "score": 82,
+        "scale": 100,
+        "status": "live",
+        "review_count": 62
+      },
+      {
+        "source": "OpenCritic",
+        "score": 82,
+        "scale": 100,
+        "status": "live",
+        "review_count": 85
+      },
+      {
+        "source": "Steam",
+        "score": 89,
+        "scale": 100,
+        "status": "live",
+        "review_count": 75000
+      }
+    ]
+  },
+  {
+    "title": "Marvel's Spider-Man Remastered",
+    "slug": "marvels-spider-man-remastered",
+    "summary": "An open-world superhero action game set across Manhattan, featuring fluid web-swinging traversal and a combat system built around momentum and gadgets. Insomniac's take on Peter Parker balances spectacular set pieces with genuine character work.",
+    "cover_url": "https://cdn.akamai.steamstatic.com/steam/apps/2076560/capsule_616x353.jpg",
+    "release_date": "2018-09-07",
+    "release_year": 2018,
+    "metrix_score": 87.0,
+    "critic_score": 87.0,
+    "user_score": 92.0,
+    "genres": [
+      "Action",
+      "Adventure",
+      "Open World"
+    ],
+    "platforms": [
+      "PC",
+      "PlayStation 4",
+      "PlayStation 5"
+    ],
+    "developer": "Insomniac Games",
+    "publisher": "Sony Interactive Entertainment",
+    "playtime_minutes": 1020,
+    "source_scores": [
+      {
+        "source": "Metacritic",
+        "score": 87,
+        "scale": 100,
+        "status": "live",
+        "review_count": 41
+      },
+      {
+        "source": "OpenCritic",
+        "score": 87,
+        "scale": 100,
+        "status": "live",
+        "review_count": 56
+      },
+      {
+        "source": "Steam",
+        "score": 94,
+        "scale": 100,
+        "status": "live",
+        "review_count": 52000
+      }
+    ]
+  },
+  {
+    "title": "Detroit: Become Human",
+    "slug": "detroit-become-human",
+    "summary": "An interactive thriller set in near-future Detroit where androids have become sentient, following three android protagonists across branching narratives. Heavy investment in branching consequences, with dozens of possible chapter outcomes depending on player decisions.",
+    "cover_url": "https://cdn.akamai.steamstatic.com/steam/apps/1222140/capsule_616x353.jpg",
+    "release_date": "2018-05-25",
+    "release_year": 2018,
+    "metrix_score": 82.0,
+    "critic_score": 78.0,
+    "user_score": 95.0,
+    "genres": [
+      "Adventure",
+      "Narrative",
+      "Drama"
+    ],
+    "platforms": [
+      "PC",
+      "PlayStation 4"
+    ],
+    "developer": "Quantic Dream",
+    "publisher": "Quantic Dream",
+    "playtime_minutes": 600,
+    "source_scores": [
+      {
+        "source": "Metacritic",
+        "score": 78,
+        "scale": 100,
+        "status": "live",
+        "review_count": 65
+      },
+      {
+        "source": "OpenCritic",
+        "score": 79,
+        "scale": 100,
+        "status": "live",
+        "review_count": 84
+      },
+      {
+        "source": "Steam",
+        "score": 96,
+        "scale": 100,
+        "status": "live",
+        "review_count": 61000
+      }
+    ]
+  },
+  {
+    "title": "Sifu",
+    "slug": "sifu",
+    "summary": "A kung-fu brawler about a student hunting down the killers of their father, with a twist: every death ages the protagonist, and dying too old ends the run. Tight, demanding combat requiring precise parries and knowledge of each enemy's patterns.",
+    "cover_url": "https://cdn.akamai.steamstatic.com/steam/apps/2138710/capsule_616x353.jpg",
+    "release_date": "2022-02-08",
+    "release_year": 2022,
+    "metrix_score": 81.0,
+    "critic_score": 80.0,
+    "user_score": 87.0,
+    "genres": [
+      "Action",
+      "Beat 'em Up",
+      "Indie"
+    ],
+    "platforms": [
+      "PC",
+      "PlayStation 4",
+      "PlayStation 5",
+      "Nintendo Switch"
+    ],
+    "developer": "Sloclap",
+    "publisher": "Sloclap",
+    "playtime_minutes": 600,
+    "source_scores": [
+      {
+        "source": "Metacritic",
+        "score": 80,
+        "scale": 100,
+        "status": "live",
+        "review_count": 46
+      },
+      {
+        "source": "OpenCritic",
+        "score": 82,
+        "scale": 100,
+        "status": "live",
+        "review_count": 61
+      },
+      {
+        "source": "Steam",
+        "score": 89,
+        "scale": 100,
+        "status": "live",
+        "review_count": 38000
+      }
+    ]
+  },
+  {
+    "title": "Helldivers 2",
+    "slug": "helldivers-2",
+    "summary": "A third-person co-op shooter where four players drop into hostile alien planets to spread managed democracy on behalf of a satirical fascist superstate. Live-service community events, devastating friendly fire, and the absurdity of calling in orbital strikes on yourself define its appeal.",
+    "cover_url": "https://cdn.akamai.steamstatic.com/steam/apps/553850/capsule_616x353.jpg",
+    "release_date": "2024-02-08",
+    "release_year": 2024,
+    "metrix_score": 82.0,
+    "critic_score": 82.0,
+    "user_score": 84.0,
+    "genres": [
+      "Action",
+      "Shooter",
+      "Co-op"
+    ],
+    "platforms": [
+      "PC",
+      "PlayStation 5"
+    ],
+    "developer": "Arrowhead Game Studios",
+    "publisher": "Sony Interactive Entertainment",
+    "playtime_minutes": 3000,
+    "source_scores": [
+      {
+        "source": "Metacritic",
+        "score": 82,
+        "scale": 100,
+        "status": "live",
+        "review_count": 41
+      },
+      {
+        "source": "OpenCritic",
+        "score": 82,
+        "scale": 100,
+        "status": "live",
+        "review_count": 54
+      },
+      {
+        "source": "Steam",
+        "score": 85,
+        "scale": 100,
+        "status": "live",
+        "review_count": 510000
+      }
+    ]
+  },
+  {
+    "title": "Fallout: New Vegas",
+    "slug": "fallout-new-vegas",
+    "summary": "A post-nuclear RPG set in the Mojave Desert, where a courier left for dead gets drawn into a war between three factions over control of Las Vegas. Obsidian's complex faction system, dark humour, and densely written companions make it the most RPG-like of the Fallout series.",
+    "cover_url": "https://cdn.akamai.steamstatic.com/steam/apps/22380/capsule_616x353.jpg",
+    "release_date": "2010-10-19",
+    "release_year": 2010,
+    "metrix_score": 86.0,
+    "critic_score": 84.0,
+    "user_score": 92.0,
+    "genres": [
+      "RPG",
+      "Action",
+      "Open World"
+    ],
+    "platforms": [
+      "PC",
+      "PlayStation 3",
+      "Xbox 360"
+    ],
+    "developer": "Obsidian Entertainment",
+    "publisher": "Bethesda Softworks",
+    "playtime_minutes": 2100,
+    "source_scores": [
+      {
+        "source": "Metacritic",
+        "score": 84,
+        "scale": 100,
+        "status": "live",
+        "review_count": 54
+      },
+      {
+        "source": "IGDB",
+        "score": 83,
+        "scale": 100,
+        "status": "live",
+        "review_count": 210
+      },
+      {
+        "source": "Steam",
+        "score": 94,
+        "scale": 100,
+        "status": "live",
+        "review_count": 125000
+      }
+    ]
+  },
+  {
+    "title": "The Elder Scrolls V: Skyrim",
+    "slug": "skyrim",
+    "summary": "An open-world RPG set in the frozen Nordic province of Skyrim, where the player is Dragonborn — a mortal capable of absorbing the souls of dragons. Its enormous world, flexible build system, and thousands of quests made it one of the most replayed games in history.",
+    "cover_url": "https://cdn.akamai.steamstatic.com/steam/apps/489830/capsule_616x353.jpg",
+    "release_date": "2011-11-11",
+    "release_year": 2011,
+    "metrix_score": 92.0,
+    "critic_score": 94.0,
+    "user_score": 82.0,
+    "genres": [
+      "RPG",
+      "Open World",
+      "Adventure",
+      "Action"
+    ],
+    "platforms": [
+      "PC",
+      "PlayStation 3",
+      "PlayStation 4",
+      "PlayStation 5",
+      "Xbox 360",
+      "Xbox One",
+      "Nintendo Switch"
+    ],
+    "developer": "Bethesda Game Studios",
+    "publisher": "Bethesda Softworks",
+    "playtime_minutes": 3000,
+    "source_scores": [
+      {
+        "source": "Metacritic",
+        "score": 94,
+        "scale": 100,
+        "status": "live",
+        "review_count": 83
+      },
+      {
+        "source": "OpenCritic",
+        "score": 91,
+        "scale": 100,
+        "status": "live",
+        "review_count": 62
+      },
+      {
+        "source": "Steam",
+        "score": 93,
+        "scale": 100,
+        "status": "live",
+        "review_count": 670000
+      }
+    ]
+  },
+  {
+    "title": "BioShock",
+    "slug": "bioshock",
+    "summary": "A first-person shooter set in Rapture, a failed underwater utopia built on Ayn Rand's ideals. Exploration, plasmid powers, and moral choice mix under an atmosphere of Art Deco decay and audio diary storytelling that defined narrative shooters for a decade.",
+    "cover_url": "https://cdn.akamai.steamstatic.com/steam/apps/3830/capsule_616x353.jpg",
+    "release_date": "2007-08-21",
+    "release_year": 2007,
+    "metrix_score": 96.0,
+    "critic_score": 96.0,
+    "user_score": 91.0,
+    "genres": [
+      "Action",
+      "Shooter",
+      "Horror",
+      "FPS"
+    ],
+    "platforms": [
+      "PC",
+      "PlayStation 3",
+      "Xbox 360"
+    ],
+    "developer": "Irrational Games",
+    "publisher": "2K Games",
+    "playtime_minutes": 720,
+    "award_count": 5,
+    "award_nominations": 15,
+    "source_scores": [
+      {
+        "source": "Metacritic",
+        "score": 96,
+        "scale": 100,
+        "status": "live",
+        "review_count": 56
+      },
+      {
+        "source": "IGDB",
+        "score": 92,
+        "scale": 100,
+        "status": "live",
+        "review_count": 510
+      },
+      {
+        "source": "Steam",
+        "score": 91,
+        "scale": 100,
+        "status": "live",
+        "review_count": 108000
+      }
+    ]
+  },
+  {
+    "title": "Batman: Arkham City",
+    "slug": "batman-arkham-city",
+    "summary": "A massive expansion of the original Arkham Asylum, turning the criminals of Gotham loose in an open-air prison district. Fluid combat, dense side content, multiple playable characters, and a villain roster that rivals the best Batman stories across any medium.",
+    "cover_url": "https://cdn.akamai.steamstatic.com/steam/apps/200260/capsule_616x353.jpg",
+    "release_date": "2011-10-18",
+    "release_year": 2011,
+    "metrix_score": 95.0,
+    "critic_score": 96.0,
+    "user_score": 88.0,
+    "genres": [
+      "Action",
+      "Adventure",
+      "Open World"
+    ],
+    "platforms": [
+      "PC",
+      "PlayStation 3",
+      "PlayStation 4",
+      "Xbox 360",
+      "Xbox One"
+    ],
+    "developer": "Rocksteady Studios",
+    "publisher": "Warner Bros. Interactive",
+    "playtime_minutes": 1200,
+    "source_scores": [
+      {
+        "source": "Metacritic",
+        "score": 96,
+        "scale": 100,
+        "status": "live",
+        "review_count": 36
+      },
+      {
+        "source": "OpenCritic",
+        "score": 95,
+        "scale": 100,
+        "status": "live",
+        "review_count": 52
+      },
+      {
+        "source": "Steam",
+        "score": 87,
+        "scale": 100,
+        "status": "live",
+        "review_count": 74000
+      }
+    ]
+  },
+  {
+    "title": "Dragon Age: Inquisition",
+    "slug": "dragon-age-inquisition",
+    "summary": "A third Dragon Age game making the Inquisitor the most powerful political and military force in Thedas. Expansive open zones, a deep companion system, and a war table strategy layer sit alongside a third-person action-RPG combat model that divided fans of the series.",
+    "cover_url": "https://cdn.akamai.steamstatic.com/steam/apps/1222690/capsule_616x353.jpg",
+    "release_date": "2014-11-18",
+    "release_year": 2014,
+    "metrix_score": 85.0,
+    "critic_score": 85.0,
+    "user_score": 76.0,
+    "genres": [
+      "RPG",
+      "Action",
+      "Adventure"
+    ],
+    "platforms": [
+      "PC",
+      "PlayStation 3",
+      "PlayStation 4",
+      "Xbox 360",
+      "Xbox One"
+    ],
+    "developer": "BioWare",
+    "publisher": "Electronic Arts",
+    "playtime_minutes": 6000,
+    "award_count": 6,
+    "award_nominations": 21,
+    "goty_year": 2014,
+    "source_scores": [
+      {
+        "source": "Metacritic",
+        "score": 85,
+        "scale": 100,
+        "status": "live",
+        "review_count": 51
+      },
+      {
+        "source": "OpenCritic",
+        "score": 86,
+        "scale": 100,
+        "status": "live",
+        "review_count": 73
+      },
+      {
+        "source": "Steam",
+        "score": 79,
+        "scale": 100,
+        "status": "live",
+        "review_count": 58000
+      }
+    ]
+  },
+  {
+    "title": "Subnautica",
+    "slug": "subnautica",
+    "summary": "A first-person underwater survival game on an alien ocean world where the player must gather resources, build a base, and unravel why they crashed on this planet. Claustrophobia, wonder, and procedural ocean discovery combine in one of the most atmospheric survival games made.",
+    "cover_url": "https://cdn.akamai.steamstatic.com/steam/apps/264710/capsule_616x353.jpg",
+    "release_date": "2018-01-23",
+    "release_year": 2018,
+    "metrix_score": 87.0,
+    "critic_score": 87.0,
+    "user_score": 97.0,
+    "genres": [
+      "Survival",
+      "Adventure",
+      "Exploration"
+    ],
+    "platforms": [
+      "PC",
+      "PlayStation 4",
+      "Xbox One",
+      "Nintendo Switch"
+    ],
+    "developer": "Unknown Worlds Entertainment",
+    "publisher": "Unknown Worlds Entertainment",
+    "playtime_minutes": 960,
+    "source_scores": [
+      {
+        "source": "Metacritic",
+        "score": 87,
+        "scale": 100,
+        "status": "live",
+        "review_count": 32
+      },
+      {
+        "source": "OpenCritic",
+        "score": 87,
+        "scale": 100,
+        "status": "live",
+        "review_count": 44
+      },
+      {
+        "source": "Steam",
+        "score": 98,
+        "scale": 100,
+        "status": "live",
+        "review_count": 130000
+      }
+    ]
+  },
+  {
+    "title": "Resident Evil Village",
+    "slug": "resident-evil-village",
+    "summary": "A first-person survival horror sequel to RE7, following Ethan Winters through a snow-covered village haunted by aristocratic monsters and Lady Dimitrescu. More action-oriented than its predecessor but retains resource scarcity, puzzle-solving, and the merchant-based upgrade system.",
+    "cover_url": "https://cdn.akamai.steamstatic.com/steam/apps/1196590/capsule_616x353.jpg",
+    "release_date": "2021-05-07",
+    "release_year": 2021,
+    "metrix_score": 84.0,
+    "critic_score": 84.0,
+    "user_score": 87.0,
+    "genres": [
+      "Action",
+      "Horror",
+      "Survival"
+    ],
+    "platforms": [
+      "PC",
+      "PlayStation 4",
+      "PlayStation 5",
+      "Xbox One",
+      "Xbox Series X/S"
+    ],
+    "developer": "Capcom",
+    "publisher": "Capcom",
+    "playtime_minutes": 600,
+    "source_scores": [
+      {
+        "source": "Metacritic",
+        "score": 84,
+        "scale": 100,
+        "status": "live",
+        "review_count": 74
+      },
+      {
+        "source": "OpenCritic",
+        "score": 85,
+        "scale": 100,
+        "status": "live",
+        "review_count": 102
+      },
+      {
+        "source": "Steam",
+        "score": 87,
+        "scale": 100,
+        "status": "live",
+        "review_count": 105000
+      }
+    ]
+  },
+  {
+    "title": "Alien: Isolation",
+    "slug": "alien-isolation",
+    "summary": "A first-person stealth survival game set aboard the space station Sevastopol fifteen years after the original film. A single, largely unkillable Xenomorph hunts the player by sound and motion throughout interconnected corridors, producing sustained dread that most horror games can only achieve in short bursts.",
+    "cover_url": "https://cdn.akamai.steamstatic.com/steam/apps/214490/capsule_616x353.jpg",
+    "release_date": "2014-10-07",
+    "release_year": 2014,
+    "metrix_score": 79.0,
+    "critic_score": 79.0,
+    "user_score": 91.0,
+    "genres": [
+      "Horror",
+      "Stealth",
+      "Adventure",
+      "Survival"
+    ],
+    "platforms": [
+      "PC",
+      "PlayStation 3",
+      "PlayStation 4",
+      "Xbox 360",
+      "Xbox One"
+    ],
+    "developer": "Creative Assembly",
+    "publisher": "Sega",
+    "playtime_minutes": 1080,
+    "source_scores": [
+      {
+        "source": "Metacritic",
+        "score": 79,
+        "scale": 100,
+        "status": "live",
+        "review_count": 56
+      },
+      {
+        "source": "OpenCritic",
+        "score": 80,
+        "scale": 100,
+        "status": "live",
+        "review_count": 67
+      },
+      {
+        "source": "Steam",
+        "score": 94,
+        "scale": 100,
+        "status": "live",
+        "review_count": 72000
+      }
+    ]
+  },
+  {
+    "title": "Crusader Kings III",
+    "slug": "crusader-kings-iii",
+    "summary": "A medieval grand strategy RPG where you play a dynasty rather than a nation, managing inheritance, marriages, plot, faith, and war across centuries. The RPG-character layer on top of the traditional Paradox formula makes every ruler feel like the protagonist of their own medieval saga.",
+    "cover_url": "https://cdn.akamai.steamstatic.com/steam/apps/1158310/capsule_616x353.jpg",
+    "release_date": "2020-09-01",
+    "release_year": 2020,
+    "metrix_score": 91.0,
+    "critic_score": 91.0,
+    "user_score": 87.0,
+    "genres": [
+      "Strategy",
+      "Grand Strategy",
+      "RPG",
+      "Historical"
+    ],
+    "platforms": [
+      "PC",
+      "PlayStation 5",
+      "Xbox Series X/S"
+    ],
+    "developer": "Paradox Development Studio",
+    "publisher": "Paradox Interactive",
+    "playtime_minutes": 9000,
+    "source_scores": [
+      {
+        "source": "Metacritic",
+        "score": 91,
+        "scale": 100,
+        "status": "live",
+        "review_count": 58
+      },
+      {
+        "source": "OpenCritic",
+        "score": 90,
+        "scale": 100,
+        "status": "live",
+        "review_count": 79
+      },
+      {
+        "source": "Steam",
+        "score": 88,
+        "scale": 100,
+        "status": "live",
+        "review_count": 105000
+      }
+    ]
+  },
+  {
+    "title": "XCOM 2",
+    "slug": "xcom-2",
+    "summary": "A turn-based tactics sequel set twenty years after humanity lost the first war against alien invaders. Soldiers are now guerrilla fighters operating from a stolen alien vessel, and each campaign is shaped by procedurally generated maps, permadeath, and punishing time pressure.",
+    "cover_url": "https://cdn.akamai.steamstatic.com/steam/apps/268500/capsule_616x353.jpg",
+    "release_date": "2016-02-05",
+    "release_year": 2016,
+    "metrix_score": 88.0,
+    "critic_score": 88.0,
+    "user_score": 84.0,
+    "genres": [
+      "Strategy",
+      "Turn-Based",
+      "Tactical"
+    ],
+    "platforms": [
+      "PC",
+      "PlayStation 4",
+      "Xbox One",
+      "Nintendo Switch"
+    ],
+    "developer": "Firaxis Games",
+    "publisher": "2K Games",
+    "playtime_minutes": 3600,
+    "source_scores": [
+      {
+        "source": "Metacritic",
+        "score": 88,
+        "scale": 100,
+        "status": "live",
+        "review_count": 58
+      },
+      {
+        "source": "OpenCritic",
+        "score": 88,
+        "scale": 100,
+        "status": "live",
+        "review_count": 74
+      },
+      {
+        "source": "Steam",
+        "score": 87,
+        "scale": 100,
+        "status": "live",
+        "review_count": 125000
+      }
+    ]
+  },
+  {
+    "title": "Into the Breach",
+    "slug": "into-the-breach",
+    "summary": "A turn-based tactics game of near-perfect design in which giant mechs defend cities against Kaiju-like creatures on chess-sized boards. Every enemy action telegraphs exactly what it will do — the entire challenge is whether you can counter it in one move.",
+    "cover_url": "https://cdn.akamai.steamstatic.com/steam/apps/590380/capsule_616x353.jpg",
+    "release_date": "2018-02-27",
+    "release_year": 2018,
+    "metrix_score": 90.0,
+    "critic_score": 90.0,
+    "user_score": 95.0,
+    "genres": [
+      "Strategy",
+      "Turn-Based",
+      "Indie",
+      "Tactical"
+    ],
+    "platforms": [
+      "PC",
+      "Nintendo Switch",
+      "iOS"
+    ],
+    "developer": "Subset Games",
+    "publisher": "Subset Games",
+    "playtime_minutes": 1200,
+    "source_scores": [
+      {
+        "source": "Metacritic",
+        "score": 90,
+        "scale": 100,
+        "status": "live",
+        "review_count": 38
+      },
+      {
+        "source": "OpenCritic",
+        "score": 90,
+        "scale": 100,
+        "status": "live",
+        "review_count": 52
+      },
+      {
+        "source": "Steam",
+        "score": 98,
+        "scale": 100,
+        "status": "live",
+        "review_count": 38000
+      }
+    ]
+  },
+  {
+    "title": "Slay the Spire",
+    "slug": "slay-the-spire",
+    "summary": "A roguelike deck-building game that sends the player up a procedurally generated tower, choosing cards, relics, and paths after each battle. Endlessly replayable with four characters and near-infinite card synergy combinations — single-handedly popularised its entire genre.",
+    "cover_url": "https://cdn.akamai.steamstatic.com/steam/apps/646570/capsule_616x353.jpg",
+    "release_date": "2019-01-23",
+    "release_year": 2019,
+    "metrix_score": 89.0,
+    "critic_score": 89.0,
+    "user_score": 97.0,
+    "genres": [
+      "Roguelike",
+      "Card Game",
+      "Strategy",
+      "Indie"
+    ],
+    "platforms": [
+      "PC",
+      "Nintendo Switch",
+      "PlayStation 4",
+      "Xbox One",
+      "iOS",
+      "Android"
+    ],
+    "developer": "MegaCrit",
+    "publisher": "Humble Bundle",
+    "playtime_minutes": 1800,
+    "source_scores": [
+      {
+        "source": "Metacritic",
+        "score": 89,
+        "scale": 100,
+        "status": "live",
+        "review_count": 44
+      },
+      {
+        "source": "OpenCritic",
+        "score": 89,
+        "scale": 100,
+        "status": "live",
+        "review_count": 60
+      },
+      {
+        "source": "Steam",
+        "score": 98,
+        "scale": 100,
+        "status": "live",
+        "review_count": 185000
+      }
+    ]
+  },
+  {
+    "title": "FTL: Faster Than Light",
+    "slug": "ftl-faster-than-light",
+    "summary": "A spaceship simulation roguelike in which you manage crew, oxygen, weapons, and shields while outrunning a rebel fleet. Short runs of deceptively deep tactical decisions — one of the games that defined what 'roguelike' meant in the indie era.",
+    "cover_url": "https://cdn.akamai.steamstatic.com/steam/apps/212680/capsule_616x353.jpg",
+    "release_date": "2012-09-14",
+    "release_year": 2012,
+    "metrix_score": 84.0,
+    "critic_score": 84.0,
+    "user_score": 93.0,
+    "genres": [
+      "Strategy",
+      "Roguelike",
+      "Simulation",
+      "Indie"
+    ],
+    "platforms": [
+      "PC",
+      "iOS"
+    ],
+    "developer": "Subset Games",
+    "publisher": "Subset Games",
+    "playtime_minutes": 1200,
+    "source_scores": [
+      {
+        "source": "Metacritic",
+        "score": 84,
+        "scale": 100,
+        "status": "live",
+        "review_count": 28
+      },
+      {
+        "source": "IGDB",
+        "score": 83,
+        "scale": 100,
+        "status": "live",
+        "review_count": 290
+      },
+      {
+        "source": "Steam",
+        "score": 97,
+        "scale": 100,
+        "status": "live",
+        "review_count": 85000
+      }
+    ]
+  },
+  {
+    "title": "Factorio",
+    "slug": "factorio",
+    "summary": "An engineering automation game about building and optimising factories on an alien world. Starts with hand-mining ore and ends with planet-spanning belts, robot logistics, and nuclear power — all while defending against alien attacks triggered by your industrial pollution.",
+    "cover_url": "https://cdn.akamai.steamstatic.com/steam/apps/427520/capsule_616x353.jpg",
+    "release_date": "2020-08-14",
+    "release_year": 2020,
+    "metrix_score": 90.0,
+    "critic_score": 90.0,
+    "user_score": 99.0,
+    "genres": [
+      "Strategy",
+      "Simulation",
+      "Building",
+      "Indie"
+    ],
+    "platforms": [
+      "PC"
+    ],
+    "developer": "Wube Software",
+    "publisher": "Wube Software",
+    "playtime_minutes": 12000,
+    "source_scores": [
+      {
+        "source": "Metacritic",
+        "score": 90,
+        "scale": 100,
+        "status": "live",
+        "review_count": 18
+      },
+      {
+        "source": "IGDB",
+        "score": 89,
+        "scale": 100,
+        "status": "live",
+        "review_count": 180
+      },
+      {
+        "source": "Steam",
+        "score": 99,
+        "scale": 100,
+        "status": "live",
+        "review_count": 110000
+      }
+    ]
+  },
+  {
+    "title": "Risk of Rain 2",
+    "slug": "risk-of-rain-2",
+    "summary": "A third-person roguelike shooter where enemies grow exponentially stronger the longer a run lasts. Items stack in ludicrous combinations and the whole game can be played co-op with up to four players — every build feels like a new and increasingly broken experiment.",
+    "cover_url": "https://cdn.akamai.steamstatic.com/steam/apps/632360/capsule_616x353.jpg",
+    "release_date": "2020-08-11",
+    "release_year": 2020,
+    "metrix_score": 86.0,
+    "critic_score": 86.0,
+    "user_score": 96.0,
+    "genres": [
+      "Action",
+      "Roguelike",
+      "Shooter",
+      "Co-op"
+    ],
+    "platforms": [
+      "PC",
+      "PlayStation 4",
+      "Xbox One",
+      "Nintendo Switch"
+    ],
+    "developer": "Hopoo Games",
+    "publisher": "Gearbox Publishing",
+    "playtime_minutes": 1800,
+    "source_scores": [
+      {
+        "source": "Metacritic",
+        "score": 86,
+        "scale": 100,
+        "status": "live",
+        "review_count": 23
+      },
+      {
+        "source": "OpenCritic",
+        "score": 87,
+        "scale": 100,
+        "status": "live",
+        "review_count": 34
+      },
+      {
+        "source": "Steam",
+        "score": 97,
+        "scale": 100,
+        "status": "live",
+        "review_count": 130000
+      }
+    ]
+  },
+  {
+    "title": "Deep Rock Galactic",
+    "slug": "deep-rock-galactic",
+    "summary": "A four-player co-op shooter in which space dwarves mine procedurally generated caves and fight alien insects. Praised for its community culture, class synergy, and developer transparency — the positive Steam reviews are themselves part of the game's legend.",
+    "cover_url": "https://cdn.akamai.steamstatic.com/steam/apps/548430/capsule_616x353.jpg",
+    "release_date": "2020-05-13",
+    "release_year": 2020,
+    "metrix_score": 85.0,
+    "critic_score": 85.0,
+    "user_score": 98.0,
+    "genres": [
+      "Action",
+      "Shooter",
+      "Co-op",
+      "Indie"
+    ],
+    "platforms": [
+      "PC",
+      "PlayStation 4",
+      "PlayStation 5",
+      "Xbox One",
+      "Xbox Series X/S"
+    ],
+    "developer": "Ghost Ship Games",
+    "publisher": "Coffee Stain Publishing",
+    "playtime_minutes": 3000,
+    "source_scores": [
+      {
+        "source": "Metacritic",
+        "score": 85,
+        "scale": 100,
+        "status": "live",
+        "review_count": 24
+      },
+      {
+        "source": "OpenCritic",
+        "score": 85,
+        "scale": 100,
+        "status": "live",
+        "review_count": 36
+      },
+      {
+        "source": "Steam",
+        "score": 99,
+        "scale": 100,
+        "status": "live",
+        "review_count": 185000
+      }
+    ]
+  },
+  {
+    "title": "Monster Hunter Rise",
+    "slug": "monster-hunter-rise",
+    "summary": "A faster, more mobile entry in the Monster Hunter series, introducing wirebugs for aerial movement and Silkbind attacks. The Rampage tower-defence mode and Buddy system add layers beyond the hunt-craft-upgrade loop, and the Sunbreak expansion significantly raised the difficulty ceiling.",
+    "cover_url": "https://cdn.akamai.steamstatic.com/steam/apps/1446780/capsule_616x353.jpg",
+    "release_date": "2021-03-26",
+    "release_year": 2021,
+    "metrix_score": 88.0,
+    "critic_score": 88.0,
+    "user_score": 86.0,
+    "genres": [
+      "Action",
+      "RPG",
+      "Co-op"
+    ],
+    "platforms": [
+      "PC",
+      "Nintendo Switch",
+      "PlayStation 4",
+      "PlayStation 5",
+      "Xbox One",
+      "Xbox Series X/S"
+    ],
+    "developer": "Capcom",
+    "publisher": "Capcom",
+    "playtime_minutes": 4200,
+    "source_scores": [
+      {
+        "source": "Metacritic",
+        "score": 88,
+        "scale": 100,
+        "status": "live",
+        "review_count": 48
+      },
+      {
+        "source": "OpenCritic",
+        "score": 88,
+        "scale": 100,
+        "status": "live",
+        "review_count": 67
+      },
+      {
+        "source": "Steam",
+        "score": 88,
+        "scale": 100,
+        "status": "live",
+        "review_count": 68000
+      }
+    ]
+  },
+  {
+    "title": "Horizon Zero Dawn",
+    "slug": "horizon-zero-dawn",
+    "summary": "An open-world action RPG in a post-post-apocalyptic world where mechanical animals have replaced fauna. Following Aloy as she uncovers the mystery behind both her world and her origin, the game pairs fluid stealth-ranged combat with one of the most original science-fiction settings of the decade.",
+    "cover_url": "https://cdn.akamai.steamstatic.com/steam/apps/1151640/capsule_616x353.jpg",
+    "release_date": "2017-02-28",
+    "release_year": 2017,
+    "metrix_score": 88.0,
+    "critic_score": 89.0,
+    "user_score": 87.0,
+    "genres": [
+      "Action",
+      "RPG",
+      "Open World"
+    ],
+    "platforms": [
+      "PC",
+      "PlayStation 4"
+    ],
+    "developer": "Guerrilla Games",
+    "publisher": "Sony Interactive Entertainment",
+    "playtime_minutes": 2160,
+    "source_scores": [
+      {
+        "source": "Metacritic",
+        "score": 89,
+        "scale": 100,
+        "status": "live",
+        "review_count": 98
+      },
+      {
+        "source": "OpenCritic",
+        "score": 87,
+        "scale": 100,
+        "status": "live",
+        "review_count": 121
+      },
+      {
+        "source": "Steam",
+        "score": 87,
+        "scale": 100,
+        "status": "live",
+        "review_count": 56000
+      }
+    ]
+  },
+  {
+    "title": "Pathfinder: Wrath of the Righteous",
+    "slug": "pathfinder-wrath-of-the-righteous",
+    "summary": "A massive isometric CRPG based on the Pathfinder tabletop system, following a mythic hero in a crusade against demonic hordes. Staggering in scope with ten mythic paths that fundamentally alter gameplay, mechanics, and story — one of the deepest traditional RPGs made in years.",
+    "cover_url": "https://cdn.akamai.steamstatic.com/steam/apps/1184370/capsule_616x353.jpg",
+    "release_date": "2021-09-02",
+    "release_year": 2021,
+    "metrix_score": 81.0,
+    "critic_score": 80.0,
+    "user_score": 88.0,
+    "genres": [
+      "RPG",
+      "Strategy",
+      "Isometric"
+    ],
+    "platforms": [
+      "PC",
+      "PlayStation 4",
+      "Xbox One"
+    ],
+    "developer": "Owlcat Games",
+    "publisher": "META Publishing",
+    "playtime_minutes": 9000,
+    "source_scores": [
+      {
+        "source": "Metacritic",
+        "score": 80,
+        "scale": 100,
+        "status": "live",
+        "review_count": 38
+      },
+      {
+        "source": "OpenCritic",
+        "score": 83,
+        "scale": 100,
+        "status": "live",
+        "review_count": 54
+      },
+      {
+        "source": "Steam",
+        "score": 88,
+        "scale": 100,
+        "status": "live",
+        "review_count": 28000
+      }
+    ]
+  },
+  {
+    "title": "Pillars of Eternity",
+    "slug": "pillars-of-eternity",
+    "summary": "A Kickstarter-funded CRPG from the creators of Baldur's Gate and Planescape: Torment, set in a world where souls are the centre of theology and science. Dense lore, real-time-with-pause combat, and a sprawling world designed to reward reading made it the gold standard of the CRPG revival.",
+    "cover_url": "https://cdn.akamai.steamstatic.com/steam/apps/291650/capsule_616x353.jpg",
+    "release_date": "2015-03-26",
+    "release_year": 2015,
+    "metrix_score": 89.0,
+    "critic_score": 89.0,
+    "user_score": 83.0,
+    "genres": [
+      "RPG",
+      "Isometric",
+      "Strategy"
+    ],
+    "platforms": [
+      "PC",
+      "Nintendo Switch",
+      "PlayStation 4",
+      "Xbox One"
+    ],
+    "developer": "Obsidian Entertainment",
+    "publisher": "Paradox Interactive",
+    "playtime_minutes": 3600,
+    "source_scores": [
+      {
+        "source": "Metacritic",
+        "score": 89,
+        "scale": 100,
+        "status": "live",
+        "review_count": 55
+      },
+      {
+        "source": "OpenCritic",
+        "score": 89,
+        "scale": 100,
+        "status": "live",
+        "review_count": 72
+      },
+      {
+        "source": "Steam",
+        "score": 83,
+        "scale": 100,
+        "status": "live",
+        "review_count": 52000
+      }
+    ]
+  },
+  {
+    "title": "Stellaris",
+    "slug": "stellaris",
+    "summary": "A grand strategy game set across a procedurally generated galaxy, where players build interstellar empires over centuries of exploration, diplomacy, and war. Its strength is mid-game narrative — anomalies, first contact events, and empire crises make each campaign a genuinely unique science-fiction story.",
+    "cover_url": "https://cdn.akamai.steamstatic.com/steam/apps/281990/capsule_616x353.jpg",
+    "release_date": "2016-05-09",
+    "release_year": 2016,
+    "metrix_score": 78.0,
+    "critic_score": 78.0,
+    "user_score": 84.0,
+    "genres": [
+      "Strategy",
+      "Grand Strategy",
+      "4X",
+      "Simulation"
+    ],
+    "platforms": [
+      "PC",
+      "PlayStation 4",
+      "Xbox One"
+    ],
+    "developer": "Paradox Development Studio",
+    "publisher": "Paradox Interactive",
+    "playtime_minutes": 12000,
+    "source_scores": [
+      {
+        "source": "Metacritic",
+        "score": 78,
+        "scale": 100,
+        "status": "live",
+        "review_count": 51
+      },
+      {
+        "source": "OpenCritic",
+        "score": 78,
+        "scale": 100,
+        "status": "live",
+        "review_count": 60
+      },
+      {
+        "source": "Steam",
+        "score": 83,
+        "scale": 100,
+        "status": "live",
+        "review_count": 125000
+      }
+    ]
+  },
+  {
+    "title": "A Hat in Time",
+    "slug": "a-hat-in-time",
+    "summary": "A 3D collect-a-thon platformer following a hat-wearing girl trying to recover her Time Pieces from a movie studio, a mafia-run city, and assorted other chapters. Closest modern game to the tone and design sensibility of early N64 platformers, built with affection for that era.",
+    "cover_url": "https://cdn.akamai.steamstatic.com/steam/apps/253230/capsule_616x353.jpg",
+    "release_date": "2017-10-05",
+    "release_year": 2017,
+    "metrix_score": 82.0,
+    "critic_score": 82.0,
+    "user_score": 97.0,
+    "genres": [
+      "Platformer",
+      "Adventure",
+      "Indie"
+    ],
+    "platforms": [
+      "PC",
+      "PlayStation 4",
+      "Xbox One",
+      "Nintendo Switch"
+    ],
+    "developer": "Gears for Breakfast",
+    "publisher": "Gears for Breakfast",
+    "playtime_minutes": 600,
+    "source_scores": [
+      {
+        "source": "Metacritic",
+        "score": 82,
+        "scale": 100,
+        "status": "live",
+        "review_count": 22
+      },
+      {
+        "source": "OpenCritic",
+        "score": 82,
+        "scale": 100,
+        "status": "live",
+        "review_count": 34
+      },
+      {
+        "source": "Steam",
+        "score": 98,
+        "scale": 100,
+        "status": "live",
+        "review_count": 44000
+      }
+    ]
+  },
+  {
+    "title": "Streets of Rage 4",
+    "slug": "streets-of-rage-4",
+    "summary": "A hand-drawn revival of the beloved Sega beat 'em up series, featuring tight combo-based combat, a twelve-character roster, and a brilliant soundtrack. An ideal co-op game that honours the originals while adding depth that rewards solo mastery just as well.",
+    "cover_url": "https://cdn.akamai.steamstatic.com/steam/apps/985890/capsule_616x353.jpg",
+    "release_date": "2020-04-30",
+    "release_year": 2020,
+    "metrix_score": 87.0,
+    "critic_score": 87.0,
+    "user_score": 93.0,
+    "genres": [
+      "Action",
+      "Beat 'em Up",
+      "Co-op"
+    ],
+    "platforms": [
+      "PC",
+      "PlayStation 4",
+      "Xbox One",
+      "Nintendo Switch"
+    ],
+    "developer": "Dotemu / Lizardcube / Guard Crush Games",
+    "publisher": "Dotemu",
+    "playtime_minutes": 300,
+    "source_scores": [
+      {
+        "source": "Metacritic",
+        "score": 87,
+        "scale": 100,
+        "status": "live",
+        "review_count": 38
+      },
+      {
+        "source": "OpenCritic",
+        "score": 88,
+        "scale": 100,
+        "status": "live",
+        "review_count": 52
+      },
+      {
+        "source": "Steam",
+        "score": 95,
+        "scale": 100,
+        "status": "live",
+        "review_count": 22000
+      }
+    ]
+  },
+  {
+    "title": "Satisfactory",
+    "slug": "satisfactory",
+    "summary": "A first-person factory building game on an alien planet where the goal is to automate resource extraction, processing, and manufacturing on an ever-grander scale. The shift from top-down to first-person makes every belt, splitter, and conveyor feel tangible in a way Factorio's abstraction cannot.",
+    "cover_url": "https://cdn.akamai.steamstatic.com/steam/apps/526870/capsule_616x353.jpg",
+    "release_date": "2024-09-10",
+    "release_year": 2024,
+    "metrix_score": 85.0,
+    "critic_score": 84.0,
+    "user_score": 98.0,
+    "genres": [
+      "Building",
+      "Simulation",
+      "Exploration",
+      "Co-op"
+    ],
+    "platforms": [
+      "PC"
+    ],
+    "developer": "Coffee Stain Studios",
+    "publisher": "Coffee Stain Publishing",
+    "playtime_minutes": 12000,
+    "source_scores": [
+      {
+        "source": "Metacritic",
+        "score": 84,
+        "scale": 100,
+        "status": "live",
+        "review_count": 18
+      },
+      {
+        "source": "IGDB",
+        "score": 82,
+        "scale": 100,
+        "status": "live",
+        "review_count": 180
+      },
+      {
+        "source": "Steam",
+        "score": 98,
+        "scale": 100,
+        "status": "live",
+        "review_count": 88000
+      }
+    ]
+  },
+  {
+    "title": "Prey (2017)",
+    "slug": "prey-2017",
+    "summary": "A first-person immersive sim set aboard the space station Talos I, overrun by shape-shifting aliens called Typhon. Offers near-total freedom in how to approach its interconnected station — powers, weapons, environment, and hacking all valid routes through the same encounters.",
+    "cover_url": "https://cdn.akamai.steamstatic.com/steam/apps/480490/capsule_616x353.jpg",
+    "release_date": "2017-05-05",
+    "release_year": 2017,
+    "metrix_score": 84.0,
+    "critic_score": 84.0,
+    "user_score": 81.0,
+    "genres": [
+      "Action",
+      "RPG",
+      "Horror",
+      "Stealth"
+    ],
+    "platforms": [
+      "PC",
+      "PlayStation 4",
+      "Xbox One"
+    ],
+    "developer": "Arkane Studios",
+    "publisher": "Bethesda Softworks",
+    "playtime_minutes": 1200,
+    "source_scores": [
+      {
+        "source": "Metacritic",
+        "score": 84,
+        "scale": 100,
+        "status": "live",
+        "review_count": 48
+      },
+      {
+        "source": "OpenCritic",
+        "score": 83,
+        "scale": 100,
+        "status": "live",
+        "review_count": 64
+      },
+      {
+        "source": "Steam",
+        "score": 81,
+        "scale": 100,
+        "status": "live",
+        "review_count": 42000
+      }
+    ]
+  },
+  {
+    "title": "Dishonored",
+    "slug": "dishonored",
+    "summary": "A first-person stealth immersive sim set in the steampunk city of Dunwall, where a disgraced bodyguard hunts down those who framed him for the Empress's murder. Supernatural powers, chainable abilities, and multiple chaos states for lethal vs non-lethal play define an Arkane classic.",
+    "cover_url": "https://cdn.akamai.steamstatic.com/steam/apps/205100/capsule_616x353.jpg",
+    "release_date": "2012-10-09",
+    "release_year": 2012,
+    "metrix_score": 91.0,
+    "critic_score": 91.0,
+    "user_score": 87.0,
+    "genres": [
+      "Action",
+      "Stealth",
+      "Adventure"
+    ],
+    "platforms": [
+      "PC",
+      "PlayStation 3",
+      "PlayStation 4",
+      "Xbox 360",
+      "Xbox One"
+    ],
+    "developer": "Arkane Studios",
+    "publisher": "Bethesda Softworks",
+    "playtime_minutes": 840,
+    "source_scores": [
+      {
+        "source": "Metacritic",
+        "score": 91,
+        "scale": 100,
+        "status": "live",
+        "review_count": 53
+      },
+      {
+        "source": "OpenCritic",
+        "score": 90,
+        "scale": 100,
+        "status": "live",
+        "review_count": 71
+      },
+      {
+        "source": "Steam",
+        "score": 93,
+        "scale": 100,
+        "status": "live",
+        "review_count": 82000
+      }
+    ]
+  },
+  {
+    "title": "Pillars of Eternity II: Deadfire",
+    "slug": "pillars-of-eternity-2",
+    "summary": "A nautical sequel to Pillars of Eternity, following the Watcher across a colonial archipelago aboard their own ship. Better combat, denser writing, and a world that reacts more visibly to factions and choices — hampered slightly by a story that loses momentum in its middle act.",
+    "cover_url": "https://cdn.akamai.steamstatic.com/steam/apps/560130/capsule_616x353.jpg",
+    "release_date": "2018-05-08",
+    "release_year": 2018,
+    "metrix_score": 89.0,
+    "critic_score": 89.0,
+    "user_score": 80.0,
+    "genres": [
+      "RPG",
+      "Strategy",
+      "Isometric",
+      "Adventure"
+    ],
+    "platforms": [
+      "PC",
+      "Nintendo Switch",
+      "PlayStation 4",
+      "Xbox One"
+    ],
+    "developer": "Obsidian Entertainment",
+    "publisher": "Versus Evil",
+    "playtime_minutes": 4200,
+    "source_scores": [
+      {
+        "source": "Metacritic",
+        "score": 89,
+        "scale": 100,
+        "status": "live",
+        "review_count": 42
+      },
+      {
+        "source": "OpenCritic",
+        "score": 89,
+        "scale": 100,
+        "status": "live",
+        "review_count": 61
+      },
+      {
+        "source": "Steam",
+        "score": 80,
+        "scale": 100,
+        "status": "live",
+        "review_count": 17000
+      }
+    ]
+  },
+  {
+    "title": "Batman: Arkham Knight",
+    "slug": "batman-arkham-knight",
+    "summary": "The conclusion to Rocksteady's Arkham trilogy, adding the Batmobile as a driveable tank-combat vehicle across a depopulated Gotham. The most technically ambitious of the three, and the most densely packed with Bat-lore, despite the Batmobile sequences dividing fans.",
+    "cover_url": "https://cdn.akamai.steamstatic.com/steam/apps/208650/capsule_616x353.jpg",
+    "release_date": "2015-06-23",
+    "release_year": 2015,
+    "metrix_score": 87.0,
+    "critic_score": 87.0,
+    "user_score": 79.0,
+    "genres": [
+      "Action",
+      "Adventure",
+      "Open World"
+    ],
+    "platforms": [
+      "PC",
+      "PlayStation 4",
+      "Xbox One"
+    ],
+    "developer": "Rocksteady Studios",
+    "publisher": "Warner Bros. Interactive",
+    "playtime_minutes": 1500,
+    "source_scores": [
+      {
+        "source": "Metacritic",
+        "score": 87,
+        "scale": 100,
+        "status": "live",
+        "review_count": 41
+      },
+      {
+        "source": "OpenCritic",
+        "score": 87,
+        "scale": 100,
+        "status": "live",
+        "review_count": 58
+      },
+      {
+        "source": "Steam",
+        "score": 73,
+        "scale": 100,
+        "status": "live",
+        "review_count": 74000
+      }
+    ]
+  },
+  {
+    "title": "Spider-Man: Miles Morales",
+    "slug": "spider-man-miles-morales",
+    "summary": "A standalone follow-up to Marvel's Spider-Man following Miles Morales, a teenager with bio-electric venom powers and camouflage, protecting Harlem during the holidays. Shorter and more emotionally focused than its predecessor, with a standout soundtrack and neighbourhood-level stakes.",
+    "cover_url": "https://cdn.akamai.steamstatic.com/steam/apps/1817070/capsule_616x353.jpg",
+    "release_date": "2020-11-12",
+    "release_year": 2020,
+    "metrix_score": 85.0,
+    "critic_score": 85.0,
+    "user_score": 93.0,
+    "genres": [
+      "Action",
+      "Adventure",
+      "Open World"
+    ],
+    "platforms": [
+      "PC",
+      "PlayStation 4",
+      "PlayStation 5"
+    ],
+    "developer": "Insomniac Games",
+    "publisher": "Sony Interactive Entertainment",
+    "playtime_minutes": 660,
+    "source_scores": [
+      {
+        "source": "Metacritic",
+        "score": 85,
+        "scale": 100,
+        "status": "live",
+        "review_count": 29
+      },
+      {
+        "source": "OpenCritic",
+        "score": 87,
+        "scale": 100,
+        "status": "live",
+        "review_count": 42
+      },
+      {
+        "source": "Steam",
+        "score": 95,
+        "scale": 100,
+        "status": "live",
+        "review_count": 28000
+      }
+    ]
+  },
+  {
+    "title": "It Takes Two",
+    "slug": "it-takes-two",
+    "summary": "A mandatory co-op platformer about a couple on the verge of divorce, shrunk to doll-size by their daughter's spell. Each chapter reinvents its mechanics around a new theme — time, tool use, emotion, memory — making it the most relentlessly inventive cooperative game made.",
+    "cover_url": "https://cdn.akamai.steamstatic.com/steam/apps/1426210/capsule_616x353.jpg",
+    "release_date": "2021-03-26",
+    "release_year": 2021,
+    "metrix_score": 88.0,
+    "critic_score": 88.0,
+    "user_score": 95.0,
+    "genres": [
+      "Platformer",
+      "Adventure",
+      "Co-op"
+    ],
+    "platforms": [
+      "PC",
+      "PlayStation 4",
+      "PlayStation 5",
+      "Xbox One",
+      "Xbox Series X/S",
+      "Nintendo Switch"
+    ],
+    "developer": "Hazelight Studios",
+    "publisher": "Electronic Arts",
+    "playtime_minutes": 840,
+    "award_count": 5,
+    "award_nominations": 20,
+    "goty_year": 2021,
+    "source_scores": [
+      {
+        "source": "Metacritic",
+        "score": 88,
+        "scale": 100,
+        "status": "live",
+        "review_count": 59
+      },
+      {
+        "source": "OpenCritic",
+        "score": 89,
+        "scale": 100,
+        "status": "live",
+        "review_count": 80
+      },
+      {
+        "source": "Steam",
+        "score": 97,
+        "scale": 100,
+        "status": "live",
+        "review_count": 110000
+      }
+    ]
+  },
+  {
+    "title": "Ori and the Blind Forest",
+    "slug": "ori-and-the-blind-forest",
+    "summary": "A hand-painted Metroidvania following the forest spirit Ori through a dying world. Its escape sequences — where a single failure resets a chain of timed jumps — are among the most intense set pieces in the genre, wrapped in one of the most beautiful visual presentations in any indie game.",
+    "cover_url": "https://cdn.akamai.steamstatic.com/steam/apps/387290/capsule_616x353.jpg",
+    "release_date": "2015-03-11",
+    "release_year": 2015,
+    "metrix_score": 88.0,
+    "critic_score": 88.0,
+    "user_score": 95.0,
+    "genres": [
+      "Platformer",
+      "Metroidvania",
+      "Adventure",
+      "Indie"
+    ],
+    "platforms": [
+      "PC",
+      "Xbox One",
+      "Nintendo Switch"
+    ],
+    "developer": "Moon Studios",
+    "publisher": "Microsoft Studios",
+    "playtime_minutes": 360,
+    "source_scores": [
+      {
+        "source": "Metacritic",
+        "score": 88,
+        "scale": 100,
+        "status": "live",
+        "review_count": 44
+      },
+      {
+        "source": "OpenCritic",
+        "score": 88,
+        "scale": 100,
+        "status": "live",
+        "review_count": 62
+      },
+      {
+        "source": "Steam",
+        "score": 98,
+        "scale": 100,
+        "status": "live",
+        "review_count": 52000
+      }
+    ]
+  },
+  {
+    "title": "What Remains of Edith Finch",
+    "slug": "what-remains-of-edith-finch",
+    "summary": "A walking simulator in which Edith Finch explores her family home and relives the final moments of each family member through brief vignettes. Each one is mechanically distinct — some last seconds, some minutes — and the entire experience achieves more emotional density per hour than almost any other game.",
+    "cover_url": "https://cdn.akamai.steamstatic.com/steam/apps/501300/capsule_616x353.jpg",
+    "release_date": "2017-04-25",
+    "release_year": 2017,
+    "metrix_score": 88.0,
+    "critic_score": 88.0,
+    "user_score": 92.0,
+    "genres": [
+      "Adventure",
+      "Narrative",
+      "Exploration"
+    ],
+    "platforms": [
+      "PC",
+      "PlayStation 4",
+      "Xbox One",
+      "Nintendo Switch"
+    ],
+    "developer": "Giant Sparrow",
+    "publisher": "Annapurna Interactive",
+    "playtime_minutes": 120,
+    "source_scores": [
+      {
+        "source": "Metacritic",
+        "score": 88,
+        "scale": 100,
+        "status": "live",
+        "review_count": 51
+      },
+      {
+        "source": "OpenCritic",
+        "score": 89,
+        "scale": 100,
+        "status": "live",
+        "review_count": 68
+      },
+      {
+        "source": "Steam",
+        "score": 97,
+        "scale": 100,
+        "status": "live",
+        "review_count": 35000
+      }
+    ]
+  },
+  {
+    "title": "Firewatch",
+    "slug": "firewatch",
+    "summary": "A first-person mystery set in the Wyoming wilderness, where fire lookout Henry investigates strange occurrences while speaking over radio with his supervisor Delilah. A love letter to walking simulators that trades length for atmosphere, voice acting, and a forest rendered with unusual warmth.",
+    "cover_url": "https://cdn.akamai.steamstatic.com/steam/apps/383870/capsule_616x353.jpg",
+    "release_date": "2016-02-09",
+    "release_year": 2016,
+    "metrix_score": 81.0,
+    "critic_score": 81.0,
+    "user_score": 78.0,
+    "genres": [
+      "Adventure",
+      "Narrative",
+      "Exploration"
+    ],
+    "platforms": [
+      "PC",
+      "PlayStation 4",
+      "Xbox One",
+      "Nintendo Switch"
+    ],
+    "developer": "Campo Santo",
+    "publisher": "Campo Santo",
+    "playtime_minutes": 240,
+    "source_scores": [
+      {
+        "source": "Metacritic",
+        "score": 81,
+        "scale": 100,
+        "status": "live",
+        "review_count": 47
+      },
+      {
+        "source": "OpenCritic",
+        "score": 81,
+        "scale": 100,
+        "status": "live",
+        "review_count": 64
+      },
+      {
+        "source": "Steam",
+        "score": 88,
+        "scale": 100,
+        "status": "live",
+        "review_count": 58000
+      }
+    ]
+  },
+  {
+    "title": "Pentiment",
+    "slug": "pentiment",
+    "summary": "A narrative adventure set in 16th century Bavaria, following a journeyman artist entangled in a series of murders across twenty-five years. Art direction mimics illuminated manuscripts; text appears in historical typefaces matching each character's education — the most formally inventive Obsidian game.",
+    "cover_url": "https://cdn.akamai.steamstatic.com/steam/apps/1929680/capsule_616x353.jpg",
+    "release_date": "2022-11-15",
+    "release_year": 2022,
+    "metrix_score": 87.0,
+    "critic_score": 87.0,
+    "user_score": 93.0,
+    "genres": [
+      "Adventure",
+      "Narrative",
+      "Mystery",
+      "Historical"
+    ],
+    "platforms": [
+      "PC",
+      "Xbox One",
+      "Xbox Series X/S"
+    ],
+    "developer": "Obsidian Entertainment",
+    "publisher": "Xbox Game Studios",
+    "playtime_minutes": 660,
+    "source_scores": [
+      {
+        "source": "Metacritic",
+        "score": 87,
+        "scale": 100,
+        "status": "live",
+        "review_count": 47
+      },
+      {
+        "source": "OpenCritic",
+        "score": 87,
+        "scale": 100,
+        "status": "live",
+        "review_count": 63
+      },
+      {
+        "source": "Steam",
+        "score": 93,
+        "scale": 100,
+        "status": "live",
+        "review_count": 10000
+      }
+    ]
+  },
+  {
+    "title": "Spiritfarer",
+    "slug": "spiritfarer",
+    "summary": "A cosy management game about ferrying the dead to the afterlife. Each spirit passenger has a story, preferences, and a final request before they move on — the game treats grief as a gentle, repeating process rather than a dramatic event, making it one of the most emotionally resonant indie games of its era.",
+    "cover_url": "https://cdn.akamai.steamstatic.com/steam/apps/972660/capsule_616x353.jpg",
+    "release_date": "2020-08-18",
+    "release_year": 2020,
+    "metrix_score": 85.0,
+    "critic_score": 84.0,
+    "user_score": 94.0,
+    "genres": [
+      "Adventure",
+      "Simulation",
+      "Indie"
+    ],
+    "platforms": [
+      "PC",
+      "PlayStation 4",
+      "Xbox One",
+      "Nintendo Switch"
+    ],
+    "developer": "Thunder Lotus Games",
+    "publisher": "Thunder Lotus Games",
+    "playtime_minutes": 1200,
+    "source_scores": [
+      {
+        "source": "Metacritic",
+        "score": 84,
+        "scale": 100,
+        "status": "live",
+        "review_count": 37
+      },
+      {
+        "source": "OpenCritic",
+        "score": 85,
+        "scale": 100,
+        "status": "live",
+        "review_count": 53
+      },
+      {
+        "source": "Steam",
+        "score": 97,
+        "scale": 100,
+        "status": "live",
+        "review_count": 24000
+      }
+    ]
+  },
+  {
+    "title": "Sea of Stars",
+    "slug": "sea-of-stars",
+    "summary": "A turn-based JRPG prequel to The Messenger, following two Children of the Solstice who harness the power of the sun and moon to fight the alchemist Fleshmancer. Precise timed combat, gorgeous pixel art, and a world shaped by classic 16-bit RPGs — the best homage to Chrono Trigger in years.",
+    "cover_url": "https://cdn.akamai.steamstatic.com/steam/apps/1433320/capsule_616x353.jpg",
+    "release_date": "2023-08-29",
+    "release_year": 2023,
+    "metrix_score": 89.0,
+    "critic_score": 88.0,
+    "user_score": 91.0,
+    "genres": [
+      "RPG",
+      "JRPG",
+      "Indie",
+      "Turn-Based"
+    ],
+    "platforms": [
+      "PC",
+      "PlayStation 4",
+      "PlayStation 5",
+      "Xbox One",
+      "Xbox Series X/S",
+      "Nintendo Switch"
+    ],
+    "developer": "Sabotage Studio",
+    "publisher": "Sabotage Studio",
+    "playtime_minutes": 1440,
+    "source_scores": [
+      {
+        "source": "Metacritic",
+        "score": 88,
+        "scale": 100,
+        "status": "live",
+        "review_count": 52
+      },
+      {
+        "source": "OpenCritic",
+        "score": 89,
+        "scale": 100,
+        "status": "live",
+        "review_count": 72
+      },
+      {
+        "source": "Steam",
+        "score": 91,
+        "scale": 100,
+        "status": "live",
+        "review_count": 32000
+      }
+    ]
+  },
+  {
+    "title": "Lies of P",
+    "slug": "lies-of-p",
+    "summary": "A Soulslike set in a corrupt steampunk Belle Époque, following Pinocchio through a city overrun by berserk puppets. Tight deflection-based combat, a dual-weapon assembly system, and a surprisingly confident narrative make it the best FromSoftware-adjacent game from a Western studio.",
+    "cover_url": "https://cdn.akamai.steamstatic.com/steam/apps/1627720/capsule_616x353.jpg",
+    "release_date": "2023-09-19",
+    "release_year": 2023,
+    "metrix_score": 80.0,
+    "critic_score": 80.0,
+    "user_score": 86.0,
+    "genres": [
+      "Action",
+      "RPG",
+      "Soulslike"
+    ],
+    "platforms": [
+      "PC",
+      "PlayStation 4",
+      "PlayStation 5",
+      "Xbox One",
+      "Xbox Series X/S"
+    ],
+    "developer": "Round8 Studio",
+    "publisher": "Neowiz",
+    "playtime_minutes": 1500,
+    "source_scores": [
+      {
+        "source": "Metacritic",
+        "score": 80,
+        "scale": 100,
+        "status": "live",
+        "review_count": 58
+      },
+      {
+        "source": "OpenCritic",
+        "score": 80,
+        "scale": 100,
+        "status": "live",
+        "review_count": 78
+      },
+      {
+        "source": "Steam",
+        "score": 88,
+        "scale": 100,
+        "status": "live",
+        "review_count": 38000
+      }
+    ]
+  },
+  {
+    "title": "The Last of Us Part II Remastered",
+    "slug": "the-last-of-us-part-2",
+    "summary": "A survival action sequel following Ellie and Abby through the moral wreckage of vengeance. More complex and difficult to love than its predecessor, it uses interleaving perspectives to interrogate what a revenge story does to its characters — the most divisive major release of its era.",
+    "cover_url": "https://cdn.akamai.steamstatic.com/steam/apps/2328620/capsule_616x353.jpg",
+    "release_date": "2020-06-19",
+    "release_year": 2020,
+    "metrix_score": 91.0,
+    "critic_score": 93.0,
+    "user_score": 77.0,
+    "genres": [
+      "Action",
+      "Adventure",
+      "Horror",
+      "Survival"
+    ],
+    "platforms": [
+      "PlayStation 4",
+      "PlayStation 5",
+      "PC"
+    ],
+    "developer": "Naughty Dog",
+    "publisher": "Sony Interactive Entertainment",
+    "playtime_minutes": 1500,
+    "source_scores": [
+      {
+        "source": "Metacritic",
+        "score": 93,
+        "scale": 100,
+        "status": "live",
+        "review_count": 102
+      },
+      {
+        "source": "OpenCritic",
+        "score": 93,
+        "scale": 100,
+        "status": "live",
+        "review_count": 118
+      },
+      {
+        "source": "Steam",
+        "score": 78,
+        "scale": 100,
+        "status": "live",
+        "review_count": 22000
+      }
+    ]
+  },
+  {
+    "title": "Ghostrunner",
+    "slug": "ghostrunner",
+    "summary": "A first-person cyberpunk action game in which a cybernetic ninja climbs a dystopian megacity, killing enemies with one hit and dying in one hit. Its checkpoint-dense level design and kinetic movement encourage mastery through rapid failure, delivering a rhythm that escalates beautifully.",
+    "cover_url": "https://cdn.akamai.steamstatic.com/steam/apps/1235700/capsule_616x353.jpg",
+    "release_date": "2020-10-27",
+    "release_year": 2020,
+    "metrix_score": 81.0,
+    "critic_score": 81.0,
+    "user_score": 91.0,
+    "genres": [
+      "Action",
+      "FPS",
+      "Indie"
+    ],
+    "platforms": [
+      "PC",
+      "PlayStation 4",
+      "PlayStation 5",
+      "Xbox One",
+      "Xbox Series X/S",
+      "Nintendo Switch"
+    ],
+    "developer": "One More Level",
+    "publisher": "505 Games",
+    "playtime_minutes": 420,
+    "source_scores": [
+      {
+        "source": "Metacritic",
+        "score": 81,
+        "scale": 100,
+        "status": "live",
+        "review_count": 34
+      },
+      {
+        "source": "OpenCritic",
+        "score": 81,
+        "scale": 100,
+        "status": "live",
+        "review_count": 47
+      },
+      {
+        "source": "Steam",
+        "score": 91,
+        "scale": 100,
+        "status": "live",
+        "review_count": 32000
+      }
+    ]
+  },
+  {
+    "title": "Deus Ex: Mankind Divided",
+    "slug": "deus-ex-mankind-divided",
+    "summary": "An immersive sim set two years after Human Revolution, in a world where augmented humans are segregated and surveilled. Dense hub areas reward patient exploration, and the augmentation tree allows genuinely different playthroughs — undermined by a story that ends just as it reaches full speed.",
+    "cover_url": "https://cdn.akamai.steamstatic.com/steam/apps/337000/capsule_616x353.jpg",
+    "release_date": "2016-08-23",
+    "release_year": 2016,
+    "metrix_score": 84.0,
+    "critic_score": 84.0,
+    "user_score": 74.0,
+    "genres": [
+      "Action",
+      "RPG",
+      "Stealth",
+      "FPS"
+    ],
+    "platforms": [
+      "PC",
+      "PlayStation 4",
+      "Xbox One"
+    ],
+    "developer": "Eidos-Montréal",
+    "publisher": "Square Enix",
+    "playtime_minutes": 1320,
+    "source_scores": [
+      {
+        "source": "Metacritic",
+        "score": 84,
+        "scale": 100,
+        "status": "live",
+        "review_count": 55
+      },
+      {
+        "source": "OpenCritic",
+        "score": 84,
+        "scale": 100,
+        "status": "live",
+        "review_count": 72
+      },
+      {
+        "source": "Steam",
+        "score": 75,
+        "scale": 100,
+        "status": "live",
+        "review_count": 43000
+      }
+    ]
+  },
+  {
+    "title": "Pyre",
+    "slug": "pyre",
+    "summary": "A sports RPG in which exiled heroes compete in ritualistic three-on-three matches to earn their freedom from Purgatory. Supergiant's most unusual game — a sports game with permanent consequences where losing doesn't end the story, only changes it.",
+    "cover_url": "https://cdn.akamai.steamstatic.com/steam/apps/462770/capsule_616x353.jpg",
+    "release_date": "2017-07-25",
+    "release_year": 2017,
+    "metrix_score": 84.0,
+    "critic_score": 84.0,
+    "user_score": 89.0,
+    "genres": [
+      "RPG",
+      "Sports",
+      "Adventure",
+      "Indie"
+    ],
+    "platforms": [
+      "PC",
+      "PlayStation 4"
+    ],
+    "developer": "Supergiant Games",
+    "publisher": "Supergiant Games",
+    "playtime_minutes": 900,
+    "source_scores": [
+      {
+        "source": "Metacritic",
+        "score": 84,
+        "scale": 100,
+        "status": "live",
+        "review_count": 36
+      },
+      {
+        "source": "OpenCritic",
+        "score": 84,
+        "scale": 100,
+        "status": "live",
+        "review_count": 52
+      },
+      {
+        "source": "Steam",
+        "score": 96,
+        "scale": 100,
+        "status": "live",
+        "review_count": 14000
+      }
+    ]
+  },
+  {
+    "title": "Darkest Dungeon",
+    "slug": "darkest-dungeon",
+    "summary": "A roguelike RPG about managing a roster of stress-afflicted adventurers exploring Lovecraftian dungeons beneath a cursed estate. Permadeath, psychological debuffs, and the narrator's relentless pessimism make failure feel as narratively rich as success.",
+    "cover_url": "https://cdn.akamai.steamstatic.com/steam/apps/262060/capsule_616x353.jpg",
+    "release_date": "2016-01-19",
+    "release_year": 2016,
+    "metrix_score": 84.0,
+    "critic_score": 84.0,
+    "user_score": 91.0,
+    "genres": [
+      "RPG",
+      "Roguelike",
+      "Strategy",
+      "Horror"
+    ],
+    "platforms": [
+      "PC",
+      "PlayStation 4",
+      "PlayStation Vita",
+      "Nintendo Switch",
+      "Xbox One",
+      "iOS"
+    ],
+    "developer": "Red Hook Studios",
+    "publisher": "Red Hook Studios",
+    "playtime_minutes": 2400,
+    "source_scores": [
+      {
+        "source": "Metacritic",
+        "score": 84,
+        "scale": 100,
+        "status": "live",
+        "review_count": 42
+      },
+      {
+        "source": "OpenCritic",
+        "score": 84,
+        "scale": 100,
+        "status": "live",
+        "review_count": 56
+      },
+      {
+        "source": "Steam",
+        "score": 92,
+        "scale": 100,
+        "status": "live",
+        "review_count": 125000
+      }
+    ]
+  },
+  {
+    "title": "Terraria",
+    "slug": "terraria",
+    "summary": "A 2D sandbox action-adventure combining the digging and crafting of Minecraft with the exploration and boss progression of a Metroidvania. Over a decade of free updates have added hundreds of items, biomes, and bosses — a scope that belies its original $9.99 price point.",
+    "cover_url": "https://cdn.akamai.steamstatic.com/steam/apps/105600/capsule_616x353.jpg",
+    "release_date": "2011-05-16",
+    "release_year": 2011,
+    "metrix_score": 83.0,
+    "critic_score": 83.0,
+    "user_score": 97.0,
+    "genres": [
+      "Action",
+      "Adventure",
+      "Building",
+      "Indie"
+    ],
+    "platforms": [
+      "PC",
+      "PlayStation 4",
+      "Xbox One",
+      "Nintendo Switch",
+      "iOS",
+      "Android"
+    ],
+    "developer": "Re-Logic",
+    "publisher": "Re-Logic",
+    "playtime_minutes": 4800,
+    "source_scores": [
+      {
+        "source": "Metacritic",
+        "score": 83,
+        "scale": 100,
+        "status": "live",
+        "review_count": 18
+      },
+      {
+        "source": "IGDB",
+        "score": 83,
+        "scale": 100,
+        "status": "live",
+        "review_count": 380
+      },
+      {
+        "source": "Steam",
+        "score": 99,
+        "scale": 100,
+        "status": "live",
+        "review_count": 620000
+      }
+    ]
+  },
+  {
+    "title": "Undertale",
+    "slug": "undertale",
+    "summary": "A short JRPG where you never have to kill anything. Battles are bullet-hell patterns you can resolve through conversation, mercy, or violence — with a world that remembers every choice across playthroughs. Built by one person in two years, it achieves a level of narrative self-awareness that still feels singular.",
+    "cover_url": "https://cdn.akamai.steamstatic.com/steam/apps/391540/capsule_616x353.jpg",
+    "release_date": "2015-09-15",
+    "release_year": 2015,
+    "metrix_score": 92.0,
+    "critic_score": 92.0,
+    "user_score": 97.0,
+    "genres": [
+      "RPG",
+      "Indie",
+      "Adventure"
+    ],
+    "platforms": [
+      "PC",
+      "Nintendo Switch",
+      "PlayStation 4"
+    ],
+    "developer": "Toby Fox",
+    "publisher": "Toby Fox",
+    "playtime_minutes": 360,
+    "source_scores": [
+      {
+        "source": "Metacritic",
+        "score": 92,
+        "scale": 100,
+        "status": "live",
+        "review_count": 18
+      },
+      {
+        "source": "OpenCritic",
+        "score": 91,
+        "scale": 100,
+        "status": "live",
+        "review_count": 26
+      },
+      {
+        "source": "Steam",
+        "score": 99,
+        "scale": 100,
+        "status": "live",
+        "review_count": 145000
+      }
+    ]
+  },
+  {
+    "title": "The Talos Principle",
+    "slug": "the-talos-principle",
+    "summary": "A first-person puzzle game in a world where a robot explores ancient ruins and wrestles with questions of consciousness, free will, and identity through audio logs and philosophical terminals. The puzzles are excellent; the philosophy is actual philosophy, not just window dressing.",
+    "cover_url": "https://cdn.akamai.steamstatic.com/steam/apps/257510/capsule_616x353.jpg",
+    "release_date": "2014-12-11",
+    "release_year": 2014,
+    "metrix_score": 85.0,
+    "critic_score": 85.0,
+    "user_score": 91.0,
+    "genres": [
+      "Puzzle",
+      "Adventure",
+      "Indie"
+    ],
+    "platforms": [
+      "PC",
+      "PlayStation 4",
+      "Android"
+    ],
+    "developer": "Croteam",
+    "publisher": "Devolver Digital",
+    "playtime_minutes": 1200,
+    "source_scores": [
+      {
+        "source": "Metacritic",
+        "score": 85,
+        "scale": 100,
+        "status": "live",
+        "review_count": 38
+      },
+      {
+        "source": "OpenCritic",
+        "score": 85,
+        "scale": 100,
+        "status": "live",
+        "review_count": 52
+      },
+      {
+        "source": "Steam",
+        "score": 96,
+        "scale": 100,
+        "status": "live",
+        "review_count": 28000
+      }
+    ]
+  },
+  {
+    "title": "Total War: Warhammer III",
+    "slug": "total-war-warhammer-3",
+    "summary": "The concluding chapter of Creative Assembly's Warhammer trilogy, adding Chaos gods, Cathay, Kislev, and the daemon-realm Realm of Chaos to the largest roster of Total War factions assembled. The Immortal Empires combined campaign turns the previous two games' content into one enormous sandbox.",
+    "cover_url": "https://cdn.akamai.steamstatic.com/steam/apps/1142710/capsule_616x353.jpg",
+    "release_date": "2022-02-17",
+    "release_year": 2022,
+    "metrix_score": 79.0,
+    "critic_score": 79.0,
+    "user_score": 71.0,
+    "genres": [
+      "Strategy",
+      "Turn-Based",
+      "Real-Time",
+      "Historical"
+    ],
+    "platforms": [
+      "PC"
+    ],
+    "developer": "Creative Assembly",
+    "publisher": "Sega",
+    "playtime_minutes": 12000,
+    "source_scores": [
+      {
+        "source": "Metacritic",
+        "score": 79,
+        "scale": 100,
+        "status": "live",
+        "review_count": 38
+      },
+      {
+        "source": "OpenCritic",
+        "score": 80,
+        "scale": 100,
+        "status": "live",
+        "review_count": 52
+      },
+      {
+        "source": "Steam",
+        "score": 81,
+        "scale": 100,
+        "status": "live",
+        "review_count": 68000
+      }
+    ]
+  },
+  {
+    "title": "Age of Empires IV",
+    "slug": "age-of-empires-iv",
+    "summary": "A real-time strategy revival of the classic franchise, featuring eight distinct civilisations from the 9th to the 15th century. Asymmetric design gives each civ unique units, mechanics, and documentary-style historical footage unlocked during play.",
+    "cover_url": "https://cdn.akamai.steamstatic.com/steam/apps/1466860/capsule_616x353.jpg",
+    "release_date": "2021-10-28",
+    "release_year": 2021,
+    "metrix_score": 80.0,
+    "critic_score": 80.0,
+    "user_score": 74.0,
+    "genres": [
+      "Strategy",
+      "Real-Time",
+      "Historical"
+    ],
+    "platforms": [
+      "PC",
+      "Xbox Series X/S"
+    ],
+    "developer": "Relic Entertainment",
+    "publisher": "Xbox Game Studios",
+    "playtime_minutes": 9000,
+    "source_scores": [
+      {
+        "source": "Metacritic",
+        "score": 80,
+        "scale": 100,
+        "status": "live",
+        "review_count": 45
+      },
+      {
+        "source": "OpenCritic",
+        "score": 80,
+        "scale": 100,
+        "status": "live",
+        "review_count": 62
+      },
+      {
+        "source": "Steam",
+        "score": 87,
+        "scale": 100,
+        "status": "live",
+        "review_count": 62000
+      }
+    ]
+  },
+  {
+    "title": "Uncharted 4: A Thief's End",
+    "slug": "uncharted-4",
+    "summary": "The concluding chapter of Nathan Drake's treasure-hunting career, pulling him out of retirement for one last heist with his long-lost brother. A cinematic action-adventure combining climbing, gunplay, and chase sequences under some of the best motion-captured character work of its generation.",
+    "cover_url": "https://cdn.akamai.steamstatic.com/steam/apps/1659420/capsule_616x353.jpg",
+    "release_date": "2016-05-10",
+    "release_year": 2016,
+    "metrix_score": 88.0,
+    "critic_score": 93.0,
+    "user_score": 79.0,
+    "genres": [
+      "Action",
+      "Adventure"
+    ],
+    "platforms": [
+      "PC",
+      "PlayStation 4"
+    ],
+    "developer": "Naughty Dog",
+    "publisher": "Sony Interactive Entertainment",
+    "playtime_minutes": 900,
+    "source_scores": [
+      {
+        "source": "Metacritic",
+        "score": 93,
+        "scale": 100,
+        "status": "live",
+        "review_count": 124
+      },
+      {
+        "source": "OpenCritic",
+        "score": 88,
+        "scale": 100,
+        "status": "live",
+        "review_count": 42
+      },
+      {
+        "source": "Steam",
+        "score": 84,
+        "scale": 100,
+        "status": "live",
+        "review_count": 28000
+      }
+    ]
+  },
+  {
+    "title": "Against the Storm",
+    "slug": "against-the-storm",
+    "summary": "A roguelite city-builder where the player establishes settlements for humans, beavers, lizards, harpies, and foxes under constant rain, with the goal of gathering enough resources before the Blightstorm erases the colony. Each run is short enough to restart but deep enough to feel meaningful.",
+    "cover_url": "https://cdn.akamai.steamstatic.com/steam/apps/1336490/capsule_616x353.jpg",
+    "release_date": "2023-12-08",
+    "release_year": 2023,
+    "metrix_score": 87.0,
+    "critic_score": 87.0,
+    "user_score": 95.0,
+    "genres": [
+      "Strategy",
+      "Building",
+      "Roguelike",
+      "Indie"
+    ],
+    "platforms": [
+      "PC"
+    ],
+    "developer": "Eremite Games",
+    "publisher": "Hooded Horse",
+    "playtime_minutes": 3600,
+    "source_scores": [
+      {
+        "source": "Metacritic",
+        "score": 87,
+        "scale": 100,
+        "status": "live",
+        "review_count": 18
+      },
+      {
+        "source": "OpenCritic",
+        "score": 87,
+        "scale": 100,
+        "status": "live",
+        "review_count": 26
+      },
+      {
+        "source": "Steam",
+        "score": 97,
+        "scale": 100,
+        "status": "live",
+        "review_count": 20000
+      }
+    ]
+  },
+  {
+    "title": "Fallout 4",
+    "slug": "fallout-4",
+    "summary": "An open-world RPG set in the post-nuclear Commonwealth of Massachusetts, where the player searches for their kidnapped son while rebuilding settlements across the wasteland. The shift to voiced protagonist and real-time building divided fans who preferred older Fallout dialogue depth.",
+    "cover_url": "https://cdn.akamai.steamstatic.com/steam/apps/377160/capsule_616x353.jpg",
+    "release_date": "2015-11-10",
+    "release_year": 2015,
+    "metrix_score": 87.0,
+    "critic_score": 87.0,
+    "user_score": 71.0,
+    "genres": [
+      "RPG",
+      "Action",
+      "Open World"
+    ],
+    "platforms": [
+      "PC",
+      "PlayStation 4",
+      "Xbox One"
+    ],
+    "developer": "Bethesda Game Studios",
+    "publisher": "Bethesda Softworks",
+    "playtime_minutes": 3600,
+    "source_scores": [
+      {
+        "source": "Metacritic",
+        "score": 87,
+        "scale": 100,
+        "status": "live",
+        "review_count": 63
+      },
+      {
+        "source": "OpenCritic",
+        "score": 85,
+        "scale": 100,
+        "status": "live",
+        "review_count": 81
+      },
+      {
+        "source": "Steam",
+        "score": 79,
+        "scale": 100,
+        "status": "live",
+        "review_count": 360000
+      }
+    ]
+  },
+  {
+    "title": "The Legend of Zelda: Breath of the Wild",
+    "slug": "zelda-breath-of-the-wild",
+    "summary": "An open-world Zelda that gave players unprecedented freedom to explore Hyrule at their own pace. Physics-based puzzle solving, emergent climbing, and a near-total redesign of the franchise formula made it one of the most influential games of its decade.",
+    "cover_url": "https://assets.nintendo.com/image/upload/c_fill,w_1200/q_auto:best/f_auto/dpr_2.0/ncom/en_US/games/switch/t/the-legend-of-zelda-breath-of-the-wild-switch/hero",
+    "release_date": "2017-03-03",
+    "release_year": 2017,
+    "metrix_score": 97.0,
+    "critic_score": 97.0,
+    "user_score": 92.0,
+    "genres": [
+      "Action",
+      "Adventure",
+      "Open World"
+    ],
+    "platforms": [
+      "Nintendo Switch",
+      "Nintendo Wii U"
+    ],
+    "developer": "Nintendo",
+    "publisher": "Nintendo",
+    "playtime_minutes": 3000,
+    "award_count": 10,
+    "award_nominations": 30,
+    "goty_year": 2017,
+    "source_scores": [
+      {
+        "source": "Metacritic",
+        "score": 97,
+        "scale": 100,
+        "status": "live",
+        "review_count": 109
+      },
+      {
+        "source": "OpenCritic",
+        "score": 97,
+        "scale": 100,
+        "status": "live",
+        "review_count": 130
+      },
+      {
+        "source": "IGDB",
+        "score": 95,
+        "scale": 100,
+        "status": "live",
+        "review_count": 420
+      }
+    ]
+  }
+]

@@ -19,6 +19,7 @@ class Settings:
         self.RAPIDAPI_HOST: str = os.getenv(
             "RAPIDAPI_HOST", "opencritic-api.p.rapidapi.com"
         )
+        self.ANTHROPIC_API_KEY: str = os.getenv("ANTHROPIC_API_KEY", "")
         self.ITAD_API_KEY: str = os.getenv("ITAD_API_KEY", "")
         self.STEAM_WEB_API_KEY: str = os.getenv("STEAM_WEB_API_KEY", "")
         self.CHEAPSHARK_USER_AGENT: str = os.getenv(
@@ -47,6 +48,32 @@ class Settings:
         self.RAWG_GAMES_URL: str = os.getenv(
             "RAWG_GAMES_URL", "https://api.rawg.io/api/games"
         )
+        # ── Per-source daily request budgets ─────────────────────────────────
+        # Override these when on a paid API plan.
+        self.OPENCRITIC_DAILY_LIMIT: int = int(os.getenv("OPENCRITIC_DAILY_LIMIT", "4"))
+        self.IGDB_DAILY_LIMIT: int = int(os.getenv("IGDB_DAILY_LIMIT", "400"))
+        self.RAWG_DAILY_LIMIT: int = int(os.getenv("RAWG_DAILY_LIMIT", "600"))
+        self.STEAM_DAILY_LIMIT: int = int(os.getenv("STEAM_DAILY_LIMIT", "300"))
+        self.STEAMSPY_DAILY_LIMIT: int = int(os.getenv("STEAMSPY_DAILY_LIMIT", "300"))
+        # ── Per-source score weights (relative; default 1.0 = equal) ─────────
+        # Higher values increase that source's share of the GameMetrix score.
+        # Example: SCORE_WEIGHT_METACRITIC=2 gives Metacritic double influence.
+        self.SCORE_WEIGHT_METACRITIC: float = float(os.getenv("SCORE_WEIGHT_METACRITIC", "1.0"))
+        self.SCORE_WEIGHT_OPENCRITIC: float = float(os.getenv("SCORE_WEIGHT_OPENCRITIC", "1.0"))
+        self.SCORE_WEIGHT_STEAM: float = float(os.getenv("SCORE_WEIGHT_STEAM", "1.0"))
+        self.SCORE_WEIGHT_IGDB: float = float(os.getenv("SCORE_WEIGHT_IGDB", "1.0"))
+        self.SCORE_WEIGHT_RAWG: float = float(os.getenv("SCORE_WEIGHT_RAWG", "0.7"))
+        self.SCORE_WEIGHT_STEAMSPY: float = float(os.getenv("SCORE_WEIGHT_STEAMSPY", "1.0"))
+        self.SCORE_WEIGHT_CHEAPSHARK: float = float(os.getenv("SCORE_WEIGHT_CHEAPSHARK", "1.0"))
+        self.SCORE_WEIGHT_FREETOGAME: float = float(os.getenv("SCORE_WEIGHT_FREETOGAME", "1.0"))
+        # ── Refresh-all scheduling ────────────────────────────────────────────
+        self.REFRESH_ALL_INTERVAL_HOURS: float = float(
+            os.getenv("REFRESH_ALL_INTERVAL_HOURS", "6")
+        )
+        self.REFRESH_ALL_CONCURRENCY: int = int(os.getenv("REFRESH_ALL_CONCURRENCY", "3"))
+        self.REFRESH_ALL_INTER_GAME_DELAY: float = float(
+            os.getenv("REFRESH_ALL_INTER_GAME_DELAY", "0.3")
+        )
 
     # ── Configured checks — never return raw key values ─────────────────────
 
@@ -58,6 +85,9 @@ class Settings:
 
     def opencritic_configured(self) -> bool:
         return bool(self.RAPIDAPI_KEY)
+
+    def anthropic_configured(self) -> bool:
+        return bool(self.ANTHROPIC_API_KEY)
 
     def itad_configured(self) -> bool:
         return bool(self.ITAD_API_KEY)

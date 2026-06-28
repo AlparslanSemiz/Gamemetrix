@@ -72,9 +72,73 @@ async def get_rawg_metacritic_score(
         source="Metacritic",
         score=float(metacritic),
         detail="Metacritic score via RAWG.",
+        review_count=int(raw_game.get("ratings_count") or raw_game.get("reviews_count") or 0),
         raw={
             "rawg_id": int(raw_game.get("id") or 0),
             "rawg_name": str(raw_game.get("name") or title),
+            "rawg_slug": raw_game.get("slug"),
+            "rawg_url": f"https://rawg.io/games/{raw_game.get('slug')}" if raw_game.get("slug") else None,
+            "response": raw_game,
+        },
+    )
+
+
+async def get_rawg_rating_score(title: str) -> ExternalScore:
+    api_key = get_settings().RAWG_API_KEY
+    if not api_key:
+        return ExternalScore(
+            source="RAWG",
+            score=0,
+            status="unavailable",
+            detail="Set RAWG_API_KEY to enable RAWG rating fallback.",
+        )
+
+    async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT_SEARCH) as client:
+        response = await client.get(
+            _RAWG_GAMES_URL,
+            params={"key": api_key, "search": title, "page_size": 1},
+        )
+        if not response.is_success:
+            return ExternalScore(
+                source="RAWG",
+                score=0,
+                status="unavailable",
+                detail=f"RAWG search HTTP {response.status_code}.",
+            )
+
+    results = response.json().get("results", [])
+    if not results:
+        return ExternalScore(
+            source="RAWG",
+            score=0,
+            status="unavailable",
+            detail="RAWG returned no matching game.",
+        )
+
+    raw_game = results[0]
+    raw_rating = raw_game.get("rating")
+    if raw_rating is None:
+        return ExternalScore(
+            source="RAWG",
+            score=0,
+            status="unavailable",
+            detail="RAWG result has no community rating.",
+            raw={"response": raw_game},
+        )
+
+    score = round(float(raw_rating) * 20, 1)
+    review_count = int(raw_game.get("ratings_count") or raw_game.get("reviews_count") or 0)
+    return ExternalScore(
+        source="RAWG",
+        score=score,
+        review_count=review_count,
+        detail=f"RAWG community rating {raw_rating:.2f}/5 ({review_count} ratings)",
+        raw={
+            "rawg_id": int(raw_game.get("id") or 0),
+            "rawg_name": str(raw_game.get("name") or title),
+            "rawg_slug": raw_game.get("slug"),
+            "rawg_url": f"https://rawg.io/games/{raw_game.get('slug')}" if raw_game.get("slug") else None,
+            "response": raw_game,
         },
     )
 

@@ -15,7 +15,7 @@ class ExternalScore:
     status: SourceStatus = "live"
     detail: str | None = None
     review_count: int = 0
-    raw: dict[str, str | float | int] | None = None
+    raw: dict[str, object] | None = None
 
 
 @dataclass

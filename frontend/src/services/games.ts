@@ -8,7 +8,7 @@ import type {
   TrailerResponse,
 } from '../types/game'
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8002'
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000'
 
 const CURRENT_YEAR = new Date().getFullYear()
 
@@ -47,6 +47,12 @@ export async function getGames(
   return response.json()
 }
 
+export async function getGameBySlug(slug: string): Promise<Game> {
+  const response = await fetch(`${API_BASE_URL}/api/games/${slug}`)
+  if (!response.ok) throw new Error('Game not found')
+  return response.json()
+}
+
 export async function getFacets(): Promise<Facets> {
   const response = await fetch(`${API_BASE_URL}/api/facets`)
   if (!response.ok) throw new Error('Failed to fetch facets')
@@ -73,6 +79,22 @@ export async function getGameTrailer(slug: string): Promise<TrailerResponse> {
   return response.json()
 }
 
+export async function fetchGameScreenshots(slug: string): Promise<Game> {
+  const response = await fetch(`${API_BASE_URL}/api/games/${slug}/fetch-screenshots`, {
+    method: 'POST',
+  })
+  if (!response.ok) throw new Error('Failed to fetch screenshots')
+  return response.json()
+}
+
+export async function fetchGamePrices(slug: string): Promise<Game> {
+  const response = await fetch(`${API_BASE_URL}/api/games/${slug}/fetch-prices`, {
+    method: 'POST',
+  })
+  if (!response.ok) throw new Error('Failed to fetch prices')
+  return response.json()
+}
+
 export async function getScoreWeights(): Promise<ScoreWeightsResponse> {
   const response = await fetch(`${API_BASE_URL}/api/score-weights`)
   if (!response.ok) throw new Error('Failed to fetch score weights')
@@ -88,6 +110,21 @@ export async function updateScoreWeights(
     body: JSON.stringify({ weights }),
   })
   if (!response.ok) throw new Error('Failed to update score weights')
+  return response.json()
+}
+
+export async function getRateLimits(): Promise<Record<string, { remaining: number; limit: number }>> {
+  const response = await fetch(`${API_BASE_URL}/api/rate-limits`)
+  if (!response.ok) throw new Error('Failed to fetch rate limits')
+  return response.json()
+}
+
+export async function refreshAllScores(force = false, concurrency = 3): Promise<{ status: string; message: string }> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/ratings/refresh-all?force=${force}&concurrency=${concurrency}`,
+    { method: 'POST' },
+  )
+  if (!response.ok) throw new Error('Failed to start refresh')
   return response.json()
 }
 

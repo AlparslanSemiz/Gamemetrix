@@ -26,17 +26,20 @@ import {
   Trophy,
   X,
 } from 'lucide-react'
+import { BrowserRouter, Route, Routes } from 'react-router-dom'
 import './App.css'
 import { FilterBar } from './components/FilterBar'
 import { GameCard } from './components/GameCard'
+import { GameDetailPage } from './pages/GameDetailPage'
 import {
   getFacets,
   getGameTrailer,
   getGames,
   getIntegrationStatus,
-  refreshGameScores,
+  getRateLimits,
   getScoreWeights,
   recalculateScores,
+  refreshAllScores,
   updateScoreWeights,
 } from './services/games'
 import { CollectionsProvider } from './state/CollectionsProvider'
@@ -71,31 +74,31 @@ const SIDEBAR_GROUPS: SidebarGroup[] = [
         id: 'best-of-year',
         label: 'Best of the Year',
         icon: Trophy,
-        filters: { sort: 'metrix_score', direction: 'desc' },
+        filters: { sort: 'rank_score', direction: 'desc' },
       },
       {
         id: 'all-time-top',
         label: 'All-Time Top',
         icon: Star,
-        filters: { requireCritic: true, minLiveSources: 2, sort: 'metrix_score', direction: 'desc' },
+        filters: { requireCritic: true, minLiveSources: 2, sort: 'rank_score', direction: 'desc' },
       },
       {
         id: 'critics-pick',
         label: "Critics' Picks",
         icon: Medal,
-        filters: { requireCritic: true, minLiveSources: 1, sort: 'metrix_score', direction: 'desc' },
+        filters: { requireCritic: true, minLiveSources: 1, sort: 'rank_score', direction: 'desc' },
       },
       {
         id: 'goty-winners',
         label: 'GOTY Winners',
         icon: Award,
-        filters: { hasAward: true, sort: 'metrix_score', direction: 'desc' },
+        filters: { hasAward: true, sort: 'rank_score', direction: 'desc' },
       },
       {
         id: 'hidden-gems',
         label: 'Hidden Gems',
         icon: Gem,
-        filters: { minScore: 75, maxRatings: 1500, requireCritic: true, sort: 'metrix_score', direction: 'desc' },
+        filters: { minScore: 75, maxRatings: 1500, requireCritic: true, sort: 'rank_score', direction: 'desc' },
       },
       {
         id: 'most-reviewed',
@@ -112,13 +115,13 @@ const SIDEBAR_GROUPS: SidebarGroup[] = [
         id: 'best-deals',
         label: 'Best Deals',
         icon: Tag,
-        filters: { minScore: 80, minLiveSources: 1, sort: 'metrix_score', direction: 'desc' },
+        filters: { minScore: 80, minLiveSources: 1, sort: 'rank_score', direction: 'desc' },
       },
       {
         id: 'free-games',
         label: 'Free Games',
         icon: Gift,
-        filters: { sort: 'metrix_score', direction: 'desc' },
+        filters: { sort: 'rank_score', direction: 'desc' },
       },
     ],
   },
@@ -152,7 +155,7 @@ const DEFAULT_FILTERS: GameFilters = {
   minLiveSources: 0,
   requireCritic: false,
   hasAward: false,
-  sort: 'metrix_score',
+  sort: 'rank_score',
   direction: 'desc',
 }
 
@@ -193,7 +196,8 @@ const collectionPageMap: Partial<Record<MainPage, CollectionKey>> = {
 }
 
 const sortOptions: Array<{ label: string; value: GameSort }> = [
-  { label: 'GameMetrix Score', value: 'metrix_score' },
+  { label: 'GameMetrix Rank', value: 'rank_score' },
+  { label: 'Raw Score', value: 'metrix_score' },
   { label: 'Date Released', value: 'release_year' },
   { label: 'Critic Rating', value: 'critic_score' },
   { label: 'User Rating', value: 'user_score' },
@@ -214,7 +218,6 @@ function AppContent() {
   const [providerStatuses, setProviderStatuses] = useState<ProviderStatus[]>([])
   const [catalogTotal, setCatalogTotal] = useState(0)
   const [isLoading, setIsLoading] = useState(true)
-  const [refreshingSlug, setRefreshingSlug] = useState<string | null>(null)
   const [trailerGame, setTrailerGame] = useState<Game | null>(null)
   const [trailerVideoId, setTrailerVideoId] = useState<string | null>(null)
   const [isTrailerLoading, setIsTrailerLoading] = useState(false)
@@ -354,19 +357,6 @@ function AppContent() {
 
   const readyProviders = providerStatuses.filter((p) => p.status === 'ready').length
 
-  const handleRefreshScores = async (slug: string) => {
-    setRefreshingSlug(slug)
-    setError(null)
-    try {
-      const refreshed = await refreshGameScores(slug)
-      setGames((prev) => prev.map((g) => (g.slug === slug ? refreshed : g)))
-    } catch {
-      setError('Scores could not be refreshed for this game.')
-    } finally {
-      setRefreshingSlug(null)
-    }
-  }
-
   const handleOpenTrailer = async (game: Game) => {
     setTrailerGame(game)
     setTrailerVideoId(null)
@@ -392,7 +382,7 @@ function AppContent() {
     setActivePage('catalog')
     setActivePreset(preset.id)
     if (preset.id === 'best-of-year') {
-      setFilters({ ...DEFAULT_FILTERS, yearMin: CURRENT_YEAR, yearMax: CURRENT_YEAR, sort: 'metrix_score', direction: 'desc' })
+      setFilters({ ...DEFAULT_FILTERS, yearMin: CURRENT_YEAR, yearMax: CURRENT_YEAR, sort: 'rank_score', direction: 'desc' })
     } else {
       setFilters({ ...DEFAULT_FILTERS, ...preset.filters })
     }
@@ -501,18 +491,19 @@ function AppContent() {
           <section className="utility-panel">
             <h1>{pageTitle}</h1>
             {activePage === 'settings' ? (
-              <ScoreWeightSettings
-                onSaved={() => {
-                  setPendingApply((n) => n + 1)
-                }}
-              />
+              <>
+                <h2 style={{ fontSize: '0.9rem', color: '#6b7280', marginBottom: '6px', marginTop: '16px' }}>Score Weights</h2>
+                <ScoreWeightSettings onSaved={() => { setPendingApply((n) => n + 1) }} />
+                <h2 style={{ fontSize: '0.9rem', color: '#6b7280', marginBottom: '6px', marginTop: '24px' }}>Score Data</h2>
+                <RefreshAllPanel />
+              </>
+            ) : activePage === 'about' ? (
+              <RatingExplainer />
             ) : (
               <p>
                 {activePage === 'login'
                   ? 'Login will connect personal collections across devices. Collections are saved locally for now.'
-                  : activePage === 'alerts'
-                    ? 'Alerts will notify you about new releases, score changes, and watchlist threshold crossings.'
-                    : 'GameMetrix normalizes critic, player, and platform signals into one Bayesian-weighted discovery score.'}
+                  : 'Alerts will notify you about new releases, score changes, and watchlist threshold crossings.'}
               </p>
             )}
           </section>
@@ -682,12 +673,10 @@ function AppContent() {
                   isFavorite={collections.favorites.includes(game.slug)}
                   isLiked={collections.liked.includes(game.slug)}
                   isPlaying={collections.playing.includes(game.slug)}
-                  isRefreshing={refreshingSlug === game.slug}
                   isSeen={collections.seen.includes(game.slug)}
                   isCompleted={collections.completed.includes(game.slug)}
                   isWatchlisted={collections.watchlist.includes(game.slug)}
                   onOpenTrailer={handleOpenTrailer}
-                  onRefresh={handleRefreshScores}
                   onFilterDeveloper={(developer) => {
                     setActivePage('catalog')
                     setFilters((p) => ({ ...p, developer, publisher: '' }))
@@ -767,6 +756,66 @@ function AppContent() {
   )
 }
 
+function RefreshAllPanel() {
+  const [status, setStatus] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [rateLimits, setRateLimits] = useState<Record<string, { remaining: number; limit: number }> | null>(null)
+
+  useEffect(() => {
+    void getRateLimits().then(setRateLimits).catch(() => {})
+  }, [])
+
+  const trigger = async (force: boolean) => {
+    setBusy(true)
+    setStatus(null)
+    try {
+      const { message } = await refreshAllScores(force, 3)
+      setStatus(message)
+      void getRateLimits().then(setRateLimits).catch(() => {})
+    } catch {
+      setStatus('Failed to start refresh.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="score-weight-panel">
+      <p>Scores are fetched automatically every 6 hours. Use the buttons below for manual control.</p>
+      <div style={{ display: 'flex', gap: '10px', marginTop: '12px', flexWrap: 'wrap' }}>
+        <button type="button" className="apply-button" disabled={busy} onClick={() => trigger(false)}>
+          {busy ? 'Starting…' : '⚡ Refresh stale games'}
+        </button>
+        <button type="button" className="apply-button" disabled={busy} onClick={() => trigger(true)}
+          style={{ background: '#dc2626' }}>
+          {busy ? 'Starting…' : '🔄 Force refresh ALL'}
+        </button>
+      </div>
+      {status && <p style={{ marginTop: '10px', color: '#9ca3af', fontSize: '0.82rem' }}>{status}</p>}
+      {rateLimits && (
+        <div style={{ marginTop: '16px' }}>
+          <p style={{ color: '#6b7280', fontSize: '0.78rem', marginBottom: '8px' }}>Today's API budget (resets at midnight):</p>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 20px' }}>
+            {Object.entries(rateLimits).map(([source, { remaining, limit }]) => {
+              const pct = limit > 0 ? (remaining / limit) * 100 : 0
+              const color = remaining === 0 ? '#dc2626' : pct < 20 ? '#f59e0b' : '#22c55e'
+              return (
+                <div key={source} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.79rem' }}>
+                  <span style={{ color: '#9ca3af', minWidth: '88px' }}>{source}</span>
+                  <div style={{ flex: 1, height: '3px', background: '#1f2937', borderRadius: '2px' }}>
+                    <div style={{ height: '100%', width: `${pct}%`, background: color, borderRadius: '2px', transition: 'width 0.3s' }} />
+                  </div>
+                  <span style={{ color, minWidth: '44px', textAlign: 'right' }}>{remaining}/{limit}</span>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function ScoreWeightSettings({ onSaved }: { onSaved: () => void }) {
   const [weights, setWeights] = useState<Record<string, number>>({})
   const [message, setMessage] = useState<string>('Loading score weights…')
@@ -823,11 +872,132 @@ function ScoreWeightSettings({ onSaved }: { onSaved: () => void }) {
   )
 }
 
+function RatingExplainer() {
+  return (
+    <div className="about-rating">
+      <p className="about-lead">
+        GameMetrix pulls scores from multiple independent sources and combines them into one transparent signal.
+        Here's exactly how it works.
+      </p>
+
+      {/* Sources */}
+      <div className="about-block">
+        <h3>Rating sources</h3>
+        <div className="about-source-list">
+          <div className="about-source-row">
+            <div className="about-badges">
+              <span className="about-badge badge-primary">Metacritic</span>
+              <span className="about-badge badge-primary">OpenCritic</span>
+            </div>
+            <span className="about-source-desc">Professional critic reviews — highest signal quality</span>
+          </div>
+          <div className="about-source-row">
+            <div className="about-badges">
+              <span className="about-badge badge-primary">Steam</span>
+              <span className="about-badge badge-primary">IGDB</span>
+            </div>
+            <span className="about-source-desc">Player scores — Steam applies to PC games only</span>
+          </div>
+          <div className="about-source-row">
+            <div className="about-badges">
+              <span className="about-badge badge-secondary">RAWG</span>
+            </div>
+            <span className="about-source-desc">Backup only — fills a missing primary slot at 70% weight</span>
+          </div>
+          <div className="about-source-row">
+            <div className="about-badges">
+              <span className="about-badge badge-support">SteamSpy</span>
+              <span className="about-badge badge-support">CheapShark</span>
+              <span className="about-badge badge-support">FreeToGame</span>
+            </div>
+            <span className="about-source-desc">Support data only — popularity, pricing, availability. Never affect the score.</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Score */}
+      <div className="about-block">
+        <h3>GameMetrix Score</h3>
+        <p>
+          Up to 4 sources averaged with equal weight (25% each). If a primary source
+          is unavailable for a game, RAWG can fill the gap at reduced weight.
+        </p>
+        <div className="about-score-demo">
+          {[['Metacritic', 96], ['OpenCritic', 94], ['Steam', 92], ['IGDB', 90]].map(([src, val]) => (
+            <div key={src as string} className="about-score-row">
+              <span className="about-score-src">{src}</span>
+              <div className="about-score-track">
+                <div className="about-score-fill" style={{ width: `${val}%` }} />
+              </div>
+              <strong>{val}</strong>
+            </div>
+          ))}
+          <div className="about-score-result">
+            <span>GameMetrix Score</span>
+            <span className="about-score-eq">= (96 + 94 + 92 + 90) ÷ 4</span>
+            <strong className="about-score-final">93</strong>
+          </div>
+        </div>
+      </div>
+
+      {/* Rank */}
+      <div className="about-block">
+        <h3>
+          GameMetrix Rank
+          <span className="about-tag">Default sort</span>
+        </h3>
+        <p>
+          A game showing 96 from one source shouldn't outrank Elden Ring with four.
+          Rank shrinks the score toward a neutral baseline (70) based on how much
+          reliable data exists. The card score never changes — only the ordering.
+        </p>
+        <div className="about-strength-table">
+          <div className="about-strength-row">
+            <span className="about-str-badge str-strong">Strong</span>
+            <span className="about-str-desc">3–4 sources, critic + player mix</span>
+            <span className="about-str-example">96 → <strong>96.0</strong></span>
+          </div>
+          <div className="about-strength-row">
+            <span className="about-str-badge str-solid">Solid</span>
+            <span className="about-str-desc">2+ sources or strong single coverage</span>
+            <span className="about-str-example">96 → <strong>93.4</strong></span>
+          </div>
+          <div className="about-strength-row">
+            <span className="about-str-badge str-limited">Limited</span>
+            <span className="about-str-desc">1 source or backup-only data</span>
+            <span className="about-str-example">96 → <strong>86.9</strong></span>
+          </div>
+          <div className="about-strength-row">
+            <span className="about-str-badge str-catalog">Catalog</span>
+            <span className="about-str-desc">No live rating data yet</span>
+            <span className="about-str-example">Excluded from top lists</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Platform fairness */}
+      <div className="about-block">
+        <h3>Platform fairness</h3>
+        <p>
+          Steam is only counted for PC games. A Nintendo exclusive missing Steam is not penalized —
+          its applicable sources are Metacritic, OpenCritic, and IGDB, and full coverage across
+          those three still qualifies as <strong>Data Strong</strong>.
+        </p>
+      </div>
+    </div>
+  )
+}
+
 function App() {
   return (
-    <CollectionsProvider>
-      <AppContent />
-    </CollectionsProvider>
+    <BrowserRouter>
+      <CollectionsProvider>
+        <Routes>
+          <Route path="/game/:slug" element={<GameDetailPage />} />
+          <Route path="*" element={<AppContent />} />
+        </Routes>
+      </CollectionsProvider>
+    </BrowserRouter>
   )
 }
 

@@ -9,16 +9,16 @@ import {
   Share2,
   Star,
   Trophy,
-  Zap,
 } from 'lucide-react'
-import { useState, type CSSProperties, type SyntheticEvent } from 'react'
-import type { Game } from '../types/game'
+import { type CSSProperties, type SyntheticEvent } from 'react'
+import { Link } from 'react-router-dom'
+import type { Game, SourceScore } from '../types/game'
+import type { CollectionKey } from '../state/collections'
 import { PlatformIcons } from './PlatformIcons'
-import { ScoreRing, scoreColor } from './ScoreRing'
+import { ScoreRing, scoreColor, sourceScoreColor } from './ScoreRing'
 
 interface GameCardProps {
   game: Game
-  isRefreshing: boolean
   isFavorite: boolean
   isLiked: boolean
   isPlaying: boolean
@@ -26,18 +26,20 @@ interface GameCardProps {
   isCompleted: boolean
   isWatchlisted: boolean
   compact?: boolean
-  onRefresh: (slug: string) => void
   onOpenTrailer: (game: Game) => void
   onFilterDeveloper: (developer: string) => void
   onFilterGenre: (genre: string) => void
   onFilterPublisher: (publisher: string) => void
   onToggleCollection: (
-    collection: 'watchlist' | 'seen' | 'liked' | 'favorites',
+    collection: CollectionKey,
     slug: string,
   ) => void
 }
 
 const ALL_PRIMARY_SOURCES = new Set(['Metacritic', 'OpenCritic', 'IGDB', 'Steam'])
+const PRIMARY_SOURCE_ORDER = ['Metacritic', 'OpenCritic', 'IGDB', 'Steam'] as const
+// Only RAWG may fill a missing primary rating slot — SteamSpy/CheapShark/FreeToGame are not rating sources
+const SECONDARY_SOURCE_ORDER = ['RAWG'] as const
 
 function sourceUrl(source: string, game: Game): string | null {
   const q = encodeURIComponent(game.title)
@@ -112,20 +114,16 @@ export function GameCard({
   isFavorite,
   isLiked,
   isPlaying,
-  isRefreshing,
   isSeen,
   isCompleted,
   isWatchlisted,
   compact = false,
-  onRefresh,
   onOpenTrailer,
   onFilterDeveloper,
   onFilterGenre,
   onFilterPublisher,
   onToggleCollection,
 }: GameCardProps) {
-  const [expanded, setExpanded] = useState(false)
-
   const ENDLESS_GENRES = new Set([
     'Roguelike', 'Roguelite', 'Rogue-like', 'Rogue-lite', 'Roguelikes', 'Rouge-like',
     'roguelike', 'roguelite', 'rogue-like',
@@ -158,26 +156,36 @@ export function GameCard({
     game.applicable_sources?.length ? game.applicable_sources : Array.from(ALL_PRIMARY_SOURCES),
   )
   const applicableSourceCount = game.applicable_source_count ?? applicableSources.size
-  const primarySourceScores = game.source_scores.filter((source) =>
-    applicableSources.has(source.source),
-  )
-  const auxiliarySources = game.source_scores.filter((source) =>
-    !ALL_PRIMARY_SOURCES.has(source.source) && source.status === 'live',
-  )
-  const auxiliarySourceNames = auxiliarySources
-    .map((source) => source.source)
-    .filter(Boolean)
-    .join(', ')
-  const auxiliarySummary = game.popularity_label
-    ? `Popularity: ${game.popularity_label}${auxiliarySourceNames ? ` · ${auxiliarySourceNames}` : ''}`
-    : auxiliarySourceNames
-      ? `Catalog data: ${auxiliarySourceNames}`
-      : null
+
+  const scoreBySource = new Map(game.source_scores.map((s) => [s.source, s]))
+
+  // Live primary sources applicable to this game
+  const livePrimary = PRIMARY_SOURCE_ORDER
+    .filter((src) => applicableSources.has(src))
+    .map((src) => scoreBySource.get(src))
+    .filter((s): s is SourceScore => s !== undefined && s.status === 'live' && (s.score ?? 0) > 0)
+
+  // Secondary sources with live data — fill slots left by missing primaries
+  const liveSecondary = SECONDARY_SOURCE_ORDER
+    .map((src) => scoreBySource.get(src))
+    .filter((s): s is SourceScore => s !== undefined && s.status === 'live' && (s.score ?? 0) > 0)
+
+  const gapCount = Math.max(0, applicableSourceCount - livePrimary.length)
+  const filledSecondary = liveSecondary.slice(0, gapCount)
+  const displayedSources: SourceScore[] = [...livePrimary, ...filledSecondary]
+
   const confidenceLevel = game.confidence_level ?? 'Limited'
-  const primarySourceCount = game.live_primary_source_count ?? primarySourceScores.filter(
-    (source) => source.status === 'live' && source.score > 0,
-  ).length
+  const primarySourceCount = game.live_primary_source_count ?? livePrimary.length
   const scoreProfile = game.score_profile ?? 'sparse'
+
+  const isRankedLower =
+    game.content_type === 'game' &&
+    game.is_rankable === false &&
+    confidenceLevel !== 'Catalog'
+
+  const confidenceTitle = isRankedLower
+    ? 'Score based on limited source coverage. Ranked lower in default lists until more sources confirm this rating.'
+    : 'Confidence is based on live Metacritic, OpenCritic, IGDB, and Steam coverage.'
 
   const actionButtons = (
     <>
@@ -229,14 +237,6 @@ export function GameCard({
       >
         <Star size={20} aria-hidden="true" />
       </button>
-      <button
-        type="button"
-        title="Refresh live scores"
-        disabled={isRefreshing}
-        onClick={() => onRefresh(game.slug)}
-      >
-        <Zap size={20} aria-hidden="true" />
-      </button>
       <button type="button" title="Copy link" onClick={handleShare}>
         <Share2 size={20} aria-hidden="true" />
       </button>
@@ -268,8 +268,10 @@ export function GameCard({
           </div>
         </div>
         <div className="compact-body">
-          <h3 className="compact-title">{game.title}</h3>
-          <p className="compact-meta">{game.release_year} · {game.genres[0]}</p>
+          <h3 className="compact-title">
+            <Link to={`/game/${game.slug}`} className="game-title-link">{game.title}</Link>
+          </h3>
+          <p className="compact-meta">{game.release_year} · {game.genres.slice(0, 2).join(' · ')}</p>
           {game.developer ? <p className="compact-dev">{game.developer}</p> : null}
           {playtimeFmt ? (
             <p className="compact-hltb">
@@ -337,15 +339,6 @@ export function GameCard({
           <button
             type="button"
             className="compact-secondary"
-            title="Refresh live scores"
-            disabled={isRefreshing}
-            onClick={() => onRefresh(game.slug)}
-          >
-            <Zap size={17} aria-hidden="true" />
-          </button>
-          <button
-            type="button"
-            className="compact-secondary"
             title="Copy link"
             onClick={handleShare}
           >
@@ -375,7 +368,7 @@ export function GameCard({
       {/* Body */}
       <div className="card-body">
         <div className="card-heading">
-          <h3>{game.title}</h3>
+          <h3><Link to={`/game/${game.slug}`} className="game-title-link">{game.title}</Link></h3>
           <span className="card-year">{game.release_year}</span>
           <div className="genre-links" aria-label={`${game.title} genres`}>
             {game.genres.slice(0, 4).map((genre, i, arr) => (
@@ -388,18 +381,9 @@ export function GameCard({
         </div>
 
         <div className="summary-block">
-          <p className={expanded ? 'summary summary-expanded' : 'summary'}>
-            {game.summary}
+          <p className="summary">
+            {game.summary_short ?? game.summary}
           </p>
-          {game.summary.length > 200 ? (
-            <button
-              type="button"
-              className="read-more-button"
-              onClick={() => setExpanded((c) => !c)}
-            >
-              {expanded ? 'Show less' : 'Read more'}
-            </button>
-          ) : null}
         </div>
 
         {/* Developer / Publisher */}
@@ -462,11 +446,12 @@ export function GameCard({
         <ScoreRing score={game.metrix_score} />
 
         <div
-          className={`score-confidence score-confidence-${confidenceLevel.toLowerCase()}`}
-          title="Confidence is based on live Metacritic, OpenCritic, IGDB, and Steam coverage."
+          className={`score-confidence score-confidence-${confidenceLevel.toLowerCase()}${isRankedLower ? ' score-confidence-ranked-lower' : ''}`}
+          title={confidenceTitle}
         >
           <span>Data {confidenceLevel}</span>
           <small>{primarySourceCount}/{applicableSourceCount} applicable · {scoreProfile}</small>
+          {isRankedLower ? <small className="ranked-lower-hint">↓ ranked lower</small> : null}
         </div>
 
         {(game.goty_year || (game.award_count ?? 0) > 0) ? (
@@ -488,40 +473,39 @@ export function GameCard({
         ) : null}
 
         <div className="sources" aria-label={`${game.title} source scores`}>
-          {primarySourceScores.length === 0 ? (
-            <div className="source-empty">Primary ratings pending</div>
+          {displayedSources.length === 0 ? (
+            <div className="source-empty">Ratings pending</div>
           ) : null}
-          {primarySourceScores.map((source) => {
+          {displayedSources.map((source) => {
             const url = sourceUrl(source.source, game)
+            const isSecondary = !ALL_PRIMARY_SOURCES.has(source.source)
+            const sourceLabel = isSecondary && source.source === 'RAWG' ? 'RAWG fill' : source.source
             const nameEl = url ? (
               <a
                 href={url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="source-name source-name-link"
+                className={`source-name source-name-link${isSecondary ? ' source-name-secondary' : ''}`}
+                title={isSecondary ? `${source.source} (secondary source)` : undefined}
               >
-                {source.source}
+                {sourceLabel}
               </a>
             ) : (
-              <span className="source-name">{source.source}</span>
+              <span
+                className={`source-name${isSecondary ? ' source-name-secondary' : ''}`}
+                title={isSecondary ? `${source.source} (secondary source)` : undefined}
+              >
+                {sourceLabel}
+              </span>
             )
-
-            if (source.status === 'unavailable') {
-              return (
-                <div className="source-row source-row-muted" key={source.source}>
-                  {nameEl}
-                  <div className="source-bar" />
-                  <strong>—</strong>
-                </div>
-              )
-            }
 
             const pct = Math.max(0, Math.min(source.score, 100))
             return (
               <div
-                className="source-row"
+                className={`source-row${isSecondary ? ' source-row-secondary' : ''}`}
                 key={source.source}
                 title={source.detail ?? source.refreshed_at ?? source.source}
+                style={{ '--source-color': sourceScoreColor(pct) } as CSSProperties}
               >
                 {nameEl}
                 <div className="source-bar">
@@ -532,11 +516,6 @@ export function GameCard({
             )
           })}
         </div>
-        {auxiliarySummary ? (
-          <div className="aux-source" title="Auxiliary data is not treated as a primary rating source.">
-            {auxiliarySummary}
-          </div>
-        ) : null}
       </div>
 
       {/* Action icon strip */}

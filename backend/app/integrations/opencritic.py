@@ -59,6 +59,8 @@ async def get_opencritic_score(title: str) -> ExternalScore:
 
     async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT, headers=headers) as client:
         search_resp = await client.get(f"{api_base}/game/search", params={"criteria": title})
+        if search_resp.status_code == 429:
+            return _unavailable("OpenCritic rate limit hit (RapidAPI quota exceeded).")
         if not search_resp.is_success:
             return _unavailable(f"OpenCritic search HTTP {search_resp.status_code}.")
 
@@ -89,7 +91,10 @@ async def get_opencritic_score(title: str) -> ExternalScore:
         review_count=num_reviews,
         detail=_build_detail(top_critic, percent, tier, num_reviews),
         raw={
+            "opencritic_id": int(game_id),
             "opencritic_top_critic_score": round(top_critic or 0.0, 1),
             "opencritic_percent_recommended": round(percent or 0.0, 1),
+            "search_response": results,
+            "response": game,
         },
     )

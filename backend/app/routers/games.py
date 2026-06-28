@@ -2,12 +2,14 @@
 Public game endpoints.
 
 Routes:
-  GET  /api/search                       — RAWG-backed title search
-  GET  /api/games                        — paginated, filtered game list
-  GET  /api/games/{slug}                 — single game detail
-  POST /api/games/{slug}/refresh-scores  — trigger manual score refresh
-  GET  /api/games/{slug}/trailer         — YouTube trailer lookup
-  GET  /api/facets                       — genre / year / platform filter options
+  GET  /api/search                          — RAWG-backed title search
+  GET  /api/games                           — paginated, filtered game list
+  GET  /api/games/{slug}                    — single game detail
+  POST /api/games/{slug}/refresh-scores     — trigger manual score refresh
+  POST /api/games/{slug}/fetch-screenshots  — fetch & store Steam screenshots
+  POST /api/games/{slug}/fetch-prices       — fetch & store current price/deal data
+  GET  /api/games/{slug}/trailer            — YouTube trailer lookup
+  GET  /api/facets                          — genre / year / platform filter options
 """
 
 import datetime
@@ -19,7 +21,7 @@ from sqlalchemy.orm import Session
 
 from ..config import get_settings
 from ..database import get_db
-from ..models import Game, infer_content_type
+from ..models import Game, PriceSnapshot, infer_content_type
 from ..schemas import (
     FacetsResponse,
     GameListResponse,
@@ -28,7 +30,11 @@ from ..schemas import (
     SortDirection,
     TrailerResponse,
 )
+from ..integrations.steam import extract_steam_app_id, fetch_steam_screenshots
 from ..integrations.sync import refresh_game_sources
+from ..integrations.rawg import enrich_rawg_game_detail
+from ..integrations.cheapshark_service import cheapshark_service
+from ..integrations.itad_service import itad_service
 from ..integrations.youtube import find_trailer_video_id
 from ..services.game_filter import (
     dedupe_near_duplicates,
@@ -116,7 +122,7 @@ def list_games(
     min_live_sources: int | None = Query(default=None, ge=0, le=10),
     require_critic: bool = False,
     has_award: bool = False,
-    sort: GameSort = "metrix_score",
+    sort: GameSort = "rank_score",
     direction: SortDirection = "desc",
     limit: int = Query(default=120, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
@@ -164,14 +170,18 @@ def _apply_db_sort(query: Select[tuple[Game]], sort: str, direction: str) -> Sel
         return query.order_by(asc(Game.title))
     if sort == "release_year":
         col = desc(Game.release_year) if direction == "desc" else asc(Game.release_year)
-        return query.order_by(col, desc(Game.metrix_score))
+        return query.order_by(col, desc(Game.rank_score))
     if sort == "critic_score":
         col = desc(Game.critic_score) if direction == "desc" else asc(Game.critic_score)
         return query.order_by(col)
     if sort == "user_score":
         col = desc(Game.user_score) if direction == "desc" else asc(Game.user_score)
         return query.order_by(col)
-    col = desc(Game.metrix_score) if direction == "desc" else asc(Game.metrix_score)
+    if sort == "metrix_score":
+        col = desc(Game.metrix_score) if direction == "desc" else asc(Game.metrix_score)
+        return query.order_by(col)
+    # Default (rank_score) — reliability-weighted ranking
+    col = desc(Game.rank_score) if direction == "desc" else asc(Game.rank_score)
     return query.order_by(col)
 
 
@@ -209,10 +219,15 @@ def _apply_in_memory_filters(
 
 
 @router.get("/api/games/{slug}", response_model=GameRead)
-def get_game(slug: str, db: Session = Depends(get_db)) -> Game:
+async def get_game(slug: str, db: Session = Depends(get_db)) -> Game:
     game = db.scalar(select(Game).where(Game.slug == slug))
     if game is None:
         raise HTTPException(status_code=404, detail="Game not found")
+    if not game.metadata_refreshed_at:
+        try:
+            await enrich_rawg_game_detail(db, game)
+        except Exception:
+            pass
     return game
 
 
@@ -222,6 +237,96 @@ async def refresh_game_scores(slug: str, db: Session = Depends(get_db)) -> Game:
     if game is None:
         raise HTTPException(status_code=404, detail="Game not found")
     return await refresh_game_sources(db, game)
+
+
+@router.post("/api/games/{slug}/fetch-screenshots", response_model=GameRead)
+async def fetch_game_screenshots(slug: str, db: Session = Depends(get_db)) -> Game:
+    game = db.scalar(select(Game).where(Game.slug == slug))
+    if game is None:
+        raise HTTPException(status_code=404, detail="Game not found")
+
+    app_id = extract_steam_app_id(game.cover_url, game.image_url, game.slug)
+    if app_id is None:
+        raise HTTPException(status_code=422, detail="No Steam App ID found for this game.")
+
+    screenshots = await fetch_steam_screenshots(app_id)
+    if screenshots:
+        game.screenshots = screenshots
+        db.commit()
+        db.refresh(game)
+
+    return game
+
+
+@router.post("/api/games/{slug}/fetch-prices", response_model=GameRead)
+async def fetch_game_prices(slug: str, db: Session = Depends(get_db)) -> Game:
+    game = db.scalar(select(Game).where(Game.slug == slug))
+    if game is None:
+        raise HTTPException(status_code=404, detail="Game not found")
+
+    await _fetch_and_store_prices(db, game)
+    db.refresh(game)
+    return game
+
+
+async def _fetch_and_store_prices(db: Session, game: Game) -> int:
+    if game.price_snapshots:
+        return 0
+
+    now = datetime.datetime.now(datetime.UTC)
+    created = 0
+    app_id = extract_steam_app_id(game.cover_url, game.image_url, game.slug)
+
+    if itad_service.is_configured():
+        price_data = await itad_service.fetch_price_data(game.title, steam_appid=app_id)
+        if price_data:
+            db.add(PriceSnapshot(
+                game_id=game.id,
+                source="ITAD",
+                store=price_data.store or "Best tracked PC store",
+                platform="PC",
+                region="EU",
+                currency=price_data.currency,
+                list_price=price_data.list_price,
+                sale_price=price_data.sale_price,
+                discount_percent=price_data.discount_percent,
+                historical_low=price_data.historical_low,
+                historical_low_date=price_data.historical_low_date,
+                is_free=price_data.is_free,
+                is_subscription_included=price_data.is_subscription_included,
+                subscription_service=price_data.subscription_service,
+                itad_id=price_data.itad_id,
+                fetched_at=now,
+                created_at=now,
+            ))
+            created += 1
+
+    deals = await cheapshark_service.search_deals(game.title, limit=8)
+    if deals:
+        best = min(deals, key=lambda d: float(d.get("salePrice", 9999)))
+        normalized = cheapshark_service.normalize_deal(best)
+        deal_id = normalized.raw.get("cs_deal_id")
+        db.add(PriceSnapshot(
+            game_id=game.id,
+            source="CheapShark",
+            external_price_id=str(deal_id) if deal_id else None,
+            store=str(normalized.raw.get("store_name") or "PC store"),
+            platform="PC",
+            region="US",
+            currency=normalized.currency,
+            list_price=normalized.list_price,
+            sale_price=normalized.sale_price,
+            discount_percent=int(normalized.raw.get("savings_pct", 0) or 0),
+            url=f"https://www.cheapshark.com/redirect?dealID={deal_id}" if deal_id else None,
+            raw_payload=normalized.raw,
+            fetched_at=now,
+            created_at=now,
+        ))
+        created += 1
+
+    if created:
+        db.commit()
+    return created
 
 
 @router.get("/api/games/{slug}/trailer", response_model=TrailerResponse)

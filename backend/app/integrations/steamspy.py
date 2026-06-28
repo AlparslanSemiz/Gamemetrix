@@ -5,14 +5,48 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..models import Game, infer_content_type
+from .types import ExternalScore
 
 
 STEAMSPY_URL = "https://steamspy.com/api.php"
 
 _HTTP_TIMEOUT = 30
+_SINGLE_TIMEOUT = 10
 _DEFAULT_SCORE_FLOOR = 60.0
 _SCORE_POPULAR_GENRE = 72.0
 _SCORE_DEFAULT = 68.0
+
+
+async def get_steamspy_score(app_id: int) -> ExternalScore:
+    """Fetch positive/negative vote counts for a single Steam app and return a 0-100 score."""
+    try:
+        async with httpx.AsyncClient(timeout=_SINGLE_TIMEOUT) as client:
+            response = await client.get(
+                STEAMSPY_URL,
+                params={"request": "appdetails", "appid": app_id},
+                headers={"User-Agent": "GameMetrix/0.1"},
+            )
+            response.raise_for_status()
+        data = response.json()
+    except Exception as exc:
+        return ExternalScore(source="SteamSpy", score=0, status="unavailable",
+                             detail=f"SteamSpy request failed: {exc}")
+
+    positive = int(data.get("positive") or 0)
+    negative = int(data.get("negative") or 0)
+    total = positive + negative
+    if total == 0:
+        return ExternalScore(source="SteamSpy", score=0, status="unavailable",
+                             detail="SteamSpy returned no review counts.")
+
+    score = round((positive / total) * 100, 1)
+    return ExternalScore(
+        source="SteamSpy",
+        score=score,
+        review_count=total,
+        detail=f"SteamSpy: {positive:,} positive / {negative:,} negative ({score:.0f}%)",
+        raw={"steam_app_id": app_id},
+    )
 
 
 def _slugify(value: str, suffix: str) -> str:

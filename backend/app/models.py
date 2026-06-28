@@ -9,18 +9,22 @@ from .integrations.source_registry import (
     CRITIC_SOURCES,
     PC_PLATFORM_KEYS,
     PRIMARY_SOURCES as PRIMARY_RATING_SOURCES,
+    RATING_SOURCES,
     USER_RATING_SOURCES,
     applicable_for_game,
 )
 # Confidence level thresholds
 _STRONG_MIN_REVIEWS = 500
+_SOLID_MIN_REVIEWS = 100
 _SOLID_CRITIC_MIN_REVIEWS = 50
-_SOLID_USER_MIN_REVIEWS = 25_000
+_LIMITED_MIN_REVIEWS = 1
 
 # Popularity label thresholds (total review count)
+_POPULARITY_PHENOMENON = 500_000
 _POPULARITY_VERY_HIGH = 100_000
-_POPULARITY_HIGH = 20_000
+_POPULARITY_HIGH = 25_000
 _POPULARITY_MEDIUM = 5_000
+_POPULARITY_LOW = 500
 
 SOFTWARE_GENRE_TERMS = {
     "animation",
@@ -70,14 +74,20 @@ class Game(Base):
     title: Mapped[str] = mapped_column(String(160), nullable=False, index=True)
     slug: Mapped[str] = mapped_column(String(180), unique=True, nullable=False, index=True)
     summary: Mapped[str] = mapped_column(Text, nullable=False)
+    summary_short: Mapped[str | None] = mapped_column(Text, nullable=True)
     cover_url: Mapped[str] = mapped_column(String(500), nullable=False)
     release_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
     release_year: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    early_access_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    official_release_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     metacritic_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
     image_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     ratings_refreshed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    metadata_refreshed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     content_type: Mapped[str] = mapped_column(String(40), nullable=False, default="game")
     metrix_score: Mapped[float] = mapped_column(Float, nullable=False, index=True)
+    rank_score: Mapped[float] = mapped_column(Float, nullable=False, default=0.0, index=True)
+    is_rankable: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     critic_score: Mapped[float] = mapped_column(Float, nullable=False)
     user_score: Mapped[float] = mapped_column(Float, nullable=False)
     genres: Mapped[list[str]] = mapped_column(JSON, nullable=False)
@@ -92,6 +102,10 @@ class Game(Base):
     award_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     award_nominations: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     goty_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    screenshots: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    system_requirements: Mapped[list[dict]] = mapped_column(JSON, nullable=False, default=list)
+    dlcs: Mapped[list[dict]] = mapped_column(JSON, nullable=False, default=list)
+    similar_games: Mapped[list[dict]] = mapped_column(JSON, nullable=False, default=list)
 
     price_snapshots: Mapped[list["PriceSnapshot"]] = relationship("PriceSnapshot", back_populates="game", cascade="all, delete-orphan", lazy="select")
 
@@ -126,41 +140,66 @@ class Game(Base):
     def confidence_level(self) -> str:
         applicable = self.applicable_primary_sources
         applicable_user = applicable & USER_RATING_SOURCES
+
+        live_rating_entries = [
+            s for s in self.source_scores
+            if s.get("status") == "live"
+            and float(s.get("score", 0)) > 0
+            and str(s.get("source")) in RATING_SOURCES
+        ]
+        live_sources: set[str] = {str(s.get("source")) for s in live_rating_entries}
+        live_primary = live_sources & applicable
+        live_critic = live_primary & CRITIC_SOURCES
+        live_user = live_primary & applicable_user
         total_reviews = sum(
             int(s.get("review_count", 0))
-            for s in self.source_scores
-            if s.get("source") in applicable and s.get("status") == "live"
+            for s in live_rating_entries
         )
-        has_critic = any(
-            s.get("source") in CRITIC_SOURCES
-            and s.get("status") == "live"
-            and float(s.get("score", 0)) > 0
-            for s in self.source_scores
-        )
-        has_user = any(
-            s.get("source") in applicable_user
-            and s.get("status") == "live"
-            and float(s.get("score", 0)) > 0
-            for s in self.source_scores
-        )
-        if has_critic and has_user and total_reviews >= _STRONG_MIN_REVIEWS:
+
+        if (
+            len(live_primary) >= min(3, len(applicable))
+            and live_critic
+            and live_user
+            and total_reviews >= _STRONG_MIN_REVIEWS
+        ):
             return "Strong"
-        if has_critic and has_user:
+        if live_critic and live_user and len(live_primary) >= 2 and total_reviews >= _SOLID_MIN_REVIEWS:
             return "Solid"
-        if has_critic and total_reviews >= _SOLID_CRITIC_MIN_REVIEWS:
+        if len(live_critic) >= 2 and total_reviews >= _SOLID_CRITIC_MIN_REVIEWS:
             return "Solid"
-        if total_reviews >= _SOLID_USER_MIN_REVIEWS:
+        if len(live_primary) >= 3:
             return "Solid"
-        if has_critic or has_user:
+        if live_primary and total_reviews >= _LIMITED_MIN_REVIEWS:
+            return "Limited"
+        if "RAWG" in live_sources:
             return "Limited"
         return "Catalog"
+
+    @property
+    def data_strength(self) -> str:
+        _map = {"Strong": "DATA_STRONG", "Solid": "DATA_SOLID", "Limited": "DATA_LIMITED", "Catalog": "CATALOG_ONLY"}
+        return _map.get(self.confidence_level, "CATALOG_ONLY")
+
+    @property
+    def rank_exclusion_reason(self) -> str | None:
+        if self.content_type != "game":
+            return "not_rankable_content_type"
+        if self.is_rankable:
+            return None
+        if self.confidence_level == "Catalog":
+            return "catalog_only"
+        if self.confidence_level == "Limited":
+            return "insufficient_rating_data"
+        return None
 
     @property
     def score_profile(self) -> str:
         live_sources = {
             str(s.get("source"))
             for s in self.source_scores
-            if s.get("status") == "live" and float(s.get("score", 0)) > 0
+            if s.get("status") == "live"
+            and float(s.get("score", 0)) > 0
+            and str(s.get("source")) in RATING_SOURCES
         }
         has_critic = bool(live_sources & CRITIC_SOURCES)
         has_user = bool(live_sources & USER_RATING_SOURCES)
@@ -174,16 +213,22 @@ class Game(Base):
 
     @property
     def popularity_label(self) -> str | None:
-        for s in self.source_scores:
-            if s.get("source") not in {"Steam", "SteamSpy"}:
-                continue
-            count = int(s.get("review_count", 0))
-            if count >= _POPULARITY_VERY_HIGH:
-                return "Very High"
-            if count >= _POPULARITY_HIGH:
-                return "High"
-            if count >= _POPULARITY_MEDIUM:
-                return "Medium"
+        count = sum(
+            int(s.get("review_count", 0))
+            for s in self.source_scores
+            if s.get("status") == "live"
+            and str(s.get("source")) in RATING_SOURCES
+        )
+        if count >= _POPULARITY_PHENOMENON:
+            return "Phenomenon"
+        if count >= _POPULARITY_VERY_HIGH:
+            return "Very High"
+        if count >= _POPULARITY_HIGH:
+            return "High"
+        if count >= _POPULARITY_MEDIUM:
+            return "Medium"
+        if count >= _POPULARITY_LOW:
+            return "Niche"
         return None
 
 

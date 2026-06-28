@@ -1,13 +1,15 @@
 """
 Centralized rating source registry.
 
-Every rating source — past, present, and planned — is defined here.
-sync.py, admin health checks, and the GameCard all derive their source
-lists from this registry rather than hardcoding strings in multiple places.
+Source taxonomy:
+  Primary rating   — Metacritic, OpenCritic, IGDB, Steam
+  Secondary rating — RAWG (fills missing primary slots at lower weight)
+  Popularity       — SteamSpy (ownership / player activity; never a rating)
+  Price            — CheapShark, ITAD (deals / value; never a rating)
+  Metadata         — FreeToGame (catalog / availability; never a rating)
 
-SteamSpy is deliberately excluded from rating sources (popularity/market only).
-Pricing sources (ITAD, CheapShark) are registered for health checks but carry
-zero rating weight and never enter the GameMetrix Score calculation.
+Only primary + secondary sources contribute to GameMetrix Score.
+Weight 0.0 guarantees a source never enters the score calculation.
 """
 
 from dataclasses import dataclass
@@ -81,21 +83,11 @@ REGISTRY: dict[str, SourceDef] = {
         prior_count=150,
         display_priority=5,
     ),
-    # ── Non-rating sources ──────────────────────────────────────────────────
+    # ── Non-rating support sources — weight 0.0, never enter GameMetrix Score ─
     "SteamSpy": SourceDef(
         key="SteamSpy",
         display_name="SteamSpy",
-        source_type="popularity",  # NOT a rating source
-        weight=0.0,
-        is_primary=False,
-        requires_pc=True,
-        prior_count=400,
-        display_priority=99,
-    ),
-    "ITAD": SourceDef(
-        key="ITAD",
-        display_name="IsThereAnyDeal",
-        source_type="price",
+        source_type="popularity",
         weight=0.0,
         is_primary=False,
         requires_pc=True,
@@ -122,7 +114,20 @@ REGISTRY: dict[str, SourceDef] = {
         prior_count=0,
         display_priority=99,
     ),
+    "ITAD": SourceDef(
+        key="ITAD",
+        display_name="IsThereAnyDeal",
+        source_type="price",
+        weight=0.0,
+        is_primary=False,
+        requires_pc=True,
+        prior_count=0,
+        display_priority=99,
+    ),
 }
+
+# Sources that may provide a quality rating score (primary + RAWG secondary)
+RATING_SOURCES: frozenset[str] = frozenset({"Metacritic", "OpenCritic", "IGDB", "Steam", "RAWG"})
 
 # Convenience sets (immutable)
 PRIMARY_SOURCES: frozenset[str] = frozenset(

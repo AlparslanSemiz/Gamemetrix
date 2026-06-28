@@ -11,7 +11,9 @@ Routes:
   POST /api/metadata/enrich-summaries    — enrich weak/placeholder summaries
 """
 
-from fastapi import APIRouter, Depends, Query
+import asyncio
+
+from fastapi import APIRouter, BackgroundTasks, Depends, Query
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
@@ -26,11 +28,13 @@ from ..schemas import (
     ScoreWeightsUpdate,
 )
 from ..integrations.provider_status import get_provider_statuses
+from ..integrations.rate_limiter import get_rate_limiter
 from ..integrations.sync import SOURCE_WEIGHTS, calculate_metrix_score, refresh_game_sources
 from ..integrations.rawg_score import get_rawg_game_metadata
-from ..services.background import fix_year_batch, rating_refresh_candidates
+from ..services.background import fix_year_batch, rating_refresh_candidates, refresh_all_games
 from ..services.metadata import summary_needs_enrichment
 from ..services.rawg_import import apply_rawg_metadata
+from ..services.summarizer import shorten_summary_batch
 
 router = APIRouter(tags=["ratings"])
 
@@ -75,11 +79,40 @@ async def enrich_ratings(
     return {"enriched": enriched, "skipped": 0}
 
 
+@router.get("/api/rate-limits")
+def get_rate_limit_status() -> dict[str, dict[str, int]]:
+    """Remaining daily request budget per source. Resets at midnight."""
+    return get_rate_limiter().status()
+
+
+@router.post("/api/ratings/refresh-all")
+async def refresh_all_scores(
+    background_tasks: BackgroundTasks,
+    force: bool = Query(default=False),
+    concurrency: int = Query(default=3, ge=1, le=8),
+) -> dict[str, str]:
+    """
+    Trigger a full refresh of every game's scores in the background.
+    Returns immediately; refresh runs concurrently with the given semaphore size.
+    """
+    background_tasks.add_task(asyncio.ensure_future, refresh_all_games(concurrency=concurrency, force=force))
+    return {"status": "started", "message": f"Refreshing all games (concurrency={concurrency}, force={force})"}
+
+
 @router.post("/api/metadata/fix-years", response_model=MetadataFixResponse)
 async def fix_missing_years(
     limit: int = Query(default=100, ge=1, le=500),
 ) -> dict[str, int]:
     return await fix_year_batch(limit)
+
+
+@router.post("/api/metadata/shorten-summaries", response_model=MetadataFixResponse)
+async def shorten_summaries(
+    limit: int = Query(default=50, ge=1, le=500),
+    db: Session = Depends(get_db),
+) -> dict[str, int]:
+    result = await shorten_summary_batch(db, limit)
+    return {"fixed": result["shortened"], "skipped": result["skipped"]}
 
 
 @router.post("/api/metadata/enrich-summaries", response_model=MetadataFixResponse)
