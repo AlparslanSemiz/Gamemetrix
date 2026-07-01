@@ -1,17 +1,40 @@
-import { useEffect, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+/* eslint-disable react-hooks/set-state-in-effect */
+import { type CSSProperties, useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { ExternalLink } from 'lucide-react'
-import { fetchGamePrices, fetchGameScreenshots, getGameBySlug, getGameTrailer, refreshGameScores } from '../services/games'
-import { ScoreRing, scoreColor, sourceScoreColor } from '../components/ScoreRing'
+import { fetchGamePrices, fetchGameScreenshots, getGameBySlug, getGameTrailer, getGames, refreshGameScores } from '../services/games'
+import { ScoreRing } from '../components/ScoreRing'
 import { PlatformIcons } from '../components/PlatformIcons'
-import type { Game, PriceSnapshot, RelatedGame, SourceScore, SystemRequirement } from '../types/game'
+import { scoreColor, scoreColorRgb, sourceScoreColor } from '../utils/scoreColors'
+import type { Game, GameFilters, PriceSnapshot, SourceScore, SystemRequirement } from '../types/game'
 import './GameDetailPage.css'
 
 // The 4 core quality sources shown in the main rating block
+const CURRENT_YEAR = new Date().getFullYear()
 const PRIMARY_4 = ['Metacritic', 'OpenCritic', 'Steam', 'IGDB'] as const
 // Extra sources shown in the secondary tab
 const EXTRA_SOURCES = ['RAWG', 'SteamSpy', 'CheapShark', 'FreeToGame'] as const
 const RATING_SOURCES = ['Metacritic', 'OpenCritic', 'Steam', 'IGDB', 'RAWG'] as const
+
+const SIMILAR_DEFAULT_FILTERS: GameFilters = {
+  q: '',
+  genre: '',
+  platform: '',
+  developer: '',
+  publisher: '',
+  yearMin: 1970,
+  yearMax: CURRENT_YEAR,
+  minScore: 0,
+  maxScore: 100,
+  minRatings: 0,
+  maxRatings: 0,
+  minLiveSources: 0,
+  requireCritic: false,
+  hasAward: false,
+  sort: 'rank_score',
+  direction: 'desc',
+}
 
 function sourceExternalUrl(source: string, game: Game): string | null {
   const q = encodeURIComponent(game.title)
@@ -42,7 +65,7 @@ function SourceRow({ s, game, filler = false }: { s: SourceScore; game: Game; fi
     <div
       className={`dp-src-row${filler ? ' dp-src-row-secondary' : ''}`}
       title={s.detail ?? s.source}
-      style={{ '--source-color': sourceScoreColor(pct) } as React.CSSProperties}
+      style={{ '--source-color': sourceScoreColor(pct) } as CSSProperties}
     >
       {nameEl}
       <div className="dp-src-bar"><span className="dp-src-fill" style={{ width: `${pct}%` }} /></div>
@@ -171,34 +194,145 @@ function PricePanel({ prices }: { prices: PriceSnapshot[] }) {
   )
 }
 
-function RelatedStrip({ title, items }: { title: string; items: RelatedGame[] }) {
-  if (items.length === 0) return null
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+function displayDlcTitle(gameTitle: string, dlcTitle: string) {
+  const cleaned = dlcTitle
+    .replace(new RegExp(`^${escapeRegExp(gameTitle)}\\s*[-:–—]\\s*`, 'i'), '')
+    .trim()
+  return cleaned || dlcTitle
+}
+
+function DlcSection({ game }: { game: Game }) {
+  if (game.dlcs.length === 0) return null
   return (
-    <div className="dp-related-block">
-      <h3 className="dp-section-title">{title}</h3>
-      <div className="dp-related-grid">
-        {items.slice(0, 8).map((item) => {
-          const card = (
+    <section className="dp-dlc-section" aria-labelledby="dlc-title">
+      <div className="dp-similar-heading">
+        <h2 id="dlc-title">DLCs & expansions</h2>
+        <small>{game.dlcs.length} add-ons</small>
+      </div>
+      <div className="dp-dlc-grid">
+        {game.dlcs.slice(0, 12).map((item) => {
+          const score = item.metacritic_score ?? (item.rating ? Math.round(item.rating * 20) : null)
+          const title = displayDlcTitle(game.title, item.title)
+          const accentScore = Math.round(score ?? game.rank_score)
+          const cardStyle = {
+            '--score-color': scoreColor(accentScore),
+            '--score-rgb': scoreColorRgb(accentScore),
+          } as CSSProperties
+          const body = (
             <>
-              {item.cover_url && <img src={item.cover_url} alt="" loading="lazy" />}
-              <div className="dp-related-info">
-                <strong>{item.title}</strong>
-                <span>{item.release_year && item.release_year > 1970 ? item.release_year : 'TBA'}</span>
+              <div className="dp-dlc-cover">
+                {item.cover_url ? <img src={item.cover_url} alt="" loading="lazy" /> : null}
+                {score ? (
+                  <span
+                    className="dp-similar-score"
+                    style={{ '--score-color': scoreColor(Math.round(score)) } as CSSProperties}
+                  >
+                    {Math.round(score)}
+                  </span>
+                ) : null}
+              </div>
+              <div className="dp-dlc-body">
+                <span>{item.type ? item.type.toUpperCase() : 'DLC'}</span>
+                <strong title={item.title}>{title}</strong>
+                <small>{item.release_year && item.release_year > 1970 ? item.release_year : 'Release date not tracked'}</small>
               </div>
             </>
           )
           return item.url ? (
-            <a key={`${item.title}-${item.id ?? item.slug ?? ''}`} href={item.url} target="_blank" rel="noreferrer" className="dp-related-card">
-              {card}
+            <a
+              key={`${item.title}-${item.id ?? item.slug ?? ''}`}
+              href={item.url}
+              target="_blank"
+              rel="noreferrer"
+              className="dp-dlc-card"
+              style={cardStyle}
+            >
+              {body}
             </a>
           ) : (
-            <div key={`${item.title}-${item.id ?? item.slug ?? ''}`} className="dp-related-card">
-              {card}
+            <div key={`${item.title}-${item.id ?? item.slug ?? ''}`} className="dp-dlc-card" style={cardStyle}>
+              {body}
             </div>
           )
         })}
       </div>
-    </div>
+    </section>
+  )
+}
+
+function SimilarGamesSection({
+  game,
+  catalogGames,
+}: {
+  game: Game
+  catalogGames: Game[]
+}) {
+  const rawgItems = game.similar_games.filter((item) => item.title !== game.title)
+  const catalogItems = catalogGames.filter((item) => item.slug !== game.slug)
+  const hasItems = rawgItems.length > 0 || catalogItems.length > 0
+  if (!hasItems) return null
+
+  return (
+    <section className="dp-similar-section" aria-labelledby="similar-games-title">
+      <div className="dp-similar-heading">
+        <h2 id="similar-games-title">Games like {game.title}</h2>
+      </div>
+      <div className="dp-similar-grid">
+        {catalogItems.slice(0, 10).map((item) => (
+          <Link
+            key={item.slug}
+            to={`/game/${item.slug}`}
+            className="dp-similar-card"
+          >
+            <div className="dp-similar-cover">
+              {item.cover_url || item.image_url ? (
+                <img src={item.cover_url || item.image_url || ''} alt="" loading="lazy" />
+              ) : null}
+              <span
+                className="dp-similar-score"
+                style={{ '--score-color': scoreColor(Math.round(item.metrix_score)) } as CSSProperties}
+              >
+                {Math.round(item.metrix_score)}
+              </span>
+            </div>
+            <div className="dp-similar-body">
+              <PlatformIcons platforms={item.platforms} mode="compact" maxVisible={5} />
+              <strong>{item.title}</strong>
+              <span>{item.release_year > 1970 ? item.release_year : 'TBA'}</span>
+            </div>
+          </Link>
+        ))}
+        {catalogItems.length < 8 && rawgItems.slice(0, 8 - catalogItems.length).map((item) => (
+          <a
+            key={`${item.title}-${item.id ?? item.slug ?? ''}`}
+            href={item.url ?? '#'}
+            target={item.url ? '_blank' : undefined}
+            rel={item.url ? 'noreferrer' : undefined}
+            className="dp-similar-card"
+          >
+            <div className="dp-similar-cover">
+              {item.cover_url ? <img src={item.cover_url} alt="" loading="lazy" /> : null}
+              {item.metacritic_score ? (
+                <span
+                  className="dp-similar-score"
+                  style={{ '--score-color': scoreColor(Math.round(item.metacritic_score)) } as CSSProperties}
+                >
+                  {Math.round(item.metacritic_score)}
+                </span>
+              ) : null}
+            </div>
+            <div className="dp-similar-body">
+              <strong>{item.title}</strong>
+              <span>{item.release_year && item.release_year > 1970 ? item.release_year : 'TBA'}</span>
+            </div>
+          </a>
+        ))}
+      </div>
+    </section>
   )
 }
 
@@ -270,9 +404,11 @@ function Gallery({ game }: { game: Game }) {
   ].filter(Boolean) as string[]
 
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null)
+  const [naturalSize, setNaturalSize] = useState<{ width: number; height: number } | null>(null)
 
   useEffect(() => {
     if (lightboxIndex === null) return
+    setNaturalSize(null)
     document.body.style.overflow = 'hidden'
     const count = images.length
     function onKey(e: KeyboardEvent) {
@@ -284,9 +420,58 @@ function Gallery({ game }: { game: Game }) {
     return () => { document.body.style.overflow = ''; window.removeEventListener('keydown', onKey) }
   }, [lightboxIndex, images.length])
 
+  useEffect(() => {
+    if (lightboxIndex === null) return
+    const img = new Image()
+    img.onload = () => setNaturalSize({ width: img.naturalWidth, height: img.naturalHeight })
+    img.src = images[lightboxIndex]
+  }, [images, lightboxIndex])
+
   if (images.length === 0) return null
 
   const [first, ...rest] = images
+  const lightbox = lightboxIndex !== null
+    ? createPortal(
+        <div className="dp-lightbox" role="dialog" aria-modal="true">
+          <button
+            type="button"
+            className="dp-lightbox-backdrop"
+            aria-label="Close"
+            onClick={() => setLightboxIndex(null)}
+          />
+          <div className="dp-lightbox-stage">
+            <img
+              src={images[lightboxIndex]}
+              alt={`${game.title} ${lightboxIndex === 0 ? 'cover' : `screenshot ${lightboxIndex}`}`}
+              className="dp-lightbox-img"
+              style={naturalSize ? {
+                '--natural-width': `${naturalSize.width}px`,
+                '--natural-height': `${naturalSize.height}px`,
+              } as CSSProperties : undefined}
+            />
+          </div>
+          <button type="button" className="dp-lightbox-close" onClick={() => setLightboxIndex(null)}>✕</button>
+          {images.length > 1 && (
+            <>
+              <button
+                type="button"
+                className="dp-lightbox-nav dp-lightbox-prev"
+                onClick={() => setLightboxIndex((lightboxIndex - 1 + images.length) % images.length)}
+                aria-label="Previous image"
+              >‹</button>
+              <button
+                type="button"
+                className="dp-lightbox-nav dp-lightbox-next"
+                onClick={() => setLightboxIndex((lightboxIndex + 1) % images.length)}
+                aria-label="Next image"
+              >›</button>
+            </>
+          )}
+          <div className="dp-lightbox-counter">{lightboxIndex + 1} / {images.length}</div>
+        </div>,
+        document.body,
+      )
+    : null
 
   return (
     <>
@@ -315,39 +500,7 @@ function Gallery({ game }: { game: Game }) {
         )}
       </div>
 
-      {lightboxIndex !== null && (
-        <div className="dp-lightbox" role="dialog" aria-modal="true">
-          <button
-            type="button"
-            className="dp-lightbox-backdrop"
-            aria-label="Close"
-            onClick={() => setLightboxIndex(null)}
-          />
-          <img
-            src={images[lightboxIndex]}
-            alt={`${game.title} ${lightboxIndex === 0 ? 'cover' : `screenshot ${lightboxIndex}`}`}
-            className="dp-lightbox-img"
-          />
-          <button type="button" className="dp-lightbox-close" onClick={() => setLightboxIndex(null)}>✕</button>
-          {images.length > 1 && (
-            <>
-              <button
-                type="button"
-                className="dp-lightbox-nav dp-lightbox-prev"
-                onClick={() => setLightboxIndex((lightboxIndex - 1 + images.length) % images.length)}
-                aria-label="Previous image"
-              >‹</button>
-              <button
-                type="button"
-                className="dp-lightbox-nav dp-lightbox-next"
-                onClick={() => setLightboxIndex((lightboxIndex + 1) % images.length)}
-                aria-label="Next image"
-              >›</button>
-            </>
-          )}
-          <div className="dp-lightbox-counter">{lightboxIndex + 1} / {images.length}</div>
-        </div>
-      )}
+      {lightbox}
     </>
   )
 }
@@ -356,6 +509,7 @@ export function GameDetailPage() {
   const { slug } = useParams<{ slug: string }>()
   const navigate = useNavigate()
   const [game, setGame] = useState<Game | null>(null)
+  const [similarCatalogGames, setSimilarCatalogGames] = useState<Game[]>([])
   const [error, setError] = useState<string | null>(null)
   const [isFetchingScreenshots, setIsFetchingScreenshots] = useState(false)
   const [ratingsTab, setRatingsTab] = useState<'primary' | 'extra'>('primary')
@@ -366,6 +520,7 @@ export function GameDetailPage() {
   useEffect(() => {
     if (!slug) return
     setGame(null)
+    setSimilarCatalogGames([])
     setError(null)
     getGameBySlug(slug)
       .then((loaded) => {
@@ -380,7 +535,7 @@ export function GameDetailPage() {
             .then(setGame)
             .catch(() => { /* no Steam ID — gallery shows cover only */ })
         }
-        if (loaded.price_snapshots.length === 0) {
+        if ((loaded.price_snapshots?.length ?? 0) === 0) {
           fetchGamePrices(loaded.slug)
             .then(setGame)
             .catch(() => { /* pricing is optional */ })
@@ -388,6 +543,34 @@ export function GameDetailPage() {
       })
       .catch(() => setError('Game not found.'))
   }, [slug])
+
+  useEffect(() => {
+    if (!game) return
+    const genre = game.genres.find((item) => !['Steam', 'PC', 'Mac', 'Linux'].includes(item)) ?? game.genres[0] ?? ''
+    if (!genre) return
+
+    const filters = {
+      ...SIMILAR_DEFAULT_FILTERS,
+      genre,
+      sort: 'rank_score',
+      direction: 'desc',
+    } satisfies GameFilters
+
+    let active = true
+    getGames(filters, 18, 0)
+      .then((response) => {
+        if (!active) return
+        setSimilarCatalogGames(
+          response.games
+            .filter((item) => item.slug !== game.slug)
+            .slice(0, 12),
+        )
+      })
+      .catch(() => {
+        if (active) setSimilarCatalogGames([])
+      })
+    return () => { active = false }
+  }, [game])
 
   const handleFetchScreenshots = async () => {
     if (!game) return
@@ -471,9 +654,14 @@ export function GameDetailPage() {
   const earlyAccessLabel = formatDate(game.early_access_date)
   const officialReleaseLabel = formatDate(game.official_release_date ?? game.release_date)
   const aboutParagraphs = buildAboutParagraphs(game)
+  const priceSnapshots = game.price_snapshots ?? []
+  const detailStyle = {
+    '--score-color': scoreColor(displayScore),
+    '--score-rgb': scoreColorRgb(displayScore),
+  } as CSSProperties
 
   return (
-    <div className="dp-shell">
+    <div className="dp-shell" style={detailStyle}>
       {/* Blurred background */}
       {bgImage && (
         <div className="dp-bg" style={{ backgroundImage: `url("${bgImage}")` }} />
@@ -538,7 +726,6 @@ export function GameDetailPage() {
                 <div className="dp-score-meta">
                   <span
                     className={`dp-confidence dp-confidence-${confidenceLower}`}
-                    style={{ '--score-color': scoreColor(displayScore) } as React.CSSProperties}
                   >
                     {game.confidence_level}
                   </span>
@@ -698,10 +885,10 @@ export function GameDetailPage() {
               </div>
             </div>
 
-            {game.price_snapshots.length > 0 && (
+            {priceSnapshots.length > 0 && (
               <div className="dp-section">
                 <h3 className="dp-section-title">Price & availability</h3>
-                <PricePanel prices={game.price_snapshots} />
+                <PricePanel prices={priceSnapshots} />
               </div>
             )}
 
@@ -717,12 +904,6 @@ export function GameDetailPage() {
               </div>
             )}
 
-            {(game.dlcs.length > 0 || game.similar_games.length > 0) && (
-              <div className="dp-section dp-related-section">
-                <RelatedStrip title="DLCs & expansions" items={game.dlcs} />
-                <RelatedStrip title="Similar games" items={game.similar_games} />
-              </div>
-            )}
           </div>
 
           {/* ── RIGHT ── */}
@@ -736,6 +917,13 @@ export function GameDetailPage() {
             </div>
           </div>
         </div>
+
+        {(game.dlcs.length > 0 || game.similar_games.length > 0 || similarCatalogGames.length > 0) && (
+          <div className="dp-bottom-related">
+            <DlcSection game={game} />
+            <SimilarGamesSection game={game} catalogGames={similarCatalogGames} />
+          </div>
+        )}
       </div>
 
       {/* Trailer modal */}

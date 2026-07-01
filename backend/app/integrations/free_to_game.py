@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..models import Game, infer_content_type
+from ..services.deduplication import find_existing_duplicate, merge_game_data
 
 
 FREE_TO_GAME_URL = "https://www.freetogame.com/api/games"
@@ -104,6 +105,14 @@ async def import_free_to_game_games(db: Session, target: int = 500) -> dict[str,
         game = _to_game(raw_game)
         existing = db.scalar(select(Game).where(Game.slug == game.slug))
         if existing:
+            merge_game_data(existing, game)
+            db.add(existing)
+            skipped += 1
+            continue
+        existing = find_existing_duplicate(db, game)
+        if existing:
+            merge_game_data(existing, game)
+            db.add(existing)
             skipped += 1
             continue
 

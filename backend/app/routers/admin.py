@@ -27,7 +27,8 @@ from sqlalchemy.orm import Session
 
 from ..config import get_settings
 from ..database import get_db
-from ..models import ExternalId, Game, PriceSnapshot, RatingSnapshot, SourceSnapshot
+from ..models import ExternalId, Game, PriceSnapshot, RatingSnapshot, SourceSnapshot, infer_content_type_with_parent
+from ..services.deduplication import consolidate_duplicate_games
 from ..integrations.cheapshark_service import cheapshark_service
 from ..integrations.igdb_service import igdb_service
 from ..integrations.itad_service import itad_service
@@ -333,6 +334,34 @@ def get_source_snapshots(game_id: int, db: Session = Depends(get_db)) -> dict:
             }
             for r in rows
         ],
+    }
+
+
+# ── Deduplication / reclassification ─────────────────────────────────────────
+
+
+@router.post("/consolidate")
+def admin_consolidate(db: Session = Depends(get_db)) -> dict:
+    """
+    Reclassify all games by inferred content_type (DLC / demo / software …),
+    then merge duplicate game rows into a single canonical record.
+    """
+    reclassified = 0
+    all_games = list(db.scalars(select(Game)).all())
+    parent_titles = frozenset(g.title.strip().lower() for g in all_games)
+    for game in all_games:
+        inferred = infer_content_type_with_parent(game, parent_titles)
+        if game.content_type != inferred:
+            game.content_type = inferred
+            reclassified += 1
+    if reclassified:
+        db.commit()
+
+    result = consolidate_duplicate_games(db)
+    return {
+        "reclassified": reclassified,
+        "merged_groups": result["merged_groups"],
+        "removed": result["removed"],
     }
 
 

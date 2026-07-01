@@ -3,6 +3,8 @@ Game import endpoints — bulk data ingestion from free external sources.
 
 Routes:
   POST /api/import/rawg          — RAWG catalog import
+  POST /api/import/rawg/nintendo — RAWG Nintendo-family catalog import
+  POST /api/import/igdb/nintendo — IGDB Nintendo-family catalog import
   POST /api/import/free-to-game  — FreeToGame catalog import
   POST /api/import/cheapshark    — CheapShark deals import
   POST /api/import/steamspy      — SteamSpy top-games import
@@ -16,7 +18,8 @@ from ..database import get_db
 from ..schemas import ImportResponse, MultiImportResponse
 from ..integrations.cheapshark import import_cheapshark_deals
 from ..integrations.free_to_game import import_free_to_game_games
-from ..integrations.rawg import import_catalog_to_size, import_rawg_games
+from ..integrations.igdb_import import import_igdb_nintendo_games
+from ..integrations.rawg import import_catalog_to_size, import_rawg_games, import_rawg_nintendo_games
 from ..integrations.steamspy import import_steamspy_games
 
 router = APIRouter(prefix="/api/import", tags=["imports"])
@@ -29,6 +32,28 @@ async def import_from_rawg(
 ) -> dict[str, int]:
     try:
         return await import_rawg_games(db, target=target)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/rawg/nintendo", response_model=ImportResponse)
+async def import_nintendo_from_rawg(
+    target: int = Query(default=1000, ge=1, le=5000),
+    db: Session = Depends(get_db),
+) -> dict[str, int]:
+    try:
+        return await import_rawg_nintendo_games(db, target=target)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/igdb/nintendo", response_model=ImportResponse)
+async def import_nintendo_from_igdb(
+    target: int = Query(default=500, ge=1, le=5000),
+    db: Session = Depends(get_db),
+) -> dict[str, int]:
+    try:
+        return await import_igdb_nintendo_games(db, target=target)
     except RuntimeError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 

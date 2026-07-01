@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..models import Game, infer_content_type
+from ..services.deduplication import find_existing_duplicate, merge_game_data
 from .types import ExternalScore
 
 
@@ -159,6 +160,14 @@ async def import_steamspy_games(db: Session, target: int = 2000) -> dict[str, in
                 game = _to_game(str(app_id), raw_game)
                 existing = db.scalar(select(Game).where(Game.slug == game.slug))
                 if existing:
+                    merge_game_data(existing, game)
+                    db.add(existing)
+                    skipped += 1
+                    continue
+                existing = find_existing_duplicate(db, game)
+                if existing:
+                    merge_game_data(existing, game)
+                    db.add(existing)
                     skipped += 1
                     continue
 

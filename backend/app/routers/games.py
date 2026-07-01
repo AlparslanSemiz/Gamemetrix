@@ -16,8 +16,8 @@ import datetime
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import Select, asc, desc, select
-from sqlalchemy.orm import Session
+from sqlalchemy import Select, asc, desc, func, select, text
+from sqlalchemy.orm import Session, noload
 
 from ..config import get_settings
 from ..database import get_db
@@ -30,7 +30,7 @@ from ..schemas import (
     SortDirection,
     TrailerResponse,
 )
-from ..integrations.steam import extract_steam_app_id, fetch_steam_screenshots
+from ..integrations.steam import extract_steam_app_id, fetch_steam_dlcs, fetch_steam_screenshots
 from ..integrations.sync import refresh_game_sources
 from ..integrations.rawg import enrich_rawg_game_detail
 from ..integrations.cheapshark_service import cheapshark_service
@@ -49,6 +49,7 @@ from ..services.game_filter import (
     filter_min_live_sources,
     sort_in_memory,
 )
+from ..services.deduplication import find_existing_duplicate, merge_game_data
 from ..services.rawg_import import apply_rawg_to_game, game_from_rawg_search
 
 router = APIRouter(tags=["games"])
@@ -81,6 +82,11 @@ async def search_game(
     raw_game = await _fetch_rawg_search(cfg.RAWG_API_KEY, cfg.RAWG_GAMES_URL, search_term)
 
     game = apply_rawg_to_game(existing, raw_game) if existing else game_from_rawg_search(raw_game)
+    if existing is None:
+        duplicate = find_existing_duplicate(db, game)
+        if duplicate:
+            merge_game_data(duplicate, game)
+            game = duplicate
     db.add(game)
     db.commit()
     db.refresh(game)
@@ -102,6 +108,9 @@ async def _fetch_rawg_search(api_key: str, base_url: str, query: str) -> dict:
     if not results:
         raise HTTPException(status_code=404, detail="RAWG returned no matching game.")
     return results[0]
+
+
+_IN_MEMORY_SORTS = {"metacritic_score", "opencritic_score", "steam_score", "review_count"}
 
 
 @router.get("/api/games", response_model=GameListResponse)
@@ -127,8 +136,23 @@ def list_games(
     limit: int = Query(default=120, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
 ) -> GameListResponse:
-    query = _build_db_query(content_type, q, year_min, year_max, min_score, max_score, sort, direction)
-    games = list(db.scalars(query).all())
+    base_q = _build_db_query(content_type, q, year_min, year_max, min_score, max_score, sort, direction)
+
+    needs_memory_filter = any([genre, developer, publisher, platform, min_ratings, max_ratings, has_award, min_live_sources, require_critic])
+    needs_memory_sort = sort in _IN_MEMORY_SORTS
+
+    if not needs_memory_filter and not needs_memory_sort:
+        # Fast path: DB handles sort + pagination. Only the requested page is loaded.
+        # COUNT uses a direct WHERE-clause query (no subquery) for index efficiency.
+        count_q = _build_count_query(content_type, q, year_min, year_max, min_score, max_score)
+        total = db.scalar(count_q) or 0
+        page_q = base_q.options(noload(Game.price_snapshots)).offset(offset).limit(limit)
+        games = list(db.scalars(page_q).all())
+        return GameListResponse(games=games, total=total)
+
+    # Slow path: in-memory filters or JSON-based sort require loading all matches.
+    all_q = base_q.options(noload(Game.price_snapshots))
+    games = list(db.scalars(all_q).all())
     games = _apply_in_memory_filters(
         games, genre, developer, publisher, platform,
         min_ratings, max_ratings, has_award, min_live_sources, require_critic,
@@ -137,6 +161,31 @@ def list_games(
     games = dedupe_near_duplicates(games)
     total = len(games)
     return GameListResponse(games=games[offset: offset + limit], total=total)
+
+
+def _build_count_query(
+    content_type: str,
+    q: str | None,
+    year_min: int | None,
+    year_max: int | None,
+    min_score: float | None,
+    max_score: float | None,
+) -> Select[tuple[int]]:
+    """Direct COUNT — no subquery, uses indexes on content_type/rank_score."""
+    query = select(func.count(Game.id))
+    if content_type != "all":
+        query = query.where(Game.content_type == content_type)
+    if q:
+        query = query.where(Game.title.ilike(f"%{q}%"))
+    if year_min is not None:
+        query = query.where(Game.release_year >= year_min)
+    if year_max is not None:
+        query = query.where(Game.release_year <= year_max)
+    if min_score is not None:
+        query = query.where(Game.metrix_score >= min_score)
+    if max_score is not None:
+        query = query.where(Game.metrix_score <= max_score)
+    return query
 
 
 def _build_db_query(
@@ -228,6 +277,18 @@ async def get_game(slug: str, db: Session = Depends(get_db)) -> Game:
             await enrich_rawg_game_detail(db, game)
         except Exception:
             pass
+    if not game.dlcs:
+        app_id = extract_steam_app_id(game.cover_url, game.image_url, game.slug)
+        if app_id is not None:
+            try:
+                dlcs = await fetch_steam_dlcs(app_id)
+                if dlcs:
+                    game.dlcs = dlcs
+                    db.add(game)
+                    db.commit()
+                    db.refresh(game)
+            except Exception:
+                pass
     return game
 
 
@@ -341,22 +402,54 @@ async def get_trailer(slug: str, db: Session = Depends(get_db)) -> dict[str, str
     }
 
 
+_facets_cache: FacetsResponse | None = None
+_facets_cache_time: float = 0.0
+_FACETS_TTL = 300.0  # 5 minutes
+
+
 @router.get("/api/facets", response_model=FacetsResponse)
 def get_facets(db: Session = Depends(get_db)) -> FacetsResponse:
-    current_year = datetime.date.today().year
-    games = db.scalars(select(Game).where(Game.content_type == "game")).all()
+    global _facets_cache, _facets_cache_time
+    now = datetime.datetime.now().timestamp()
+    if _facets_cache is not None and (now - _facets_cache_time) < _FACETS_TTL:
+        return _facets_cache
 
-    genres = sorted({genre for g in games for genre in g.genres})
-    years = sorted(
-        {g.release_year for g in games if g.release_year <= current_year},
-        reverse=True,
-    )
-    raw_platforms = {p for g in games for p in g.platforms}
-    return FacetsResponse(
+    current_year = datetime.date.today().year
+
+    # Use json_each to expand JSON arrays at SQL level — no ORM object loading.
+    genre_rows = db.execute(
+        text(
+            "SELECT DISTINCT j.value FROM games, json_each(games.genres) j"
+            " WHERE games.content_type = 'game' ORDER BY j.value"
+        )
+    ).fetchall()
+    genres = [r[0] for r in genre_rows]
+
+    year_rows = db.execute(
+        text(
+            "SELECT DISTINCT release_year FROM games"
+            " WHERE content_type = 'game' AND release_year <= :yr ORDER BY release_year DESC"
+        ),
+        {"yr": current_year},
+    ).fetchall()
+    years = [r[0] for r in year_rows]
+
+    platform_rows = db.execute(
+        text(
+            "SELECT DISTINCT j.value FROM games, json_each(games.platforms) j"
+            " WHERE games.content_type = 'game'"
+        )
+    ).fetchall()
+    raw_platforms = {r[0] for r in platform_rows}
+
+    result = FacetsResponse(
         genres=genres,
         years=years,
         platforms=sorted(_build_platform_filters(raw_platforms)),
     )
+    _facets_cache = result
+    _facets_cache_time = now
+    return result
 
 
 def _build_platform_filters(platforms: set[str]) -> set[str]:

@@ -46,11 +46,12 @@ export interface Game {
   award_count: number
   award_nominations: number
   goty_year?: number | null
+  awards: string[]
   screenshots: string[]
   system_requirements: SystemRequirement[]
   dlcs: RelatedGame[]
   similar_games: RelatedGame[]
-  price_snapshots: PriceSnapshot[]
+  price_snapshots?: PriceSnapshot[]
 }
 
 export interface SystemRequirement {
@@ -69,6 +70,7 @@ export interface RelatedGame {
   metacritic_score?: number | null
   rating?: number | null
   url?: string | null
+  type?: string | null
 }
 
 export interface PriceSnapshot {

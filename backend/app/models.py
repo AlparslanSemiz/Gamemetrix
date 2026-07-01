@@ -102,6 +102,7 @@ class Game(Base):
     award_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     award_nominations: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     goty_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    awards: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
     screenshots: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
     system_requirements: Mapped[list[dict]] = mapped_column(JSON, nullable=False, default=list)
     dlcs: Mapped[list[dict]] = mapped_column(JSON, nullable=False, default=list)
@@ -323,7 +324,87 @@ class PriceSnapshot(Base):
     game: Mapped["Game"] = relationship("Game", back_populates="price_snapshots")
 
 
-def infer_content_type(game: Game) -> str:
+_DLC_TITLE_RE = re.compile(
+    r"""
+    \b(?:
+        dlc                             |
+        downloadable\s+content          |
+        season\s+pass                   |
+        expansion\s+pass                |
+        booster\s+pack                  |
+        character\s+pack                |
+        costume\s+pack                  |
+        skin\s+pack                     |
+        map\s+pack                      |
+        weapon\s+pack                   |
+        armor\s+pack                    |
+        mission\s+pack                  |
+        level\s+pack                    |
+        adventure\s+pack                |
+        content\s+pack                  |
+        story\s+pack                    |
+        add-?on\s+pack
+    )\b
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
+
+# Title suffixes that indicate a sub-episode or DLC chapter
+_EPISODE_SUFFIX_RE = re.compile(
+    r"[\s\-–—]+(?:episode|chapter|part)\s+\d",
+    re.IGNORECASE,
+)
+
+# The subtitle part (after " – " or " - ") must contain one of these keywords
+# to be classified as a DLC via the parent-based heuristic.
+# We deliberately require an explicit DLC-like keyword in the subtitle to avoid
+# false-positives from games that just have a subtitle (e.g. "Eco - Global Survival Game").
+_DLC_SUBTITLE_RE = re.compile(
+    r"""
+    \b(?:
+        dlc                 |
+        expansion           |
+        add-?on             |
+        episode\s+\d        |
+        chapter\s+\d        |
+        part\s+\d           |
+        season\s+\d         |
+        prelude             |
+        prologue            |
+        echoes              |     # Outer Wilds - Echoes of the Eye
+        blood\s+dragon      |     # Far Cry 3 - Blood Dragon
+        cindered\s+shadows  |     # Fire Emblem
+        aiko.s\s+choice     |     # Shadow Tactics
+        separate\s+ways     |     # RE4
+        blood\s+and\s+wine  |     # Witcher 3
+        hearts\s+of\s+stone |     # Witcher 3
+        clone\s+carnage     |     # Destroy All Humans
+        the\s+penal\s+zone  |     # Sam & Max
+        iron\s+from\s+ice   |     # Game of Thrones
+        zer0\s+sum          |     # Tales from the Borderlands
+        toy\s+master        |     # Killing Floor
+        wildfire            |     # Jagged Alliance 2
+        rise\s+of\s+clans   |     # Hard Truck
+        dark\s+crusade      |     # Dawn of War
+        soulstorm           |     # Dawn of War
+        winter\s+assault    |     # Dawn of War
+        yuri.s\s+revenge    |     # C&C Red Alert 2
+        uprising            |     # C&C Red Alert 3
+        zero\s+hour               # C&C Generals
+    )\b
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
+
+# RAWG game_type values that indicate DLC/expansion
+_RAWG_DLC_TYPES = frozenset({"dlc", "expansion", "addon", "update"})
+
+
+def infer_content_type(game: Game, rawg_game_type: str | None = None) -> str:
+    # RAWG explicitly tells us the type — trust it
+    if rawg_game_type and rawg_game_type.lower() in _RAWG_DLC_TYPES:
+        return "dlc"
+
     text = " ".join(
         [
             game.title,
@@ -337,9 +418,13 @@ def infer_content_type(game: Game) -> str:
             return content_type
     if "soundtrack" in text or re.search(r"\bost\b", text):
         return "soundtrack"
-    if re.search(r"\b(demo|playtest|beta)\b", text):
+    if re.search(r"\b(demo|playtest)\b", text) or re.search(r"\bbeta\b", game.title, re.IGNORECASE):
         return "demo"
+    if _DLC_TITLE_RE.search(game.title):
+        return "dlc"
     if re.search(r"\b(dlc|downloadable content|season pass|expansion pass)\b", text):
+        return "dlc"
+    if _EPISODE_SUFFIX_RE.search(game.title):
         return "dlc"
     if re.search(r"\b(mod|sdk)\b", text):
         return "mod"
@@ -347,4 +432,38 @@ def infer_content_type(game: Game) -> str:
         return "utility"
     if any(term in text for term in SOFTWARE_GENRE_TERMS):
         return "software"
+    return "game"
+
+
+def infer_content_type_with_parent(game: Game, parent_titles: frozenset[str]) -> str:
+    """
+    Extended classification that checks whether this game is a DLC/expansion of
+    a parent game already in the catalog.
+
+    Requires:
+      1. Title matches "Parent Title – Subtitle" or "Parent Title - Subtitle"
+      2. The parent title exists in the catalog
+      3. The subtitle contains a recognized DLC/expansion keyword
+
+    parent_titles: frozenset of all game titles currently in the DB (lowercase).
+    """
+    base_type = infer_content_type(game)
+    if base_type != "game":
+        return base_type
+
+    title = game.title.strip()
+    for sep in (" – ", " — ", " - "):
+        if sep not in title:
+            continue
+        idx = title.index(sep)
+        parent_candidate = title[:idx].strip()
+        subtitle = title[idx + len(sep):].strip()
+        if not subtitle or not parent_candidate:
+            continue
+        # Parent must exist in catalog
+        if parent_candidate.lower() not in parent_titles:
+            continue
+        # Subtitle must have an explicit DLC/expansion keyword
+        if _DLC_SUBTITLE_RE.search(subtitle):
+            return "dlc"
     return "game"

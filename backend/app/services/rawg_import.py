@@ -158,7 +158,7 @@ def game_from_rawg_search(raw_game: dict) -> Game:
         screenshots=_extract_screenshots(raw_game),
         system_requirements=_extract_system_requirements(raw_game),
     )
-    game.content_type = infer_content_type(game)
+    game.content_type = infer_content_type(game, rawg_game_type=raw_game.get("game_type"))
     return game
 
 
@@ -186,7 +186,7 @@ def apply_rawg_to_game(game: Game, raw_game: dict) -> Game:
     game.critic_score = float(metacritic_score or 0)
     game.user_score = game.metrix_score
     game.source_scores = merged
-    game.content_type = infer_content_type(game)
+    game.content_type = infer_content_type(game, rawg_game_type=raw_game.get("game_type"))
     return game
 
 
@@ -253,7 +253,7 @@ def apply_rawg_metadata(game: Game, raw_game: dict) -> bool:
         game.system_requirements = sysreqs
         changed = True
 
-    game.content_type = infer_content_type(game)
+    game.content_type = infer_content_type(game, rawg_game_type=raw_game.get("game_type"))
     return changed
 
 
@@ -323,7 +323,7 @@ def game_from_rawg_list(raw_game: dict) -> Game:
         screenshots=_extract_screenshots(raw_game),
         system_requirements=_extract_system_requirements(raw_game),
     )
-    game.content_type = infer_content_type(game)
+    game.content_type = infer_content_type(game, rawg_game_type=raw_game.get("game_type"))
     return game
 
 

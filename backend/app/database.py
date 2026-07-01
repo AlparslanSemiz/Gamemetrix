@@ -25,10 +25,21 @@ if DATABASE_URL.startswith("sqlite:///"):
 
 _engine_kwargs: dict = {"pool_pre_ping": True}
 if _is_sqlite:
-    # SQLite requires check_same_thread=False for FastAPI's async request model.
     _engine_kwargs["connect_args"] = {"check_same_thread": False}
 
 engine = create_engine(DATABASE_URL, **_engine_kwargs)
+
+if _is_sqlite:
+    from sqlalchemy import event
+
+    @event.listens_for(engine, "connect")
+    def _set_sqlite_pragmas(dbapi_conn, _record):
+        cursor = dbapi_conn.cursor()
+        cursor.execute("PRAGMA journal_mode=WAL")   # concurrent reads during writes
+        cursor.execute("PRAGMA synchronous=NORMAL") # safe but faster than FULL
+        cursor.execute("PRAGMA cache_size=-32000")  # 32 MB page cache
+        cursor.execute("PRAGMA temp_store=MEMORY")
+        cursor.close()
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 
 

@@ -154,7 +154,7 @@ async def fetch_steam_screenshots(app_id: int) -> list[str]:
     async with httpx.AsyncClient(timeout=_TIMEOUT_DETAILS) as client:
         response = await client.get(
             _STEAM_APP_DETAILS_URL,
-            params={"appids": app_id, "filters": "screenshots"},
+            params={"appids": app_id, "filters": "screenshots", "cc": "us"},
         )
         if not response.is_success:
             return []
@@ -170,11 +170,60 @@ async def fetch_steam_screenshots(app_id: int) -> list[str]:
     ][:_MAX_SCREENSHOTS]
 
 
+async def fetch_steam_dlcs(app_id: int) -> list[dict]:
+    async with httpx.AsyncClient(timeout=_TIMEOUT_DETAILS) as client:
+        response = await client.get(
+            _STEAM_APP_DETAILS_URL,
+            params={"appids": app_id, "cc": "us"},
+        )
+        if not response.is_success:
+            return []
+
+        payload = response.json().get(str(app_id), {})
+        if not payload.get("success"):
+            return []
+
+        dlc_ids = [
+            int(item)
+            for item in (payload.get("data", {}).get("dlc") or [])
+            if str(item).isdigit()
+        ]
+        if not dlc_ids:
+            return []
+
+        dlcs: list[dict] = []
+        for dlc_id in dlc_ids[:24]:
+            detail_response = await client.get(
+                _STEAM_APP_DETAILS_URL,
+                params={"appids": dlc_id, "filters": "basic"},
+                timeout=_TIMEOUT_DETAILS,
+            )
+            if not detail_response.is_success:
+                continue
+            entry = detail_response.json().get(str(dlc_id), {})
+            data = entry.get("data", {}) if entry.get("success") else {}
+            title = data.get("name")
+            if not title:
+                continue
+            release = _parse_steam_release_date((data.get("release_date") or {}).get("date"))
+            dlcs.append({
+                "id": dlc_id,
+                "title": title,
+                "slug": str(dlc_id),
+                "release_date": release.isoformat() if release else None,
+                "release_year": release.year if release else None,
+                "cover_url": data.get("header_image") or "",
+                "url": f"https://store.steampowered.com/app/{dlc_id}/",
+                "type": data.get("type") or "dlc",
+            })
+        return dlcs
+
+
 async def get_steam_release_date(app_id: int) -> date | None:
     async with httpx.AsyncClient(timeout=_TIMEOUT_DETAILS) as client:
         response = await client.get(
             _STEAM_APP_DETAILS_URL,
-            params={"appids": app_id, "filters": "release_date"},
+            params={"appids": app_id, "filters": "release_date", "cc": "us"},
         )
         if not response.is_success:
             return None

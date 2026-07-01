@@ -90,6 +90,7 @@ class GameRead(BaseModel):
     award_count: int = 0
     award_nominations: int = 0
     goty_year: int | None = None
+    awards: list[str] = []
     screenshots: list[str] = []
     system_requirements: list[dict] = []
     dlcs: list[dict] = []
@@ -97,8 +98,56 @@ class GameRead(BaseModel):
     price_snapshots: list[PriceSnapshotRead] = []
 
 
+class GameListItem(BaseModel):
+    """Lightweight game row for the list endpoint — excludes price_snapshots (avoids N+1)."""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    title: str
+    slug: str
+    summary: str
+    summary_short: str | None = None
+    cover_url: str
+    release_date: date
+    release_year: int
+    early_access_date: date | None = None
+    official_release_date: date | None = None
+    metacritic_score: int | None = None
+    image_url: str | None = None
+    ratings_refreshed_at: datetime | None = None
+    metadata_refreshed_at: datetime | None = None
+    content_type: str = "game"
+    live_primary_source_count: int = 0
+    applicable_source_count: int = 4
+    applicable_sources: list[str] = []
+    confidence_level: str = "Limited"
+    data_strength: str = "CATALOG_ONLY"
+    score_profile: str = "sparse"
+    popularity_label: str | None = None
+    metrix_score: float
+    rank_score: float = 0.0
+    is_rankable: bool = False
+    rank_exclusion_reason: str | None = None
+    critic_score: float
+    user_score: float
+    genres: list[str]
+    platforms: list[str]
+    source_scores: list[SourceScore]
+    developer: str | None = None
+    publisher: str | None = None
+    playtime_minutes: int = 0
+    award_count: int = 0
+    award_nominations: int = 0
+    goty_year: int | None = None
+    awards: list[str] = []
+    screenshots: list[str] = []
+    system_requirements: list[dict] = []
+    dlcs: list[dict] = []
+    similar_games: list[dict] = []
+
+
 class GameListResponse(BaseModel):
-    games: list[GameRead]
+    games: list[GameListItem]
     total: int
 
 

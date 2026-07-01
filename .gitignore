@@ -10,6 +10,9 @@ frontend/.vite.*.log
 
 backend/.uvicorn.*.log
 backend/*.db
+backend/*.db-shm
+backend/*.db-wal
+backend/*.db.*.bak
 
 .env
 .env.*

@@ -20,40 +20,18 @@ Public API:
   sort_in_memory(games, sort, dir)-> list[Game]
 """
 
-import re
-
 from ..models import Game
 from ..integrations.source_registry import CRITIC_SOURCES
-
-
-# Year tolerance for deduplication: editions of the same game within this
-# many years are treated as the same title and the better-scored entry wins.
-_SAME_TITLE_YEAR_TOLERANCE = 4    # exact title match (e.g. same game, two imports)
-_EDITION_YEAR_TOLERANCE = 10      # canonical title match (e.g. Remastered 10 years later)
-
-_EDITION_SUFFIX_RE = re.compile(
-    r"[\s:–—\-]+(?:"
-    r"definitive edition|royal|remastered?|remake(?:d)?|enhanced edition|"
-    r"complete edition|goty|game of the year(?:\s+edition)?|"
-    r"anniversary edition|gold edition|platinum edition|legendary edition|"
-    r"ultimate edition|deluxe edition|director'?s cut|expanded edition|"
-    r"redux|hd(?: remaster)?|4k|the complete edition|origins?"
-    r")$",
-    re.IGNORECASE,
+from .deduplication import (
+    canonical_title,
+    dedupe_games_in_memory,
+    normalized_title,
+    total_review_count,
 )
 
 
-def normalized_title(value: str) -> str:
-    return re.sub(r"[^a-z0-9]+", "", value.lower())
-
-
-def canonical_title(value: str) -> str:
-    stripped = _EDITION_SUFFIX_RE.sub("", value).strip()
-    return re.sub(r"[^a-z0-9]+", "", stripped.lower())
-
-
 def _total_review_count(game: Game) -> int:
-    return sum(int(s.get("review_count", 0)) for s in game.source_scores)
+    return total_review_count(game)
 
 
 def _live_review_count(game: Game) -> int:
@@ -71,48 +49,8 @@ def _source_score(game: Game, source_name: str) -> float:
     return 0.0
 
 
-def _duplicate_quality_key(game: Game) -> tuple[int, int, float, int]:
-    return (
-        game.live_primary_source_count,
-        _total_review_count(game),
-        game.metrix_score,
-        1 if game.release_year != 1970 else 0,
-    )
-
-
 def dedupe_near_duplicates(games: list[Game]) -> list[Game]:
-    deduped: list[Game] = []
-    idx_by_key: dict[str, list[int]] = {}
-
-    def _register(game: Game, idx: int) -> None:
-        for key in {normalized_title(game.title), canonical_title(game.title)}:
-            idx_by_key.setdefault(key, [])
-            if idx not in idx_by_key[key]:
-                idx_by_key[key].append(idx)
-
-    def _find_match(game: Game) -> int | None:
-        norm = normalized_title(game.title)
-        canon = canonical_title(game.title)
-        for idx in idx_by_key.get(norm, []):
-            if abs(deduped[idx].release_year - game.release_year) <= _SAME_TITLE_YEAR_TOLERANCE:
-                return idx
-        if canon != norm:
-            for idx in idx_by_key.get(canon, []):
-                if abs(deduped[idx].release_year - game.release_year) <= _EDITION_YEAR_TOLERANCE:
-                    return idx
-        return None
-
-    for game in games:
-        existing_idx = _find_match(game)
-        if existing_idx is None:
-            new_idx = len(deduped)
-            deduped.append(game)
-            _register(game, new_idx)
-        elif _duplicate_quality_key(game) > _duplicate_quality_key(deduped[existing_idx]):
-            deduped[existing_idx] = game
-            _register(game, existing_idx)
-
-    return deduped
+    return dedupe_games_in_memory(games)
 
 
 def filter_by_genre(games: list[Game], genre: str) -> list[Game]:

@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/set-state-in-effect */
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Award,
@@ -208,6 +209,11 @@ const sortOptions: Array<{ label: string; value: GameSort }> = [
   { label: 'Title', value: 'title' },
 ]
 
+function formatRoundedThousands(value: number): string {
+  if (value >= 1000) return `${Math.round(value / 1000)}K`
+  return new Intl.NumberFormat('en-US').format(value)
+}
+
 function AppContent() {
   const [activePage, setActivePage] = useState<ActivePage>('catalog')
   const [games, setGames] = useState<Game[]>([])
@@ -217,6 +223,7 @@ function AppContent() {
   const { collections, toggleCollection } = useCollections()
   const [providerStatuses, setProviderStatuses] = useState<ProviderStatus[]>([])
   const [catalogTotal, setCatalogTotal] = useState(0)
+  const [libraryTotal, setLibraryTotal] = useState(0)
   const [isLoading, setIsLoading] = useState(true)
   const [trailerGame, setTrailerGame] = useState<Game | null>(null)
   const [trailerVideoId, setTrailerVideoId] = useState<string | null>(null)
@@ -225,14 +232,22 @@ function AppContent() {
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list')
   const [filtersOpen, setFiltersOpen] = useState(false)
   const [activePreset, setActivePreset] = useState<string | null>(null)
+  const [mastheadVisible, setMastheadVisible] = useState(true)
   const [fetchKey, setFetchKey] = useState(0)
   const [offset, setOffset] = useState(0)
   const [hasMore, setHasMore] = useState(true)
   const [isLoadingMore, setIsLoadingMore] = useState(false)
   const loaderRef = useRef<HTMLDivElement>(null)
+  const lastScrollYRef = useRef(0)
+  const scrollFrameRef = useRef<number | null>(null)
   // Always up to date with latest filters without being a dep of the load effect
   const filtersRef = useRef(filters)
-  filtersRef.current = filters
+  // Prefetch cache: holds the already-fetched next page so scroll is instant
+  const prefetchRef = useRef<{ offset: number; games: Game[]; total: number } | null>(null)
+
+  useEffect(() => {
+    filtersRef.current = filters
+  }, [filters])
 
   useEffect(() => {
     let active = true
@@ -245,13 +260,18 @@ function AppContent() {
       }
     }
     void loadFacets()
+    void getGames(DEFAULT_FILTERS, 1, 0)
+      .then((response) => {
+        if (active) setLibraryTotal(response.total)
+      })
+      .catch(() => undefined)
     void getIntegrationStatus().then(setProviderStatuses).catch(() => undefined)
     return () => { active = false }
   }, [])
 
-  // Filter deps → reset to page 0 and bump the fetch key
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // Filter deps → reset to page 0, clear prefetch cache, and bump the fetch key
   useEffect(() => {
+    prefetchRef.current = null
     setOffset(0)
     setFetchKey((k) => k + 1)
   }, [
@@ -281,33 +301,54 @@ function AppContent() {
     }
     setError(null)
 
+    function applyPage(games: Game[], total: number) {
+      if (!active) return
+      if (isFirst) {
+        setGames(games)
+      } else {
+        setGames((prev) => [...prev, ...games])
+      }
+      setCatalogTotal(total)
+      const newCount = offset + games.length
+      setHasMore(newCount < total)
+      if (isFirst) setIsLoading(false)
+      else setIsLoadingMore(false)
+      // Prefetch the next page in the background
+      const nextOffset = newCount
+      if (nextOffset < total) {
+        getGames(f, PAGE_SIZE, nextOffset).then((prefetched) => {
+          if (active) {
+            prefetchRef.current = { offset: nextOffset, games: prefetched.games, total: prefetched.total }
+          }
+        }).catch(() => {})
+      }
+    }
+
     async function loadGames() {
+      // Serve from prefetch cache when offset matches
+      const cached = prefetchRef.current
+      if (!isFirst && cached && cached.offset === offset) {
+        prefetchRef.current = null
+        applyPage(cached.games, cached.total)
+        return
+      }
       try {
         const response = await getGames(f, PAGE_SIZE, offset)
-        if (active) {
-          if (isFirst) {
-            setGames(response.games)
-          } else {
-            setGames((prev) => [...prev, ...response.games])
-          }
-          setCatalogTotal(response.total)
-          setHasMore(offset + response.games.length < response.total)
-        }
+        applyPage(response.games, response.total)
       } catch {
         if (active) {
-          if (isFirst) setGames([])
+          if (isFirst) {
+            setGames([])
+            setIsLoading(false)
+          } else {
+            setIsLoadingMore(false)
+          }
           setError('GameMetrix API is not reachable yet.')
-        }
-      } finally {
-        if (active) {
-          if (isFirst) setIsLoading(false)
-          else setIsLoadingMore(false)
         }
       }
     }
     void loadGames()
     return () => { active = false }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fetchKey, offset])
 
   // IntersectionObserver — load next page when sentinel enters viewport
@@ -325,6 +366,37 @@ function AppContent() {
     observer.observe(el)
     return () => observer.disconnect()
   }, [hasMore, isLoadingMore, isLoading])
+
+  useEffect(() => {
+    lastScrollYRef.current = window.scrollY
+
+    function handleScroll() {
+      if (scrollFrameRef.current !== null) return
+      scrollFrameRef.current = window.requestAnimationFrame(() => {
+        const currentY = window.scrollY
+        const delta = currentY - lastScrollYRef.current
+
+        if (currentY < 80) {
+          setMastheadVisible(true)
+        } else if (delta > 8) {
+          setMastheadVisible(false)
+        } else if (delta < -8) {
+          setMastheadVisible(true)
+        }
+
+        lastScrollYRef.current = currentY
+        scrollFrameRef.current = null
+      })
+    }
+
+    window.addEventListener('scroll', handleScroll, { passive: true })
+    return () => {
+      window.removeEventListener('scroll', handleScroll)
+      if (scrollFrameRef.current !== null) {
+        window.cancelAnimationFrame(scrollFrameRef.current)
+      }
+    }
+  }, [])
 
   const visibleGames = useMemo(() => {
     if (activePage === 'suggestions') {
@@ -462,7 +534,7 @@ function AppContent() {
       </aside>
 
       <section className="workspace">
-        <header className="masthead">
+        <header className={`masthead ${mastheadVisible ? 'is-visible' : 'is-hidden'}`}>
           <button type="button" className="brand" onClick={goHome}>
             <img src="/favicon.svg" alt="" className="brand-icon" aria-hidden="true" />
             <span className="brand-text">
@@ -477,7 +549,10 @@ function AppContent() {
               onChange={(e) => setFilters((p) => ({ ...p, q: e.target.value }))}
               aria-label="Search games by title"
             />
-            <Search size={18} aria-hidden="true" />
+            <div className="masthead-search-meta">
+              <span>{formatRoundedThousands(libraryTotal || catalogTotal)} games</span>
+              <Search size={18} aria-hidden="true" />
+            </div>
           </div>
         </header>
 
@@ -527,7 +602,7 @@ function AppContent() {
                         className={filters.yearMin === year ? 'is-active' : ''}
                         onClick={() => selectBestOfYear(year)}
                       >
-                        {year === CURRENT_YEAR ? `${year} · So Far` : String(year)}
+                        {year === CURRENT_YEAR ? `${year} · So Far` : String(year)}
                       </button>
                     ))}
                   </div>

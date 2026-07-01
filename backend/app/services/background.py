@@ -183,7 +183,7 @@ async def daily_refresh_loop() -> None:
     will pick up sources that were budget-exhausted in earlier cycles.
     """
     cfg = get_settings()
-    await asyncio.sleep(8)
+    await asyncio.sleep(30)
 
     concurrency = cfg.REFRESH_ALL_CONCURRENCY
     delay = cfg.REFRESH_ALL_INTER_GAME_DELAY

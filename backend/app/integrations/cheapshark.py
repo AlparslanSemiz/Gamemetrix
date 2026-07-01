@@ -6,6 +6,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from ..models import Game, infer_content_type
+from ..services.deduplication import find_existing_duplicate, merge_game_data
 from .sync import calculate_metrix_score
 
 
@@ -162,6 +163,15 @@ async def import_cheapshark_deals(
                 with db.no_autoflush:
                     existing = db.scalar(select(Game).where(Game.slug == game.slug))
                 if existing:
+                    merge_game_data(existing, game)
+                    db.add(existing)
+                    skipped += 1
+                    continue
+
+                existing = find_existing_duplicate(db, game)
+                if existing:
+                    merge_game_data(existing, game)
+                    db.add(existing)
                     skipped += 1
                     continue
 

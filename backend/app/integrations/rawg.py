@@ -13,6 +13,7 @@ from ..services.rawg_import import (
     apply_rawg_related,
     game_from_rawg_list,
 )
+from ..services.deduplication import find_existing_duplicate, merge_game_data
 
 
 log = logging.getLogger(__name__)
@@ -112,7 +113,12 @@ def _store_rawg_snapshot(
     ))
 
 
-async def import_rawg_games(db: Session, target: int = 2000, page_size: int = 40) -> dict[str, int]:
+async def import_rawg_games(
+    db: Session,
+    target: int = 2000,
+    page_size: int = 40,
+    parent_platform_ids: list[int] | None = None,
+) -> dict[str, int]:
     cfg = get_settings()
     if not cfg.rawg_configured():
         raise RuntimeError("RAWG_API_KEY is not configured.")
@@ -123,15 +129,21 @@ async def import_rawg_games(db: Session, target: int = 2000, page_size: int = 40
 
     async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT) as client:
         while imported < target:
+            params: dict[str, str | int] = {
+                "key": cfg.RAWG_API_KEY,
+                "page": page,
+                "page_size": min(page_size, target - imported),
+                "ordering": "-metacritic,-rating",
+            }
+            if parent_platform_ids:
+                params["parent_platforms"] = ",".join(str(platform_id) for platform_id in parent_platform_ids)
+
             response = await client.get(
                 _RAWG_LIST_URL,
-                params={
-                    "key": cfg.RAWG_API_KEY,
-                    "page": page,
-                    "page_size": min(page_size, target - imported),
-                    "ordering": "-metacritic,-rating",
-                },
+                params=params,
             )
+            if response.status_code in (401, 403):
+                raise RuntimeError("RAWG_API_KEY was rejected by RAWG. Add a valid key to backend/.env and restart.")
             response.raise_for_status()
             results = response.json().get("results", [])
 
@@ -145,9 +157,12 @@ async def import_rawg_games(db: Session, target: int = 2000, page_size: int = 40
                     existing = db.scalar(
                         select(Game).where(func.lower(Game.title) == game.title.lower())
                     )
+                if existing is None:
+                    existing = find_existing_duplicate(db, game)
                 if existing:
                     if apply_rawg_metadata(existing, raw_game):
                         db.add(existing)
+                    merge_game_data(existing, game)
                     _upsert_rawg_external_id(db, existing, raw_game)
                     skipped += 1
                     continue
@@ -168,6 +183,11 @@ async def import_rawg_games(db: Session, target: int = 2000, page_size: int = 40
             page += 1
 
     return {"imported": imported, "skipped": skipped}
+
+
+async def import_rawg_nintendo_games(db: Session, target: int = 1000, page_size: int = 40) -> dict[str, int]:
+    # RAWG parent platform id 7 is Nintendo; it covers Switch and older Nintendo systems.
+    return await import_rawg_games(db, target=target, page_size=page_size, parent_platform_ids=[7])
 
 
 def _extract_rawg_id(game: Game, db: Session) -> str | None:

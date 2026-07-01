@@ -5,6 +5,7 @@ import {
   Flag,
   Gamepad2,
   Heart,
+  Medal,
   Play,
   Share2,
   Star,
@@ -15,7 +16,8 @@ import { Link } from 'react-router-dom'
 import type { Game, SourceScore } from '../types/game'
 import type { CollectionKey } from '../state/collections'
 import { PlatformIcons } from './PlatformIcons'
-import { ScoreRing, scoreColor, sourceScoreColor } from './ScoreRing'
+import { ScoreRing } from './ScoreRing'
+import { scoreColor, scoreColorRgb, sourceScoreColor } from '../utils/scoreColors'
 
 interface GameCardProps {
   game: Game
@@ -68,7 +70,6 @@ function sourceUrl(source: string, game: Game): string | null {
 
 function playtimeColor(minutes: number): string {
   const hours = minutes / 60
-  // 50-60h is optimal; score degrades as you move away in either direction
   let score: number
   if (hours >= 50 && hours <= 60) {
     score = 100
@@ -137,8 +138,10 @@ export function GameCard({
       ? `${Math.round(game.playtime_minutes / 60)}h`
       : null
   const coverSrc = game.cover_url || fallbackCoverUrl(game.title)
+  const displayScore = Math.round(game.metrix_score)
   const cardStyle = {
-    '--score-color': scoreColor(game.metrix_score),
+    '--score-color': scoreColor(displayScore),
+    '--score-rgb': scoreColorRgb(displayScore),
     '--cover-image': `url("${coverSrc.replaceAll('"', '\\"')}")`,
   } as CSSProperties
   const handleCoverError = (event: SyntheticEvent<HTMLImageElement>) => {
@@ -279,10 +282,42 @@ export function GameCard({
             </p>
           ) : null}
           {(game.goty_year || (game.award_count ?? 0) > 0) ? (
-            <p className="compact-award">
+            <div className="compact-award">
               <Trophy size={9} aria-hidden="true" />
               {game.goty_year ? ` GOTY ${game.goty_year}` : ` ${game.award_count} awards`}
-            </p>
+              <div className="award-tooltip">
+                {game.awards?.length > 0
+                  ? game.awards.map((a) => (
+                      <div key={a} className="award-tooltip-item">
+                        <Trophy size={10} aria-hidden="true" />
+                        {a}
+                      </div>
+                    ))
+                  : (
+                      <>
+                        {game.goty_year ? (
+                          <div className="award-tooltip-item">
+                            <Trophy size={10} aria-hidden="true" />
+                            Game of the Year {game.goty_year}
+                          </div>
+                        ) : null}
+                        {game.award_count > 0 ? (
+                          <div className="award-tooltip-item">
+                            <Medal size={10} aria-hidden="true" />
+                            {game.award_count} major awards
+                          </div>
+                        ) : null}
+                        {game.award_nominations > 0 ? (
+                          <div className="award-tooltip-item">
+                            <Medal size={10} aria-hidden="true" />
+                            {game.award_nominations} nominations
+                          </div>
+                        ) : null}
+                      </>
+                    )
+                }
+              </div>
+            </div>
           ) : null}
         </div>
         <div className="compact-actions" aria-label={`${game.title} actions`}>
@@ -455,20 +490,43 @@ export function GameCard({
         </div>
 
         {(game.goty_year || (game.award_count ?? 0) > 0) ? (
-          <div
-            className="award-badge"
-            title={
-              game.award_nominations
-                ? `${game.award_count} major awards · ${game.award_nominations} nominations`
-                : game.award_count > 0
-                  ? `${game.award_count} major awards`
-                  : `Game of the Year ${game.goty_year}`
-            }
-          >
+          <div className="award-badge">
             <Trophy size={11} aria-hidden="true" />
             <span>
               {game.goty_year ? `GOTY ${game.goty_year}` : `${game.award_count} awards`}
             </span>
+            <div className="award-tooltip">
+              {game.awards?.length > 0
+                ? game.awards.map((a) => (
+                    <div key={a} className="award-tooltip-item">
+                      <Trophy size={11} aria-hidden="true" />
+                      {a}
+                    </div>
+                  ))
+                : (
+                    <>
+                      {game.goty_year ? (
+                        <div className="award-tooltip-item">
+                          <Trophy size={11} aria-hidden="true" />
+                          Game of the Year {game.goty_year}
+                        </div>
+                      ) : null}
+                      {game.award_count > 0 ? (
+                        <div className="award-tooltip-item">
+                          <Medal size={11} aria-hidden="true" />
+                          {game.award_count} major awards
+                        </div>
+                      ) : null}
+                      {game.award_nominations > 0 ? (
+                        <div className="award-tooltip-item">
+                          <Medal size={11} aria-hidden="true" />
+                          {game.award_nominations} nominations
+                        </div>
+                      ) : null}
+                    </>
+                  )
+              }
+            </div>
           </div>
         ) : null}
 

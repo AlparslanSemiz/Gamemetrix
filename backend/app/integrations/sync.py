@@ -61,6 +61,7 @@ PRIMARY_RATING_SOURCES = ("Metacritic", "OpenCritic", "IGDB", "Steam")
 CRITIC_RATING_SOURCES = {"Metacritic", "OpenCritic"}
 USER_RATING_SOURCES = {"IGDB", "Steam"}
 CACHE_TTL = timedelta(hours=24)
+RAWG_CACHE_TTL = timedelta(days=30)
 
 # Equal-weight scoring: 4 primary slots; RAWG fills at lower weight when a primary is absent.
 # SteamSpy, CheapShark, FreeToGame are support sources — never enter the score.
@@ -255,7 +256,9 @@ def _weighted_source_average(
 def _cached_score(
     source_scores: list[dict[str, object]],
     source_name: str,
+    ttl: timedelta | None = None,
 ) -> ExternalScore | None:
+    effective_ttl = ttl if ttl is not None else CACHE_TTL
     for s in source_scores:
         if s.get("source") != source_name:
             continue
@@ -266,7 +269,7 @@ def _cached_score(
             refreshed_time = datetime.fromisoformat(refreshed_at)
         except ValueError:
             continue
-        if datetime.now(UTC) - refreshed_time <= CACHE_TTL:
+        if datetime.now(UTC) - refreshed_time <= effective_ttl:
             return ExternalScore(
                 source=source_name,
                 score=float(s.get("score", 0)),
@@ -323,7 +326,7 @@ def _build_fetch_tasks(game: Game) -> list[Awaitable[ExternalScore]]:
     tasks: list[Awaitable[ExternalScore]] = [
         _resolve_score(
             "Metacritic",
-            _cached_score(game.source_scores, "Metacritic"),
+            _cached_score(game.source_scores, "Metacritic", RAWG_CACHE_TTL),
             lambda: get_rawg_metacritic_score(game.title, cached_value=game.metacritic_score),
         ),
         _resolve_score(
@@ -365,7 +368,7 @@ def _build_fetch_tasks(game: Game) -> list[Awaitable[ExternalScore]]:
         tasks.append(
             _resolve_score(
                 "RAWG",
-                _cached_score(game.source_scores, "RAWG"),
+                _cached_score(game.source_scores, "RAWG", RAWG_CACHE_TTL),
                 lambda: get_rawg_rating_score(game.title),
             )
         )
