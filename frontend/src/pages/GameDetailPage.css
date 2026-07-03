@@ -214,6 +214,7 @@
   font-size: 0.7rem;
   color: #4b5563;
 }
+/* Colored by confidence level, not by score — see .score-confidence in App.css */
 .dp-confidence {
   display: inline-block;
   font-size: 0.72rem;
@@ -221,10 +222,16 @@
   padding: 2px 10px;
   border-radius: 20px;
   border: 1px solid currentColor;
-  color: var(--score-color, #9ca3af);
+  color: #9ca3af;
   background: rgba(0, 0, 0, 0.3);
   width: fit-content;
 }
+
+.dp-confidence-catalog { color: #7d8590; }
+.dp-confidence-limited,
+.dp-confidence-low { color: #f59e0b; }
+.dp-confidence-solid { color: #06b6d4; }
+.dp-confidence-strong { color: #8b5cf6; }
 
 .dp-score-stats {
   display: grid;
@@ -287,11 +294,12 @@
   font-size: 0.72rem;
   line-height: 1.45;
 }
-.dp-signal-strong strong,
-.dp-signal-solid strong,
-.dp-signal-limited strong { color: var(--score-color, #5ee275); }
+.dp-signal-strong strong { color: #8b5cf6; }
+.dp-signal-solid strong { color: #06b6d4; }
+.dp-signal-limited strong,
+.dp-signal-low strong { color: #f59e0b; }
 .dp-signal-catalog strong,
-.dp-signal-muted strong { color: var(--score-color, #778196); }
+.dp-signal-muted strong { color: #778196; }
 
 /* ─── Section ────────────────────────────────────────────────────────────── */
 

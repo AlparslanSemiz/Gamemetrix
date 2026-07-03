@@ -1426,6 +1426,17 @@ html { font-size: 16px; }
   }
 }
 
+/* Icons rendered as store links */
+a.pf-icon-link {
+  text-decoration: none;
+  cursor: pointer;
+}
+
+a.pf-icon-link:hover,
+a.pf-icon-link:focus-visible {
+  text-decoration: none;
+}
+
 .pf-label {
   line-height: 1;
 }
@@ -1488,6 +1499,7 @@ html { font-size: 16px; }
 a.platform-badge:hover {
   filter: brightness(1.18);
   transform: translateY(-1px);
+  text-decoration: none;
 }
 
 .platform-steam    { background: #171a21; }
@@ -1562,8 +1574,11 @@ a.platform-badge:hover {
   text-align: center;
 }
 
+/* Confidence label colors are tied to the confidence LEVEL (how much source
+   coverage backs the score), deliberately independent of the score color —
+   a 95-rated game with thin data should still read as "Limited". */
 .score-confidence span {
-  color: var(--score-color, #4cc458);
+  color: #aeb3bd;
   font-size: 12px;
   font-weight: 900;
   text-transform: uppercase;
@@ -1578,20 +1593,20 @@ a.platform-badge:hover {
 }
 
 .score-confidence-catalog span {
-  color: var(--score-color, #6b7280);
+  color: #7d8590;
 }
 
 .score-confidence-limited span,
 .score-confidence-low span {
-  color: var(--score-color, #d0a042);
+  color: #f59e0b;
 }
 
 .score-confidence-solid span {
-  color: var(--score-color, #4cc458);
+  color: #06b6d4;
 }
 
 .score-confidence-strong span {
-  color: var(--score-color, #7c3aed);
+  color: #8b5cf6;
 }
 
 .ranked-lower-hint {
@@ -1916,9 +1931,15 @@ a.source-name-link:hover {
 /* Confidence ring: colored outline on the score bubble in compact view */
 .compact-score .score-ring-sm {
   box-shadow:
-    0 0 0 2px var(--score-color, #4cc458),
+    0 0 0 2px var(--confidence-color, #7d8590),
     0 2px 8px rgba(0, 0, 0, 0.55);
 }
+
+.compact-score-catalog { --confidence-color: #7d8590; }
+.compact-score-limited,
+.compact-score-low { --confidence-color: #f59e0b; }
+.compact-score-solid { --confidence-color: #06b6d4; }
+.compact-score-strong { --confidence-color: #8b5cf6; }
 
 .compact-body {
   display: grid;
