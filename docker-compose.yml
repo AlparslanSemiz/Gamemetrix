@@ -1,4 +1,7 @@
+version: '3.8'
+
 services:
+  # --- 1. VERİ TABANI (PostgreSQL) ---
   db:
     image: postgres:15-alpine
     container_name: gamemetrix-db
@@ -12,5 +15,42 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
 
+  # --- 2. BACKEND (FastAPI) ---
+  backend:
+    build:
+      context: ./backend # backend klasörünün yolu
+      dockerfile: Dockerfile # backend içindeki Dockerfile adı (genelde Dockerfile olur)
+    container_name: gamemetrix-backend
+    restart: always
+    env_file:
+      - ./backend/.env # .env dosyasını buraya aldığın için yolunu böyle belirttik
+    expose:
+      - "8000"
+    depends_on:
+      - db # Veri tabanı ayağa kalkmadan backend başlamasın
+
+  # --- 3. FRONTEND (React / Vite) ---
+  frontend:
+    build:
+      context: ./frontend # frontend klasörünün yolu
+      dockerfile: Dockerfile
+    container_name: gamemetrix-frontend
+    restart: always
+    expose:
+      - "3000"
+
+  # --- 4. ORKESTRA ŞEFİ / REVERSE PROXY (Nginx) ---
+  nginx:
+    image: nginx:alpine
+    container_name: gamemetrix-nginx
+    restart: always
+    ports:
+      - "80:80" # Dış dünyadan gelen HTTP isteklerini yakalar
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro # Kök dizindeki nginx.conf'u içeri bağlar
+    depends_on:
+      - backend
+      - frontend
+
 volumes:
-  pgdata:
+  pgdata: # Veri tabanı verilerinin sunucu kapansa bile silinmemesini sağlar
