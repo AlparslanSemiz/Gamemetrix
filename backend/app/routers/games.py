@@ -16,7 +16,7 @@ import datetime
 import logging
 
 import httpx
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
 from sqlalchemy import Select, asc, desc, func, select, text
 from sqlalchemy.orm import Session, noload
 
@@ -60,6 +60,8 @@ from ..services.game_filter import (
 from ..services.deduplication import find_existing_duplicate, merge_game_data
 from ..services.game_similarity import find_similar_games
 from ..services.rawg_import import apply_rawg_to_game, game_from_rawg_search
+from ..rate_limit import limiter
+from ..security import require_admin_user
 
 router = APIRouter(tags=["games"])
 log = logging.getLogger(__name__)
@@ -68,7 +70,9 @@ _RAWG_SEARCH_TIMEOUT = 15
 
 
 @router.get("/api/search", response_model=GameRead)
+@limiter.limit(get_settings().PUBLIC_READ_RATE_LIMIT)
 async def search_game(
+    request: Request,
     q: str = Query(..., min_length=2),
     db: Session = Depends(get_db),
 ) -> Game:
@@ -124,7 +128,9 @@ _IN_MEMORY_SORTS = {"metacritic_score", "opencritic_score", "steam_score", "revi
 
 
 @router.get("/api/games", response_model=GameListResponse)
+@limiter.limit(get_settings().PUBLIC_READ_RATE_LIMIT)
 def list_games(
+    request: Request,
     db: Session = Depends(get_db),
     q: str | None = Query(default=None, min_length=2),
     genre: str | None = None,
@@ -278,7 +284,9 @@ def _apply_in_memory_filters(
 
 
 @router.get("/api/games/{slug}", response_model=GameRead)
+@limiter.limit(get_settings().PUBLIC_READ_RATE_LIMIT)
 async def get_game(
+    request: Request,
     slug: str,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
@@ -378,7 +386,9 @@ def _system_requirements_need_repair(requirements: list[dict] | None) -> bool:
 
 
 @router.get("/api/games/{slug}/similar", response_model=GameListResponse)
+@limiter.limit(get_settings().PUBLIC_READ_RATE_LIMIT)
 def get_similar_games(
+    request: Request,
     slug: str,
     limit: int = Query(default=10, ge=1, le=24),
     db: Session = Depends(get_db),
@@ -391,7 +401,11 @@ def get_similar_games(
 
 
 @router.post("/api/games/{slug}/refresh-scores", response_model=GameRead)
-async def refresh_game_scores(slug: str, db: Session = Depends(get_db)) -> Game:
+async def refresh_game_scores(
+    slug: str,
+    db: Session = Depends(get_db),
+    _admin=Depends(require_admin_user),
+) -> Game:
     game = db.scalar(select(Game).where(Game.slug == slug))
     if game is None:
         raise HTTPException(status_code=404, detail="Game not found")
@@ -399,7 +413,11 @@ async def refresh_game_scores(slug: str, db: Session = Depends(get_db)) -> Game:
 
 
 @router.post("/api/games/{slug}/fetch-screenshots", response_model=GameRead)
-async def fetch_game_screenshots(slug: str, db: Session = Depends(get_db)) -> Game:
+async def fetch_game_screenshots(
+    slug: str,
+    db: Session = Depends(get_db),
+    _admin=Depends(require_admin_user),
+) -> Game:
     game = db.scalar(select(Game).where(Game.slug == slug))
     if game is None:
         raise HTTPException(status_code=404, detail="Game not found")
@@ -418,7 +436,11 @@ async def fetch_game_screenshots(slug: str, db: Session = Depends(get_db)) -> Ga
 
 
 @router.post("/api/games/{slug}/fetch-system-requirements", response_model=GameRead)
-async def fetch_game_system_requirements(slug: str, db: Session = Depends(get_db)) -> Game:
+async def fetch_game_system_requirements(
+    slug: str,
+    db: Session = Depends(get_db),
+    _admin=Depends(require_admin_user),
+) -> Game:
     game = db.scalar(select(Game).where(Game.slug == slug))
     if game is None:
         raise HTTPException(status_code=404, detail="Game not found")
@@ -437,7 +459,11 @@ async def fetch_game_system_requirements(slug: str, db: Session = Depends(get_db
 
 
 @router.post("/api/games/{slug}/fetch-prices", response_model=GameRead)
-async def fetch_game_prices(slug: str, db: Session = Depends(get_db)) -> Game:
+async def fetch_game_prices(
+    slug: str,
+    db: Session = Depends(get_db),
+    _admin=Depends(require_admin_user),
+) -> Game:
     game = db.scalar(select(Game).where(Game.slug == slug))
     if game is None:
         raise HTTPException(status_code=404, detail="Game not found")
@@ -601,7 +627,12 @@ def _cheapshark_deal_matches_game(raw: dict, game: Game, app_id: int | None) -> 
 
 
 @router.get("/api/games/{slug}/trailer", response_model=TrailerResponse)
-async def get_trailer(slug: str, db: Session = Depends(get_db)) -> dict[str, str | None]:
+@limiter.limit(get_settings().PUBLIC_READ_RATE_LIMIT)
+async def get_trailer(
+    request: Request,
+    slug: str,
+    db: Session = Depends(get_db),
+) -> dict[str, str | None]:
     game = db.scalar(select(Game).where(Game.slug == slug))
     if game is None:
         raise HTTPException(status_code=404, detail="Game not found")
@@ -618,7 +649,11 @@ _FACETS_TTL = 300.0  # 5 minutes
 
 
 @router.get("/api/facets", response_model=FacetsResponse)
-def get_facets(db: Session = Depends(get_db)) -> FacetsResponse:
+@limiter.limit(get_settings().PUBLIC_READ_RATE_LIMIT)
+def get_facets(
+    request: Request,
+    db: Session = Depends(get_db),
+) -> FacetsResponse:
     global _facets_cache, _facets_cache_time
     now = datetime.datetime.now().timestamp()
     if _facets_cache is not None and (now - _facets_cache_time) < _FACETS_TTL:

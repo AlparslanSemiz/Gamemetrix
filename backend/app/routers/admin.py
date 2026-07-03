@@ -18,8 +18,10 @@ Endpoints:
 """
 
 import asyncio
+import dataclasses
 import logging
 from datetime import UTC, datetime
+from enum import Enum
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
@@ -36,10 +38,24 @@ from ..integrations.opencritic_service import opencritic_service
 from ..integrations.rawg_service import rawg_service
 from ..integrations.steam_service import steam_service
 from ..integrations.types import SourceHealth
+from ..security import require_admin_user
 
 log = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/admin", tags=["admin"])
+router = APIRouter(
+    prefix="/admin",
+    tags=["admin"],
+    dependencies=[Depends(require_admin_user)],
+)
+
+
+class SourceTest(str, Enum):
+    igdb = "igdb"
+    rawg = "rawg"
+    opencritic = "opencritic"
+    steam = "steam"
+    itad = "itad"
+    cheapshark = "cheapshark"
 
 
 # ── Health check ─────────────────────────────────────────────────────────────
@@ -102,17 +118,22 @@ async def api_health() -> dict:
 
 @router.get("/source-test/{source}")
 async def source_test(
-    source: str,
-    q: str = Query(default="Portal 2", description="Title to search for"),
+    source: SourceTest,
+    q: str = Query(
+        default="Portal 2",
+        min_length=2,
+        max_length=120,
+        description="Title to search for",
+    ),
 ) -> dict:
     """
     Run a live search against one source and return the normalized result.
     source: igdb | rawg | opencritic | steam | itad | cheapshark
     """
-    source = source.lower()
+    source_name = source.value
 
     async def _run():
-        match source:
+        match source_name:
             case "igdb":
                 return await igdb_service.search_game(q)
             case "rawg":
@@ -137,27 +158,26 @@ async def source_test(
             case _:
                 raise HTTPException(
                     status_code=400,
-                    detail=f"Unknown source '{source}'. Valid: igdb, rawg, opencritic, steam, itad, cheapshark",
+                    detail=f"Unknown source '{source_name}'. Valid: igdb, rawg, opencritic, steam, itad, cheapshark",
                 )
 
     try:
         result = await asyncio.wait_for(_run(), timeout=20)
     except asyncio.TimeoutError:
-        raise HTTPException(status_code=504, detail=f"Source test for '{source}' timed out")
+        raise HTTPException(status_code=504, detail=f"Source test for '{source_name}' timed out")
 
     if result is None:
-        return {"source": source, "query": q, "found": False, "result": None}
+        return {"source": source_name, "query": q, "found": False, "result": None}
 
     # Convert dataclass to dict for JSON serialization
     if hasattr(result, "__dataclass_fields__"):
-        import dataclasses
         payload = dataclasses.asdict(result)
     elif isinstance(result, list):
         payload = [dataclasses.asdict(r) if hasattr(r, "__dataclass_fields__") else r for r in result]
     else:
         payload = result
 
-    return {"source": source, "query": q, "found": True, "result": payload}
+    return {"source": source_name, "query": q, "found": True, "result": payload}
 
 
 # ── External IDs ──────────────────────────────────────────────────────────────
