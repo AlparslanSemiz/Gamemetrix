@@ -262,7 +262,7 @@ def merge_game_data(keeper: Game, duplicate: Game) -> bool:
         keeper.release_date = duplicate.release_date
         keeper.release_year = duplicate.release_year
         changed = True
-    for attr in ("developer", "publisher", "metacritic_score", "image_url", "ratings_refreshed_at", "metadata_refreshed_at"):
+    for attr in ("developer", "publisher", "metacritic_score", "image_url", "website_url", "ratings_refreshed_at", "metadata_refreshed_at"):
         if getattr(keeper, attr) in (None, "") and getattr(duplicate, attr) not in (None, ""):
             setattr(keeper, attr, getattr(duplicate, attr))
             changed = True

@@ -145,7 +145,9 @@ html { font-size: 16px; }
   margin-bottom: 20px;
   background: rgba(18, 18, 18, 0.96);
   backdrop-filter: blur(10px);
-  transition: transform 0.36s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.28s ease;
+  transition:
+    transform 0.58s cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 0.46s ease;
   will-change: transform;
 }
 
@@ -541,6 +543,79 @@ html { font-size: 16px; }
 .settings-save {
   justify-self: start;
   min-width: 160px;
+}
+
+.settings-subheading {
+  font-size: 0.9rem;
+  color: #6b7280;
+  margin: 24px 0 6px;
+}
+
+.settings-subheading:first-of-type {
+  margin-top: 16px;
+}
+
+.refresh-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+
+.refresh-danger {
+  background: #dc2626;
+}
+
+.refresh-status {
+  margin-top: 10px;
+  color: #9ca3af;
+  font-size: 0.82rem;
+}
+
+.rate-limit-block {
+  margin-top: 16px;
+}
+
+.rate-limit-caption {
+  color: #6b7280;
+  font-size: 0.78rem;
+  margin-bottom: 8px;
+}
+
+.rate-limit-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 20px;
+}
+
+.rate-limit-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.79rem;
+}
+
+.rate-limit-row > span:first-child {
+  color: #9ca3af;
+  min-width: 88px;
+}
+
+.rate-limit-track {
+  flex: 1;
+  height: 3px;
+  background: #1f2937;
+  border-radius: 2px;
+}
+
+.rate-limit-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.3s;
+}
+
+.rate-limit-value {
+  min-width: 44px;
+  text-align: right;
 }
 
 /* ─── Filters ─────────────────────────────────────────────────────── */
@@ -951,6 +1026,56 @@ html { font-size: 16px; }
 .game-list-grid {
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
   gap: 20px;
+}
+
+/* ─── Loading skeletons & empty states ────────────────────────────── */
+.skeleton-card {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid #1e1e1e;
+  border-radius: 8px;
+  background: #161616;
+}
+
+.game-list-list .skeleton-card { height: 200px; }
+.game-list-grid .skeleton-card { aspect-ratio: 16 / 13; }
+
+.skeleton-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.04), transparent);
+  transform: translateX(-100%);
+  animation: skeleton-shimmer 1.4s infinite;
+}
+
+@keyframes skeleton-shimmer {
+  100% { transform: translateX(100%); }
+}
+
+.empty-state {
+  display: grid;
+  gap: 12px;
+  justify-items: center;
+  border: 1px dashed #2a2a2a;
+  border-radius: 10px;
+  color: #9099a8;
+  padding: 56px 20px;
+  text-align: center;
+}
+
+.empty-state p {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: #c6cad2;
+}
+
+.empty-state .empty-hint {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: #6a6e78;
+  max-width: 420px;
 }
 
 /* ─── Game card ───────────────────────────────────────────────────── */
@@ -1668,91 +1793,6 @@ a.source-name-link:hover {
   min-height: 1px;
 }
 
-/* ─── Trailer modal ───────────────────────────────────────────────── */
-.trailer-modal {
-  position: fixed;
-  inset: 0;
-  z-index: 10;
-  display: grid;
-  place-items: center;
-  padding: 24px;
-}
-
-.modal-backdrop {
-  position: absolute;
-  inset: 0;
-  border: 0;
-  background: rgba(0, 0, 0, 0.8);
-  cursor: pointer;
-}
-
-.modal-panel {
-  position: relative;
-  z-index: 1;
-  display: grid;
-  width: min(900px, 100%);
-  gap: 12px;
-  border: 1px solid #2a2a2a;
-  border-radius: 8px;
-  background: #141414;
-  padding: 14px;
-  box-shadow: 0 28px 80px rgba(0, 0, 0, 0.65);
-}
-
-.modal-heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.modal-heading h2 {
-  margin: 0;
-  color: #f2f4f8;
-  font-size: 17px;
-}
-
-.modal-heading button {
-  display: grid;
-  width: 32px;
-  height: 32px;
-  place-items: center;
-  border: 0;
-  border-radius: 6px;
-  background: #222;
-  color: #f2f4f8;
-  cursor: pointer;
-}
-
-.modal-panel iframe {
-  width: 100%;
-  aspect-ratio: 16 / 9;
-  border: 0;
-  border-radius: 6px;
-  background: #000;
-}
-
-.trailer-loading,
-.trailer-fallback-link {
-  display: grid;
-  width: 100%;
-  aspect-ratio: 16 / 9;
-  place-items: center;
-  border: 1px solid #242424;
-  border-radius: 6px;
-  background: #080808;
-  color: #d8dce4;
-  font-size: 14px;
-  font-weight: 800;
-}
-
-.trailer-fallback-link {
-  color: #57d46d;
-  text-decoration: none;
-}
-
-.trailer-fallback-link:hover {
-  text-decoration: underline;
-}
 
 /* ─── Compact (grid) card ─────────────────────────────────────────── */
 .game-card-compact {

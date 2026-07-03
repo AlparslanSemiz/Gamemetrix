@@ -11,13 +11,14 @@ import {
   Star,
   Trophy,
 } from 'lucide-react'
-import { type CSSProperties, type SyntheticEvent } from 'react'
+import { memo, type CSSProperties, type SyntheticEvent } from 'react'
 import { Link } from 'react-router-dom'
 import type { Game, SourceScore } from '../types/game'
 import type { CollectionKey } from '../state/collections'
 import { PlatformIcons } from './PlatformIcons'
 import { ScoreRing } from './ScoreRing'
 import { scoreColor, scoreColorRgb, sourceScoreColor } from '../utils/scoreColors'
+import { steamAppIdFromGame } from '../utils/steam'
 
 interface GameCardProps {
   game: Game
@@ -36,6 +37,7 @@ interface GameCardProps {
     collection: CollectionKey,
     slug: string,
   ) => void
+  onOpenDetail: (game: Game) => void
 }
 
 const ALL_PRIMARY_SOURCES = new Set(['Metacritic', 'OpenCritic', 'IGDB', 'Steam'])
@@ -45,7 +47,7 @@ const SECONDARY_SOURCE_ORDER = ['RAWG'] as const
 
 function sourceUrl(source: string, game: Game): string | null {
   const q = encodeURIComponent(game.title)
-  const steamAppId = game.cover_url?.match(/steam\/apps\/(\d+)\//)?.[1]
+  const steamAppId = steamAppIdFromGame(game)
   switch (source) {
     case 'Metacritic':
       return `https://www.metacritic.com/search/${q}/`
@@ -110,7 +112,7 @@ function fallbackCoverUrl(title: string): string {
   return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`
 }
 
-export function GameCard({
+export const GameCard = memo(function GameCard({
   game,
   isFavorite,
   isLiked,
@@ -124,6 +126,7 @@ export function GameCard({
   onFilterGenre,
   onFilterPublisher,
   onToggleCollection,
+  onOpenDetail,
 }: GameCardProps) {
   const ENDLESS_GENRES = new Set([
     'Roguelike', 'Roguelite', 'Rogue-like', 'Rogue-lite', 'Roguelikes', 'Rouge-like',
@@ -249,7 +252,7 @@ export function GameCard({
   // ── Compact (grid) card ───────────────────────────────────────────
   if (compact) {
     return (
-      <article className="game-card-compact" style={cardStyle}>
+      <article className="game-card-compact" style={cardStyle} data-game-slug={game.slug}>
         <div
           className="compact-cover"
           role="button"
@@ -272,7 +275,13 @@ export function GameCard({
         </div>
         <div className="compact-body">
           <h3 className="compact-title">
-            <Link to={`/game/${game.slug}`} className="game-title-link">{game.title}</Link>
+            <Link
+              to={`/game/${game.slug}`}
+              className="game-title-link"
+              onClick={() => onOpenDetail(game)}
+            >
+              {game.title}
+            </Link>
           </h3>
           <p className="compact-meta">{game.release_year} · {game.genres.slice(0, 2).join(' · ')}</p>
           {game.developer ? <p className="compact-dev">{game.developer}</p> : null}
@@ -386,7 +395,7 @@ export function GameCard({
 
   // ── Full (list) card ──────────────────────────────────────────────
   return (
-    <article className="game-card" style={cardStyle}>
+    <article className="game-card" style={cardStyle} data-game-slug={game.slug}>
       {/* Cover — click opens trailer */}
       <div className="cover" onClick={() => onOpenTrailer(game)} title="Watch trailer">
         <img
@@ -403,7 +412,15 @@ export function GameCard({
       {/* Body */}
       <div className="card-body">
         <div className="card-heading">
-          <h3><Link to={`/game/${game.slug}`} className="game-title-link">{game.title}</Link></h3>
+          <h3>
+            <Link
+              to={`/game/${game.slug}`}
+              className="game-title-link"
+              onClick={() => onOpenDetail(game)}
+            >
+              {game.title}
+            </Link>
+          </h3>
           <span className="card-year">{game.release_year}</span>
           <div className="genre-links" aria-label={`${game.title} genres`}>
             {game.genres.slice(0, 4).map((genre, i, arr) => (
@@ -582,4 +599,4 @@ export function GameCard({
       </div>
     </article>
   )
-}
+})

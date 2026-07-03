@@ -1,44 +1,61 @@
 /* eslint-disable react-hooks/set-state-in-effect */
 import { type CSSProperties, useEffect, useState } from 'react'
-import { createPortal } from 'react-dom'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import { ExternalLink } from 'lucide-react'
-import { fetchGamePrices, fetchGameScreenshots, getGameBySlug, getGameTrailer, getGames, refreshGameScores } from '../services/games'
+import {
+  fetchGamePrices,
+  fetchGameScreenshots,
+  fetchGameSystemRequirements,
+  getGameBySlug,
+  getGameTrailer,
+  getSimilarGames,
+  refreshGameScores,
+} from '../services/games'
 import { ScoreRing } from '../components/ScoreRing'
 import { PlatformIcons } from '../components/PlatformIcons'
+import { TrailerModal } from '../components/TrailerModal'
 import { scoreColor, scoreColorRgb, sourceScoreColor } from '../utils/scoreColors'
-import type { Game, GameFilters, PriceSnapshot, SourceScore, SystemRequirement } from '../types/game'
+import { steamAppIdFromGame } from '../utils/steam'
+import type { Game, PriceSnapshot, SourceScore } from '../types/game'
+import { DlcSection } from './detail/DlcSection'
+import { Gallery } from './detail/Gallery'
+import { PricePanel } from './detail/PricePanel'
+import { SimilarGamesSection, SIMILAR_DISPLAY_LIMIT } from './detail/SimilarGamesSection'
+import { SysReqBlock } from './detail/SysReqBlock'
+import { formatCompactCount, formatDate } from './detail/format'
 import './GameDetailPage.css'
 
 // The 4 core quality sources shown in the main rating block
-const CURRENT_YEAR = new Date().getFullYear()
 const PRIMARY_4 = ['Metacritic', 'OpenCritic', 'Steam', 'IGDB'] as const
 // Extra sources shown in the secondary tab
 const EXTRA_SOURCES = ['RAWG', 'SteamSpy', 'CheapShark', 'FreeToGame'] as const
 const RATING_SOURCES = ['Metacritic', 'OpenCritic', 'Steam', 'IGDB', 'RAWG'] as const
+const SCORE_REFRESH_MAX_AGE_MS = 12 * 60 * 60 * 1000
+const PRICE_REFRESH_MAX_AGE_MS = 12 * 60 * 60 * 1000
+// Mirrors the backend's _BAD_SYSTEM_REQUIREMENT_MARKERS heuristic
+const BAD_SYSTEM_REQUIREMENT_MARKERS = ['windows xp', '1.2ghz', '256mb', '250 mb']
 
-const SIMILAR_DEFAULT_FILTERS: GameFilters = {
-  q: '',
-  genre: '',
-  platform: '',
-  developer: '',
-  publisher: '',
-  yearMin: 1970,
-  yearMax: CURRENT_YEAR,
-  minScore: 0,
-  maxScore: 100,
-  minRatings: 0,
-  maxRatings: 0,
-  minLiveSources: 0,
-  requireCritic: false,
-  hasAward: false,
-  sort: 'rank_score',
-  direction: 'desc',
+function isOlderThan(value: string | null | undefined, maxAgeMs: number) {
+  if (!value) return true
+  const timestamp = new Date(value).getTime()
+  return Number.isNaN(timestamp) || Date.now() - timestamp > maxAgeMs
+}
+
+function mergeGameSnapshot(current: Game, incoming: Game): Game {
+  return {
+    ...current,
+    ...incoming,
+    screenshots: incoming.screenshots.length > 0 ? incoming.screenshots : current.screenshots,
+    system_requirements: incoming.system_requirements.length > 0 ? incoming.system_requirements : current.system_requirements,
+    dlcs: incoming.dlcs.length > 0 ? incoming.dlcs : current.dlcs,
+    similar_games: incoming.similar_games.length > 0 ? incoming.similar_games : current.similar_games,
+    price_snapshots: (incoming.price_snapshots?.length ?? 0) > 0 ? incoming.price_snapshots : current.price_snapshots,
+  }
 }
 
 function sourceExternalUrl(source: string, game: Game): string | null {
   const q = encodeURIComponent(game.title)
-  const steamAppId = game.cover_url?.match(/steam\/apps\/(\d+)\//)?.[1]
+  const steamAppId = steamAppIdFromGame(game)
   switch (source) {
     case 'Metacritic': return `https://www.metacritic.com/search/${q}/`
     case 'OpenCritic': return `https://opencritic.com/game/search?criteria=${q}`
@@ -77,28 +94,6 @@ function SourceRow({ s, game, filler = false }: { s: SourceScore; game: Game; fi
   )
 }
 
-function formatCompactCount(value: number): string {
-  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(value >= 10_000_000 ? 0 : 1)}M`
-  if (value >= 1_000) return `${(value / 1_000).toFixed(value >= 100_000 ? 0 : 1)}K`
-  return value.toLocaleString()
-}
-
-function formatDate(value?: string | null): string {
-  if (!value) return 'Not tracked'
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime()) || date.getFullYear() <= 1970) return 'Not tracked'
-  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-}
-
-function formatMoney(value: number | null | undefined, currency: string): string {
-  if (value === null || value === undefined) return 'N/A'
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: currency || 'USD',
-    maximumFractionDigits: value % 1 === 0 ? 0 : 2,
-  }).format(value)
-}
-
 function reliabilityCopy(game: Game, livePrimaryCount: number, rawgFillsSlot: boolean) {
   const applicableCount = game.applicable_source_count ?? 4
   const missing = Math.max(0, applicableCount - livePrimaryCount)
@@ -127,213 +122,31 @@ function popularitySummary(game: Game) {
   }
 }
 
-function sortedPrices(prices: PriceSnapshot[]): PriceSnapshot[] {
-  return [...prices].sort((a, b) => {
-    const aPrice = a.sale_price ?? a.list_price ?? Number.POSITIVE_INFINITY
-    const bPrice = b.sale_price ?? b.list_price ?? Number.POSITIVE_INFINITY
-    return aPrice - bPrice
-  })
+function websiteLabel(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, '')
+  } catch {
+    return 'Official site'
+  }
 }
 
-function PricePanel({ prices }: { prices: PriceSnapshot[] }) {
-  const ordered = sortedPrices(prices)
-  if (ordered.length === 0) return null
-  const best = ordered[0]
-  const current = best.is_free ? 'Free' : formatMoney(best.sale_price ?? best.list_price, best.currency)
-  const hasDiscount = Boolean(best.discount_percent && best.discount_percent > 0)
-
-  return (
-    <div className="dp-price-panel">
-      <div className="dp-price-primary">
-        <span>Best current price</span>
-        <strong>{current}</strong>
-        <small>
-          {best.store}
-          {hasDiscount ? ` · ${best.discount_percent}% off` : ''}
-          {best.region ? ` · ${best.region}` : ''}
-        </small>
-      </div>
-      <div className="dp-price-meta">
-        <div>
-          <span>List price</span>
-          <strong>{formatMoney(best.list_price, best.currency)}</strong>
-        </div>
-        <div>
-          <span>Historical low</span>
-          <strong>{formatMoney(best.historical_low, best.currency)}</strong>
-          <small>{formatDate(best.historical_low_date)}</small>
-        </div>
-        {best.is_subscription_included && (
-          <div>
-            <span>Subscription</span>
-            <strong>{best.subscription_service ?? 'Included'}</strong>
-          </div>
-        )}
-      </div>
-      <div className="dp-store-list">
-        {ordered.slice(0, 4).map((price) => {
-          const label = price.is_free ? 'Free' : formatMoney(price.sale_price ?? price.list_price, price.currency)
-          const content = (
-            <>
-              <span>{price.store}</span>
-              <strong>{label}</strong>
-            </>
-          )
-          return price.url ? (
-            <a key={`${price.source}-${price.store}-${price.fetched_at}`} href={price.url} target="_blank" rel="noreferrer" className="dp-store-row">
-              {content}
-            </a>
-          ) : (
-            <div key={`${price.source}-${price.store}-${price.fetched_at}`} className="dp-store-row">
-              {content}
-            </div>
-          )
-        })}
-      </div>
-    </div>
-  )
+function shouldFetchPrices(prices: PriceSnapshot[] | undefined): boolean {
+  const snapshots = prices ?? []
+  if (snapshots.length === 0) return true
+  if (snapshots.some((price) => price.store.startsWith('Store '))) return true
+  if (!snapshots.some((price) => price.is_free || price.sale_price !== null || price.list_price !== null)) return true
+  return snapshots.every((price) => isOlderThan(price.fetched_at, PRICE_REFRESH_MAX_AGE_MS))
 }
 
-function escapeRegExp(value: string) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-}
-
-function displayDlcTitle(gameTitle: string, dlcTitle: string) {
-  const cleaned = dlcTitle
-    .replace(new RegExp(`^${escapeRegExp(gameTitle)}\\s*[-:–—]\\s*`, 'i'), '')
-    .trim()
-  return cleaned || dlcTitle
-}
-
-function DlcSection({ game }: { game: Game }) {
-  if (game.dlcs.length === 0) return null
-  return (
-    <section className="dp-dlc-section" aria-labelledby="dlc-title">
-      <div className="dp-similar-heading">
-        <h2 id="dlc-title">DLCs & expansions</h2>
-        <small>{game.dlcs.length} add-ons</small>
-      </div>
-      <div className="dp-dlc-grid">
-        {game.dlcs.slice(0, 12).map((item) => {
-          const score = item.metacritic_score ?? (item.rating ? Math.round(item.rating * 20) : null)
-          const title = displayDlcTitle(game.title, item.title)
-          const accentScore = Math.round(score ?? game.rank_score)
-          const cardStyle = {
-            '--score-color': scoreColor(accentScore),
-            '--score-rgb': scoreColorRgb(accentScore),
-          } as CSSProperties
-          const body = (
-            <>
-              <div className="dp-dlc-cover">
-                {item.cover_url ? <img src={item.cover_url} alt="" loading="lazy" /> : null}
-                {score ? (
-                  <span
-                    className="dp-similar-score"
-                    style={{ '--score-color': scoreColor(Math.round(score)) } as CSSProperties}
-                  >
-                    {Math.round(score)}
-                  </span>
-                ) : null}
-              </div>
-              <div className="dp-dlc-body">
-                <span>{item.type ? item.type.toUpperCase() : 'DLC'}</span>
-                <strong title={item.title}>{title}</strong>
-                <small>{item.release_year && item.release_year > 1970 ? item.release_year : 'Release date not tracked'}</small>
-              </div>
-            </>
-          )
-          return item.url ? (
-            <a
-              key={`${item.title}-${item.id ?? item.slug ?? ''}`}
-              href={item.url}
-              target="_blank"
-              rel="noreferrer"
-              className="dp-dlc-card"
-              style={cardStyle}
-            >
-              {body}
-            </a>
-          ) : (
-            <div key={`${item.title}-${item.id ?? item.slug ?? ''}`} className="dp-dlc-card" style={cardStyle}>
-              {body}
-            </div>
-          )
-        })}
-      </div>
-    </section>
-  )
-}
-
-function SimilarGamesSection({
-  game,
-  catalogGames,
-}: {
-  game: Game
-  catalogGames: Game[]
-}) {
-  const rawgItems = game.similar_games.filter((item) => item.title !== game.title)
-  const catalogItems = catalogGames.filter((item) => item.slug !== game.slug)
-  const hasItems = rawgItems.length > 0 || catalogItems.length > 0
-  if (!hasItems) return null
-
-  return (
-    <section className="dp-similar-section" aria-labelledby="similar-games-title">
-      <div className="dp-similar-heading">
-        <h2 id="similar-games-title">Games like {game.title}</h2>
-      </div>
-      <div className="dp-similar-grid">
-        {catalogItems.slice(0, 10).map((item) => (
-          <Link
-            key={item.slug}
-            to={`/game/${item.slug}`}
-            className="dp-similar-card"
-          >
-            <div className="dp-similar-cover">
-              {item.cover_url || item.image_url ? (
-                <img src={item.cover_url || item.image_url || ''} alt="" loading="lazy" />
-              ) : null}
-              <span
-                className="dp-similar-score"
-                style={{ '--score-color': scoreColor(Math.round(item.metrix_score)) } as CSSProperties}
-              >
-                {Math.round(item.metrix_score)}
-              </span>
-            </div>
-            <div className="dp-similar-body">
-              <PlatformIcons platforms={item.platforms} mode="compact" maxVisible={5} />
-              <strong>{item.title}</strong>
-              <span>{item.release_year > 1970 ? item.release_year : 'TBA'}</span>
-            </div>
-          </Link>
-        ))}
-        {catalogItems.length < 8 && rawgItems.slice(0, 8 - catalogItems.length).map((item) => (
-          <a
-            key={`${item.title}-${item.id ?? item.slug ?? ''}`}
-            href={item.url ?? '#'}
-            target={item.url ? '_blank' : undefined}
-            rel={item.url ? 'noreferrer' : undefined}
-            className="dp-similar-card"
-          >
-            <div className="dp-similar-cover">
-              {item.cover_url ? <img src={item.cover_url} alt="" loading="lazy" /> : null}
-              {item.metacritic_score ? (
-                <span
-                  className="dp-similar-score"
-                  style={{ '--score-color': scoreColor(Math.round(item.metacritic_score)) } as CSSProperties}
-                >
-                  {Math.round(item.metacritic_score)}
-                </span>
-              ) : null}
-            </div>
-            <div className="dp-similar-body">
-              <strong>{item.title}</strong>
-              <span>{item.release_year && item.release_year > 1970 ? item.release_year : 'TBA'}</span>
-            </div>
-          </a>
-        ))}
-      </div>
-    </section>
-  )
+function shouldFetchSystemRequirements(game: Game): boolean {
+  if (!steamAppIdFromGame(game)) return false
+  const requirements = game.system_requirements ?? []
+  if (requirements.length === 0) return true
+  const text = requirements
+    .map((req) => `${req.platform} ${req.minimum} ${req.recommended}`)
+    .join(' ')
+    .toLowerCase()
+  return BAD_SYSTEM_REQUIREMENT_MARKERS.some((marker) => text.includes(marker))
 }
 
 function buildAboutParagraphs(game: Game): string[] {
@@ -356,160 +169,12 @@ function buildAboutParagraphs(game: Game): string[] {
   return paragraphs
 }
 
-function SysReqBlock({ req }: { req: SystemRequirement }) {
-  const [tab, setTab] = useState<'minimum' | 'recommended'>(
-    req.recommended ? 'recommended' : 'minimum',
-  )
-  const hasRecommended = Boolean(req.recommended)
-
-  function formatReqs(raw: string): string {
-    return raw
-      .replace(/Minimum:\r?\n?/i, '')
-      .replace(/Recommended:\r?\n?/i, '')
-      .trim()
-  }
-
-  return (
-    <div className="dp-sysreq-block">
-      <h4 className="dp-sysreq-platform">{req.platform}</h4>
-      {hasRecommended && (
-        <div className="dp-sysreq-tabs">
-          <button
-            type="button"
-            className={tab === 'minimum' ? 'dp-sysreq-tab is-active' : 'dp-sysreq-tab'}
-            onClick={() => setTab('minimum')}
-          >
-            Minimum
-          </button>
-          <button
-            type="button"
-            className={tab === 'recommended' ? 'dp-sysreq-tab is-active' : 'dp-sysreq-tab'}
-            onClick={() => setTab('recommended')}
-          >
-            Recommended
-          </button>
-        </div>
-      )}
-      <pre className="dp-sysreq-text">
-        {tab === 'minimum' ? formatReqs(req.minimum) : formatReqs(req.recommended)}
-      </pre>
-    </div>
-  )
-}
-
-function Gallery({ game }: { game: Game }) {
-  const images = [
-    game.cover_url || game.image_url,
-    ...game.screenshots,
-  ].filter(Boolean) as string[]
-
-  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null)
-  const [naturalSize, setNaturalSize] = useState<{ width: number; height: number } | null>(null)
-
-  useEffect(() => {
-    if (lightboxIndex === null) return
-    setNaturalSize(null)
-    document.body.style.overflow = 'hidden'
-    const count = images.length
-    function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') setLightboxIndex(null)
-      else if (e.key === 'ArrowRight') setLightboxIndex((p) => p === null ? null : (p + 1) % count)
-      else if (e.key === 'ArrowLeft')  setLightboxIndex((p) => p === null ? null : (p - 1 + count) % count)
-    }
-    window.addEventListener('keydown', onKey)
-    return () => { document.body.style.overflow = ''; window.removeEventListener('keydown', onKey) }
-  }, [lightboxIndex, images.length])
-
-  useEffect(() => {
-    if (lightboxIndex === null) return
-    const img = new Image()
-    img.onload = () => setNaturalSize({ width: img.naturalWidth, height: img.naturalHeight })
-    img.src = images[lightboxIndex]
-  }, [images, lightboxIndex])
-
-  if (images.length === 0) return null
-
-  const [first, ...rest] = images
-  const lightbox = lightboxIndex !== null
-    ? createPortal(
-        <div className="dp-lightbox" role="dialog" aria-modal="true">
-          <button
-            type="button"
-            className="dp-lightbox-backdrop"
-            aria-label="Close"
-            onClick={() => setLightboxIndex(null)}
-          />
-          <div className="dp-lightbox-stage">
-            <img
-              src={images[lightboxIndex]}
-              alt={`${game.title} ${lightboxIndex === 0 ? 'cover' : `screenshot ${lightboxIndex}`}`}
-              className="dp-lightbox-img"
-              style={naturalSize ? {
-                '--natural-width': `${naturalSize.width}px`,
-                '--natural-height': `${naturalSize.height}px`,
-              } as CSSProperties : undefined}
-            />
-          </div>
-          <button type="button" className="dp-lightbox-close" onClick={() => setLightboxIndex(null)}>✕</button>
-          {images.length > 1 && (
-            <>
-              <button
-                type="button"
-                className="dp-lightbox-nav dp-lightbox-prev"
-                onClick={() => setLightboxIndex((lightboxIndex - 1 + images.length) % images.length)}
-                aria-label="Previous image"
-              >‹</button>
-              <button
-                type="button"
-                className="dp-lightbox-nav dp-lightbox-next"
-                onClick={() => setLightboxIndex((lightboxIndex + 1) % images.length)}
-                aria-label="Next image"
-              >›</button>
-            </>
-          )}
-          <div className="dp-lightbox-counter">{lightboxIndex + 1} / {images.length}</div>
-        </div>,
-        document.body,
-      )
-    : null
-
-  return (
-    <>
-      <div className="dp-gallery">
-        <div className="dp-gallery-main" onClick={() => setLightboxIndex(0)}>
-          <img
-            src={first}
-            alt={`${game.title} cover`}
-            className="dp-gallery-hero"
-            onError={(e) => { e.currentTarget.style.display = 'none' }}
-          />
-          <div className="dp-gallery-zoom-hint">🔍</div>
-        </div>
-        {rest.length > 0 && (
-          <div className="dp-gallery-rest">
-            {rest.map((url, i) => (
-              <div key={url} className="dp-gallery-img" onClick={() => setLightboxIndex(i + 1)}>
-                <img
-                  src={url}
-                  alt={`${game.title} screenshot ${i + 2}`}
-                  onError={(e) => { e.currentTarget.parentElement!.style.display = 'none' }}
-                />
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {lightbox}
-    </>
-  )
-}
-
 export function GameDetailPage() {
   const { slug } = useParams<{ slug: string }>()
   const navigate = useNavigate()
   const [game, setGame] = useState<Game | null>(null)
   const [similarCatalogGames, setSimilarCatalogGames] = useState<Game[]>([])
+  const [similarLoading, setSimilarLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [isFetchingScreenshots, setIsFetchingScreenshots] = useState(false)
   const [ratingsTab, setRatingsTab] = useState<'primary' | 'extra'>('primary')
@@ -519,58 +184,98 @@ export function GameDetailPage() {
 
   useEffect(() => {
     if (!slug) return
+    const previousBehavior = document.documentElement.style.scrollBehavior
+    document.documentElement.style.scrollBehavior = 'auto'
+    window.scrollTo(0, 0)
+    document.documentElement.style.scrollBehavior = previousBehavior
+  }, [slug])
+
+  useEffect(() => {
+    if (!game) return
+    const previousTitle = document.title
+    document.title = `${game.title} — GameMetrix`
+    return () => { document.title = previousTitle }
+  }, [game])
+
+  useEffect(() => {
+    if (!slug) return
+    let active = true
+    const timers: number[] = []
+    const schedule = (callback: () => void, delay: number) => {
+      const timer = window.setTimeout(() => {
+        if (active) callback()
+      }, delay)
+      timers.push(timer)
+    }
+    const updateGame = (incoming: Game) => {
+      if (!active) return
+      setGame((current) => {
+        if (!current || current.slug !== incoming.slug) return incoming
+        return mergeGameSnapshot(current, incoming)
+      })
+    }
+
     setGame(null)
     setSimilarCatalogGames([])
     setError(null)
     getGameBySlug(slug)
       .then((loaded) => {
+        if (!active) return
         setGame(loaded)
-        // Auto-refresh scores in the background on every page load
-        refreshGameScores(loaded.slug)
-          .then(setGame)
-          .catch(() => { /* refresh failed silently — stale data still shown */ })
-        // Auto-fetch screenshots from Steam if not yet stored
-        if (loaded.screenshots.length === 0) {
-          fetchGameScreenshots(loaded.slug)
-            .then(setGame)
-            .catch(() => { /* no Steam ID — gallery shows cover only */ })
+        if (isOlderThan(loaded.ratings_refreshed_at, SCORE_REFRESH_MAX_AGE_MS)) {
+          schedule(() => {
+            refreshGameScores(loaded.slug)
+              .then(updateGame)
+              .catch(() => { /* refresh failed silently — stale data still shown */ })
+          }, 350)
         }
-        if ((loaded.price_snapshots?.length ?? 0) === 0) {
-          fetchGamePrices(loaded.slug)
-            .then(setGame)
-            .catch(() => { /* pricing is optional */ })
+        if (loaded.screenshots.length === 0) {
+          schedule(() => {
+            fetchGameScreenshots(loaded.slug)
+              .then(updateGame)
+              .catch(() => { /* no Steam ID — gallery shows cover only */ })
+          }, 700)
+        }
+        if (shouldFetchSystemRequirements(loaded)) {
+          schedule(() => {
+            fetchGameSystemRequirements(loaded.slug)
+              .then(updateGame)
+              .catch(() => { /* no Steam requirements — keep existing metadata */ })
+          }, 900)
+        }
+        if (shouldFetchPrices(loaded.price_snapshots)) {
+          schedule(() => {
+            fetchGamePrices(loaded.slug)
+              .then(updateGame)
+              .catch(() => { /* pricing is optional */ })
+          }, 1100)
         }
       })
-      .catch(() => setError('Game not found.'))
+      .catch(() => {
+        if (active) setError('Game not found.')
+      })
+    return () => {
+      active = false
+      timers.forEach((timer) => window.clearTimeout(timer))
+    }
   }, [slug])
 
   useEffect(() => {
-    if (!game) return
-    const genre = game.genres.find((item) => !['Steam', 'PC', 'Mac', 'Linux'].includes(item)) ?? game.genres[0] ?? ''
-    if (!genre) return
-
-    const filters = {
-      ...SIMILAR_DEFAULT_FILTERS,
-      genre,
-      sort: 'rank_score',
-      direction: 'desc',
-    } satisfies GameFilters
-
+    if (!slug) return
     let active = true
-    getGames(filters, 18, 0)
+    setSimilarLoading(true)
+    getSimilarGames(slug, SIMILAR_DISPLAY_LIMIT)
       .then((response) => {
-        if (!active) return
-        setSimilarCatalogGames(
-          response.games
-            .filter((item) => item.slug !== game.slug)
-            .slice(0, 12),
-        )
+        if (active) setSimilarCatalogGames(response.games)
       })
       .catch(() => {
         if (active) setSimilarCatalogGames([])
       })
+      .finally(() => {
+        if (active) setSimilarLoading(false)
+      })
     return () => { active = false }
-  }, [game])
+  }, [slug])
 
   const handleFetchScreenshots = async () => {
     if (!game) return
@@ -585,13 +290,22 @@ export function GameDetailPage() {
     setTrailerOpen(true)
     setTrailerLoading(true)
     try { setTrailerVideoId((await getGameTrailer(game.slug)).video_id) }
+    catch { setTrailerVideoId(null) }
     finally { setTrailerLoading(false) }
+  }
+
+  // navigate(-1) on a fresh tab (deep link) would leave the site or do
+  // nothing — fall back to the catalog root in that case. The catalog
+  // restores its own state from the session snapshot either way.
+  const goBackToCatalog = () => {
+    if (window.history.length > 1) navigate(-1)
+    else navigate('/')
   }
 
   if (error) return (
     <div className="dp-shell">
       <div className="dp-inner">
-        <button type="button" className="dp-back" onClick={() => navigate(-1)}>← Back</button>
+        <button type="button" className="dp-back" onClick={goBackToCatalog}>← Back</button>
         <p className="dp-msg">{error}</p>
       </div>
     </div>
@@ -653,6 +367,7 @@ export function GameDetailPage() {
     : 'Unknown'
   const earlyAccessLabel = formatDate(game.early_access_date)
   const officialReleaseLabel = formatDate(game.official_release_date ?? game.release_date)
+  const websiteUrl = game.website_url?.trim() || null
   const aboutParagraphs = buildAboutParagraphs(game)
   const priceSnapshots = game.price_snapshots ?? []
   const detailStyle = {
@@ -671,10 +386,9 @@ export function GameDetailPage() {
       <div className="dp-inner">
         {/* Breadcrumb */}
         <nav className="dp-breadcrumb">
-          <button type="button" className="dp-bc-item dp-bc-link" onClick={() => navigate(-1)}>Home</button>
+          <button type="button" className="dp-bc-item dp-bc-link" onClick={goBackToCatalog}>Home</button>
           <span className="dp-bc-sep">/</span>
-          <span className="dp-bc-item dp-bc-link" onClick={() => navigate(-1)} role="button" tabIndex={0}
-            onKeyDown={(e) => e.key === 'Enter' && navigate(-1)}>Games</span>
+          <button type="button" className="dp-bc-item dp-bc-link" onClick={goBackToCatalog}>Games</button>
           <span className="dp-bc-sep">/</span>
           <span className="dp-bc-item dp-bc-current">{game.title}</span>
         </nav>
@@ -705,6 +419,12 @@ export function GameDetailPage() {
               <button type="button" className="dp-btn dp-btn-primary" onClick={handleTrailer}>
                 ▶ Trailer
               </button>
+              {websiteUrl ? (
+                <a className="dp-btn dp-btn-link" href={websiteUrl} target="_blank" rel="noopener noreferrer">
+                  <ExternalLink size={14} aria-hidden="true" />
+                  Official site
+                </a>
+              ) : null}
               {game.screenshots.length === 0 && (
                 <button
                   type="button"
@@ -848,6 +568,17 @@ export function GameDetailPage() {
                   <span className="dp-info-key">Official release</span>
                   <span className="dp-info-val">{officialReleaseLabel}</span>
                 </div>
+                {websiteUrl ? (
+                  <div className="dp-info-row">
+                    <span className="dp-info-key">Website</span>
+                    <span className="dp-info-val">
+                      <a className="dp-info-link" href={websiteUrl} target="_blank" rel="noopener noreferrer">
+                        {websiteLabel(websiteUrl)}
+                        <ExternalLink size={11} aria-hidden="true" />
+                      </a>
+                    </span>
+                  </div>
+                ) : null}
                 {game.developer && (
                   <div className="dp-info-row">
                     <span className="dp-info-key">Developer</span>
@@ -888,7 +619,7 @@ export function GameDetailPage() {
             {priceSnapshots.length > 0 && (
               <div className="dp-section">
                 <h3 className="dp-section-title">Price & availability</h3>
-                <PricePanel prices={priceSnapshots} />
+                <PricePanel prices={priceSnapshots} game={game} />
               </div>
             )}
 
@@ -909,59 +640,27 @@ export function GameDetailPage() {
           {/* ── RIGHT ── */}
           <div className="dp-right">
             <div className="dp-gallery-panel">
-              <div className="dp-gallery-heading">
-                <span>Media</span>
-                <strong>{Math.max(1, game.screenshots.length + 1)} images</strong>
-              </div>
               <Gallery game={game} />
             </div>
           </div>
         </div>
 
-        {(game.dlcs.length > 0 || game.similar_games.length > 0 || similarCatalogGames.length > 0) && (
+        {(game.dlcs.length > 0 || game.similar_games.length > 0 || similarCatalogGames.length > 0 || similarLoading) && (
           <div className="dp-bottom-related">
             <DlcSection game={game} />
-            <SimilarGamesSection game={game} catalogGames={similarCatalogGames} />
+            <SimilarGamesSection game={game} catalogGames={similarCatalogGames} loading={similarLoading} />
           </div>
         )}
       </div>
 
       {/* Trailer modal */}
       {trailerOpen && (
-        <div className="dp-modal" role="dialog" aria-modal="true">
-          <button
-            type="button"
-            className="dp-modal-backdrop"
-            aria-label="Close trailer"
-            onClick={() => { setTrailerOpen(false); setTrailerVideoId(null) }}
-          />
-          <div className="dp-modal-panel">
-            <button
-              type="button"
-              className="dp-modal-close"
-              onClick={() => { setTrailerOpen(false); setTrailerVideoId(null) }}
-            >✕</button>
-            {trailerLoading ? (
-              <div className="dp-modal-msg">Loading trailer…</div>
-            ) : trailerVideoId ? (
-              <iframe
-                title={`${game.title} trailer`}
-                src={`https://www.youtube-nocookie.com/embed/${trailerVideoId}?autoplay=1&rel=0`}
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                allowFullScreen
-              />
-            ) : (
-              <a
-                className="dp-modal-msg"
-                href={`https://www.youtube.com/results?search_query=${encodeURIComponent(game.title + ' official trailer game')}`}
-                target="_blank"
-                rel="noreferrer"
-              >
-                Open trailer search on YouTube
-              </a>
-            )}
-          </div>
-        </div>
+        <TrailerModal
+          title={game.title}
+          videoId={trailerVideoId}
+          loading={trailerLoading}
+          onClose={() => { setTrailerOpen(false); setTrailerVideoId(null) }}
+        />
       )}
     </div>
   )

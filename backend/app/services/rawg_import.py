@@ -12,6 +12,7 @@ Public API:
 
 import re
 from datetime import UTC, date, datetime
+from urllib.parse import urlparse
 
 from ..models import Game, infer_content_type
 from ..integrations.sync import calculate_metrix_score
@@ -109,6 +110,21 @@ def _extract_system_requirements(raw_game: dict) -> list[dict]:
     ]
 
 
+def _clean_website_url(value: str | None) -> str | None:
+    if not value:
+        return None
+    url = value.strip()
+    if not url:
+        return None
+    parsed = urlparse(url)
+    if not parsed.scheme:
+        url = f"https://{url}"
+        parsed = urlparse(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        return None
+    return url[:500]
+
+
 def _compact_related(raw_game: dict) -> dict:
     released = raw_game.get("released")
     return {
@@ -149,6 +165,7 @@ def game_from_rawg_search(raw_game: dict) -> Game:
         official_release_date=released if released.year > 1970 else None,
         metacritic_score=metacritic_score,
         image_url=image_url or None,
+        website_url=_clean_website_url(raw_game.get("website")),
         metrix_score=metrix_score,
         critic_score=float(metacritic_score or 0),
         user_score=metrix_score,
@@ -181,6 +198,7 @@ def apply_rawg_to_game(game: Game, raw_game: dict) -> Game:
         game.official_release_date = released
     game.metacritic_score = metacritic_score
     game.image_url = image_url or None
+    game.website_url = _clean_website_url(raw_game.get("website")) or game.website_url
     game.cover_url = image_url or game.cover_url
     game.metrix_score = calculate_metrix_score(merged)
     game.critic_score = float(metacritic_score or 0)
@@ -202,6 +220,11 @@ def apply_rawg_metadata(game: Game, raw_game: dict) -> bool:
     if image_url and (not game.cover_url or "steam/apps" not in game.cover_url):
         game.cover_url = image_url
         game.image_url = image_url
+        changed = True
+
+    website_url = _clean_website_url(raw_game.get("website"))
+    if website_url and game.website_url != website_url:
+        game.website_url = website_url
         changed = True
 
     released = parse_rawg_date(raw_game.get("released"))
@@ -312,6 +335,7 @@ def game_from_rawg_list(raw_game: dict) -> Game:
         official_release_date=released if released.year > 1970 else None,
         metacritic_score=metacritic_score,
         image_url=image_url or None,
+        website_url=_clean_website_url(raw_game.get("website")),
         metrix_score=metrix_score,
         critic_score=float(metacritic_score or 0),
         user_score=round(rawg_rating * 20, 1),

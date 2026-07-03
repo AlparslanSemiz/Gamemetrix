@@ -1,5 +1,5 @@
 /* eslint-disable react-hooks/set-state-in-effect */
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import {
   Award,
   BarChart2,
@@ -25,23 +25,21 @@ import {
   Star,
   Tag,
   Trophy,
-  X,
 } from 'lucide-react'
 import { BrowserRouter, Route, Routes } from 'react-router-dom'
 import './App.css'
 import { FilterBar } from './components/FilterBar'
 import { GameCard } from './components/GameCard'
+import { RatingExplainer } from './components/RatingExplainer'
+import { RefreshAllPanel } from './components/RefreshAllPanel'
+import { ScoreWeightSettings } from './components/ScoreWeightSettings'
+import { TrailerModal } from './components/TrailerModal'
 import { GameDetailPage } from './pages/GameDetailPage'
 import {
   getFacets,
   getGameTrailer,
   getGames,
   getIntegrationStatus,
-  getRateLimits,
-  getScoreWeights,
-  recalculateScores,
-  refreshAllScores,
-  updateScoreWeights,
 } from './services/games'
 import { CollectionsProvider } from './state/CollectionsProvider'
 import type { CollectionKey } from './state/collections'
@@ -54,6 +52,27 @@ type ActivePage = MainPage | UtilityPage
 
 const CURRENT_YEAR = new Date().getFullYear()
 const PAGE_SIZE = 24
+const CATALOG_SNAPSHOT_KEY = 'gamemetrix.catalog.snapshot.v1'
+const CATALOG_SNAPSHOT_TTL_MS = 30 * 60 * 1000
+
+interface CatalogSnapshot {
+  version: 1
+  savedAt: number
+  activePage: ActivePage
+  activePreset: string | null
+  filters: GameFilters
+  games: Game[]
+  catalogTotal: number
+  libraryTotal: number
+  viewMode: 'list' | 'grid'
+  filtersOpen: boolean
+  offset: number
+  hasMore: boolean
+  scrollY: number
+  mastheadVisible: boolean
+  focusedGameSlug?: string | null
+  focusedGameViewportTop?: number | null
+}
 
 interface CuratedPreset {
   id: string
@@ -160,6 +179,146 @@ const DEFAULT_FILTERS: GameFilters = {
   direction: 'desc',
 }
 
+// performance.getEntriesByType('navigation') reflects the browser's real
+// page load (reload vs. navigate) and stays fixed for the entire tab
+// lifetime — it does NOT change when React Router does an in-app route
+// change. So "was this browser page load a reload" is only meaningful once,
+// right after that load. The capture state must live on `window`, not in a
+// module variable: Vite HMR re-evaluates this module and would reset a
+// module flag, making every later back-navigation look like a fresh reload
+// and wrongly discard the catalog snapshot.
+declare global {
+  interface Window {
+    /** Pathname the page was reloaded on; null = not a reload. undefined = not yet captured. */
+    __gmReloadedPathAtLoad?: string | null
+  }
+}
+
+// A navigation entry of type 'reload' only counts as the CURRENT load if we
+// are still within the first moments of the page's time origin — a late
+// capture (HMR module re-eval in a long-lived tab) must not re-trigger it.
+const RELOAD_CAPTURE_WINDOW_MS = 10_000
+
+function consumeCatalogReload(): boolean {
+  if (window.__gmReloadedPathAtLoad === undefined) {
+    const [entry] = performance.getEntriesByType('navigation') as PerformanceNavigationTiming[]
+    window.__gmReloadedPathAtLoad =
+      entry?.type === 'reload' && performance.now() < RELOAD_CAPTURE_WINDOW_MS
+        ? window.location.pathname
+        : null
+  }
+  const reloadedPath = window.__gmReloadedPathAtLoad
+  if (reloadedPath === null) return false
+  window.__gmReloadedPathAtLoad = null
+  // Reloading the detail page must not reset the catalog behind it —
+  // only a reload on a catalog route discards the snapshot.
+  return !reloadedPath.startsWith('/game')
+}
+
+function readCatalogSnapshot(): CatalogSnapshot | null {
+  try {
+    if (consumeCatalogReload()) {
+      window.sessionStorage.removeItem(CATALOG_SNAPSHOT_KEY)
+      return null
+    }
+    const raw = window.sessionStorage.getItem(CATALOG_SNAPSHOT_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as Partial<CatalogSnapshot>
+    if (parsed.version !== 1 || !parsed.savedAt) return null
+    if (Date.now() - parsed.savedAt > CATALOG_SNAPSHOT_TTL_MS) return null
+    if (!Array.isArray(parsed.games)) return null
+    return {
+      version: 1,
+      savedAt: parsed.savedAt,
+      activePage: parsed.activePage ?? 'catalog',
+      activePreset: parsed.activePreset ?? null,
+      filters: { ...DEFAULT_FILTERS, ...(parsed.filters ?? {}) },
+      games: parsed.games,
+      catalogTotal: parsed.catalogTotal ?? parsed.games.length,
+      libraryTotal: parsed.libraryTotal ?? 0,
+      viewMode: parsed.viewMode === 'grid' ? 'grid' : 'list',
+      filtersOpen: Boolean(parsed.filtersOpen),
+      offset: parsed.offset ?? Math.max(0, parsed.games.length - PAGE_SIZE),
+      hasMore: parsed.hasMore ?? false,
+      scrollY: parsed.scrollY ?? 0,
+      mastheadVisible: parsed.mastheadVisible ?? (parsed.scrollY ?? 0) < 80,
+      focusedGameSlug: typeof parsed.focusedGameSlug === 'string' ? parsed.focusedGameSlug : null,
+      focusedGameViewportTop: typeof parsed.focusedGameViewportTop === 'number' ? parsed.focusedGameViewportTop : null,
+    }
+  } catch {
+    return null
+  }
+}
+
+function findGameCardElement(slug: string): HTMLElement | null {
+  return Array.from(document.querySelectorAll<HTMLElement>('[data-game-slug]'))
+    .find((element) => element.dataset.gameSlug === slug) ?? null
+}
+
+// Detail-page visits persist screenshots/DLC/similar-game data that the list
+// endpoint then echoes back — those blobs are useless to the catalog cards but
+// can push a multi-page snapshot past the sessionStorage quota, silently
+// killing scroll restoration. Strip them before saving.
+const SNAPSHOT_SUMMARY_MAX_CHARS = 420
+
+function compactText(value: string, maxLength: number): string {
+  return value.length > maxLength ? `${value.slice(0, maxLength).trimEnd()}...` : value
+}
+
+function compactGameForSnapshot(game: Game): Game {
+  return {
+    ...game,
+    summary: compactText(game.summary, SNAPSHOT_SUMMARY_MAX_CHARS),
+    summary_short: game.summary_short
+      ? compactText(game.summary_short, SNAPSHOT_SUMMARY_MAX_CHARS)
+      : compactText(game.summary, SNAPSHOT_SUMMARY_MAX_CHARS),
+    source_scores: game.source_scores.map(({ source, score, scale, status, review_count }) => ({
+      source,
+      score,
+      scale,
+      status,
+      review_count,
+    })),
+    awards: game.awards.slice(0, 12),
+    screenshots: [],
+    system_requirements: [],
+    dlcs: [],
+    similar_games: [],
+    price_snapshots: [],
+  }
+}
+
+const SNAPSHOT_FALLBACK_MAX_GAMES = PAGE_SIZE * 10
+
+function writeCatalogSnapshot(snapshot: CatalogSnapshot | null) {
+  if (!snapshot) return
+  const payload: CatalogSnapshot = {
+    ...snapshot,
+    games: snapshot.games.map(compactGameForSnapshot),
+    savedAt: Date.now(),
+  }
+  try {
+    window.sessionStorage.setItem(CATALOG_SNAPSHOT_KEY, JSON.stringify(payload))
+  } catch {
+    // Quota exceeded — retry with only the first pages so at least a partial
+    // restore works; offset/hasMore are adjusted to stay consistent.
+    try {
+      const games = payload.games.slice(0, SNAPSHOT_FALLBACK_MAX_GAMES)
+      window.sessionStorage.setItem(
+        CATALOG_SNAPSHOT_KEY,
+        JSON.stringify({
+          ...payload,
+          games,
+          offset: Math.max(0, games.length - PAGE_SIZE),
+          hasMore: true,
+        }),
+      )
+    } catch {
+      // Private mode or hard quota failure; the catalog still works normally.
+    }
+  }
+}
+
 const mainNavItems: Array<{ id: MainPage; label: string; icon: typeof Search }> = [
   { id: 'catalog', label: 'Search', icon: Search },
   { id: 'watchlist', label: 'Wishlist', icon: CheckCircle2 },
@@ -215,31 +374,49 @@ function formatRoundedThousands(value: number): string {
 }
 
 function AppContent() {
-  const [activePage, setActivePage] = useState<ActivePage>('catalog')
-  const [games, setGames] = useState<Game[]>([])
+  const [restoredSnapshot] = useState<CatalogSnapshot | null>(readCatalogSnapshot)
+  const restoredWithGames = Boolean(restoredSnapshot?.games.length)
+  const [activePage, setActivePage] = useState<ActivePage>(restoredSnapshot?.activePage ?? 'catalog')
+  const [games, setGames] = useState<Game[]>(restoredSnapshot?.games ?? [])
   const [facets, setFacets] = useState<Facets>({ genres: [], years: [], platforms: [] })
-  const [filters, setFilters] = useState<GameFilters>(DEFAULT_FILTERS)
+  const [filters, setFilters] = useState<GameFilters>(restoredSnapshot?.filters ?? DEFAULT_FILTERS)
   const [pendingApply, setPendingApply] = useState(0)
   const { collections, toggleCollection } = useCollections()
   const [providerStatuses, setProviderStatuses] = useState<ProviderStatus[]>([])
-  const [catalogTotal, setCatalogTotal] = useState(0)
-  const [libraryTotal, setLibraryTotal] = useState(0)
-  const [isLoading, setIsLoading] = useState(true)
+  const [catalogTotal, setCatalogTotal] = useState(restoredSnapshot?.catalogTotal ?? 0)
+  const [libraryTotal, setLibraryTotal] = useState(restoredSnapshot?.libraryTotal ?? 0)
+  const [isLoading, setIsLoading] = useState(!restoredWithGames)
   const [trailerGame, setTrailerGame] = useState<Game | null>(null)
   const [trailerVideoId, setTrailerVideoId] = useState<string | null>(null)
   const [isTrailerLoading, setIsTrailerLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [viewMode, setViewMode] = useState<'list' | 'grid'>('list')
-  const [filtersOpen, setFiltersOpen] = useState(false)
-  const [activePreset, setActivePreset] = useState<string | null>(null)
-  const [mastheadVisible, setMastheadVisible] = useState(true)
+  const [viewMode, setViewMode] = useState<'list' | 'grid'>(restoredSnapshot?.viewMode ?? 'list')
+  const [filtersOpen, setFiltersOpen] = useState(restoredSnapshot?.filtersOpen ?? false)
+  const [activePreset, setActivePreset] = useState<string | null>(restoredSnapshot?.activePreset ?? null)
+  const [mastheadVisible, setMastheadVisible] = useState(restoredSnapshot?.mastheadVisible ?? true)
   const [fetchKey, setFetchKey] = useState(0)
-  const [offset, setOffset] = useState(0)
-  const [hasMore, setHasMore] = useState(true)
+  const [offset, setOffset] = useState(restoredSnapshot?.offset ?? 0)
+  const [hasMore, setHasMore] = useState(restoredSnapshot?.hasMore ?? true)
   const [isLoadingMore, setIsLoadingMore] = useState(false)
   const loaderRef = useRef<HTMLDivElement>(null)
-  const lastScrollYRef = useRef(0)
+  const mastheadRef = useRef<HTMLElement>(null)
+  const lastScrollYRef = useRef(restoredSnapshot?.scrollY ?? 0)
+  const mastheadVisibleRef = useRef(restoredSnapshot?.mastheadVisible ?? true)
+  const scrollDirectionRef = useRef<{ sign: -1 | 0 | 1; distance: number }>({ sign: 0, distance: 0 })
   const scrollFrameRef = useRef<number | null>(null)
+  const topScrollFrameRef = useRef<number | null>(null)
+  const topScrollCleanupRef = useRef<(() => void) | null>(null)
+  const latestCatalogRef = useRef<CatalogSnapshot | null>(null)
+  const snapshotAnchorRef = useRef<{ slug: string; viewportTop: number } | null>(
+    restoredSnapshot?.focusedGameSlug && typeof restoredSnapshot.focusedGameViewportTop === 'number'
+      ? { slug: restoredSnapshot.focusedGameSlug, viewportTop: restoredSnapshot.focusedGameViewportTop }
+      : null,
+  )
+  // Holds the `${fetchKey}:${offset}` pair the games list currently reflects;
+  // pre-seeded on snapshot restore so the mount run keeps the restored list.
+  const lastFetchSignatureRef = useRef<string | null>(
+    restoredWithGames ? `0:${restoredSnapshot?.offset ?? 0}` : null,
+  )
   // Always up to date with latest filters without being a dep of the load effect
   const filtersRef = useRef(filters)
   // Prefetch cache: holds the already-fetched next page so scroll is instant
@@ -248,6 +425,122 @@ function AppContent() {
   useEffect(() => {
     filtersRef.current = filters
   }, [filters])
+
+  useEffect(() => {
+    latestCatalogRef.current = {
+      version: 1,
+      savedAt: Date.now(),
+      activePage,
+      activePreset,
+      filters,
+      games,
+      catalogTotal,
+      libraryTotal,
+      viewMode,
+      filtersOpen,
+      offset,
+      hasMore,
+      scrollY: window.scrollY,
+      mastheadVisible,
+      focusedGameSlug: snapshotAnchorRef.current?.slug ?? null,
+      focusedGameViewportTop: snapshotAnchorRef.current?.viewportTop ?? null,
+    }
+  }, [activePage, activePreset, catalogTotal, filters, filtersOpen, games, hasMore, libraryTotal, mastheadVisible, offset, viewMode])
+
+  const saveCatalogSnapshot = useCallback((focusedGame?: Game) => {
+    const snapshot = latestCatalogRef.current
+    if (!snapshot) return
+    const scrollY = window.scrollY
+
+    if (focusedGame) {
+      const card = findGameCardElement(focusedGame.slug)
+      snapshotAnchorRef.current = {
+        slug: focusedGame.slug,
+        viewportTop: card?.getBoundingClientRect().top ?? 0,
+      }
+    }
+
+    lastScrollYRef.current = scrollY
+    writeCatalogSnapshot({
+      ...snapshot,
+      scrollY,
+      mastheadVisible: mastheadVisibleRef.current,
+      focusedGameSlug: snapshotAnchorRef.current?.slug ?? null,
+      focusedGameViewportTop: snapshotAnchorRef.current?.viewportTop ?? null,
+    })
+  }, [])
+
+  useEffect(() => {
+    // Uses lastScrollYRef (updated on every real scroll event) rather than
+    // reading window.scrollY at save time: on SPA navigation away, the
+    // catalog DOM is removed before this cleanup runs, which clamps
+    // window.scrollY to 0 and would otherwise persist a bogus position.
+    const saveSnapshot = () => {
+      const snapshot = latestCatalogRef.current
+      if (!snapshot) return
+      writeCatalogSnapshot({
+        ...snapshot,
+        scrollY: lastScrollYRef.current,
+        mastheadVisible: mastheadVisibleRef.current,
+        focusedGameSlug: snapshotAnchorRef.current?.slug ?? null,
+        focusedGameViewportTop: snapshotAnchorRef.current?.viewportTop ?? null,
+      })
+    }
+    const previousScrollRestoration = window.history.scrollRestoration
+    window.history.scrollRestoration = 'manual'
+    window.addEventListener('pagehide', saveSnapshot)
+    return () => {
+      // Also fires on SPA navigation away (e.g. to /game/:slug), unlike
+      // pagehide which only fires on full unload/refresh.
+      saveSnapshot()
+      window.removeEventListener('pagehide', saveSnapshot)
+      window.history.scrollRestoration = previousScrollRestoration
+    }
+  }, [])
+
+  // useLayoutEffect runs synchronously after DOM commit but before the
+  // browser paints, so the scroll position is applied before the user
+  // ever sees a scrollY=0 frame — avoiding the top-then-jump flash a
+  // regular useEffect (which runs after paint) would cause. The global
+  // `scroll-behavior: smooth` (index.css) must be suspended here too,
+  // otherwise the jump itself animates over ~300ms and reproduces the
+  // same flash.
+  useLayoutEffect(() => {
+    const snapshot = restoredSnapshot
+    if (!snapshot?.games.length) return
+    mastheadVisibleRef.current = snapshot.mastheadVisible
+
+    const restorePosition = () => {
+      let nextScrollY = snapshot.scrollY
+      if (snapshot.focusedGameSlug && typeof snapshot.focusedGameViewportTop === 'number') {
+        const card = findGameCardElement(snapshot.focusedGameSlug)
+        if (card) {
+          nextScrollY = window.scrollY + card.getBoundingClientRect().top - snapshot.focusedGameViewportTop
+        }
+      }
+
+      const previousBehavior = document.documentElement.style.scrollBehavior
+      document.documentElement.style.scrollBehavior = 'auto'
+      window.scrollTo(0, Math.max(0, nextScrollY))
+      document.documentElement.style.scrollBehavior = previousBehavior
+      lastScrollYRef.current = window.scrollY
+    }
+
+    restorePosition()
+    const restoreFrameIds: number[] = []
+    const firstFrame = window.requestAnimationFrame(() => {
+      restorePosition()
+      const secondFrame = window.requestAnimationFrame(restorePosition)
+      restoreFrameIds.push(secondFrame)
+    })
+    restoreFrameIds.push(firstFrame)
+    const settleTimer = window.setTimeout(restorePosition, 80)
+
+    return () => {
+      restoreFrameIds.forEach((frameId) => window.cancelAnimationFrame(frameId))
+      window.clearTimeout(settleTimer)
+    }
+  }, [restoredSnapshot])
 
   useEffect(() => {
     let active = true
@@ -269,12 +562,12 @@ function AppContent() {
     return () => { active = false }
   }, [])
 
-  // Filter deps → reset to page 0, clear prefetch cache, and bump the fetch key
-  useEffect(() => {
-    prefetchRef.current = null
-    setOffset(0)
-    setFetchKey((k) => k + 1)
-  }, [
+  // Filter deps → reset to page 0, clear prefetch cache, and bump the fetch key.
+  // Skip-by-signature instead of a consumable flag: the effect only acts when
+  // the dependency values actually differ from the last run it acted on, so
+  // the mount run (fresh or snapshot-restored) and StrictMode's replay are
+  // both no-ops without poisoning later, genuine dependency changes.
+  const filterResetSignature = JSON.stringify([
     filters.q,
     filters.genre,
     filters.platform,
@@ -287,10 +580,26 @@ function AppContent() {
     filters.direction,
     pendingApply,
   ])
-
-  // Actual fetch — triggered by fetchKey (filter change) or offset (scroll)
+  const lastFilterResetSignatureRef = useRef(filterResetSignature)
   useEffect(() => {
+    if (lastFilterResetSignatureRef.current === filterResetSignature) return
+    lastFilterResetSignatureRef.current = filterResetSignature
+    prefetchRef.current = null
+    setOffset(0)
+    setFetchKey((k) => k + 1)
+  }, [filterResetSignature])
+
+  // Actual fetch — triggered by fetchKey (filter change) or offset (scroll).
+  // On a snapshot-restored mount the ref already holds the restored page's
+  // signature, so the games on screen are kept instead of being refetched.
+  // An aborted run (StrictMode replay, rapid dep change) clears the ref so
+  // the next run with the same signature fetches for real.
+  useEffect(() => {
+    const fetchSignature = `${fetchKey}:${offset}`
+    if (lastFetchSignatureRef.current === fetchSignature) return
+    lastFetchSignatureRef.current = fetchSignature
     let active = true
+    let settled = false
     const f = filtersRef.current
     const isFirst = offset === 0
     if (isFirst) {
@@ -302,6 +611,7 @@ function AppContent() {
     setError(null)
 
     function applyPage(games: Game[], total: number) {
+      settled = true
       if (!active) return
       if (isFirst) {
         setGames(games)
@@ -336,6 +646,7 @@ function AppContent() {
         const response = await getGames(f, PAGE_SIZE, offset)
         applyPage(response.games, response.total)
       } catch {
+        settled = true
         if (active) {
           if (isFirst) {
             setGames([])
@@ -348,7 +659,10 @@ function AppContent() {
       }
     }
     void loadGames()
-    return () => { active = false }
+    return () => {
+      active = false
+      if (!settled) lastFetchSignatureRef.current = null
+    }
   }, [fetchKey, offset])
 
   // IntersectionObserver — load next page when sentinel enters viewport
@@ -370,18 +684,41 @@ function AppContent() {
   useEffect(() => {
     lastScrollYRef.current = window.scrollY
 
+    const setVisible = (next: boolean) => {
+      if (mastheadVisibleRef.current === next) return
+      mastheadVisibleRef.current = next
+      setMastheadVisible(next)
+    }
+
     function handleScroll() {
       if (scrollFrameRef.current !== null) return
       scrollFrameRef.current = window.requestAnimationFrame(() => {
         const currentY = window.scrollY
         const delta = currentY - lastScrollYRef.current
+        const activeElement = document.activeElement
 
-        if (currentY < 80) {
-          setMastheadVisible(true)
-        } else if (delta > 8) {
-          setMastheadVisible(false)
-        } else if (delta < -8) {
-          setMastheadVisible(true)
+        if (mastheadRef.current?.contains(activeElement)) {
+          setVisible(true)
+          scrollDirectionRef.current = { sign: 0, distance: 0 }
+        } else if (currentY < 96) {
+          setVisible(true)
+          scrollDirectionRef.current = { sign: 0, distance: 0 }
+        } else if (Math.abs(delta) > 1) {
+          const sign = delta > 0 ? 1 : -1
+          const currentDirection = scrollDirectionRef.current
+          const distance = currentDirection.sign === sign
+            ? currentDirection.distance + Math.abs(delta)
+            : Math.abs(delta)
+
+          scrollDirectionRef.current = { sign, distance }
+
+          if (sign > 0 && distance > 64) {
+            setVisible(false)
+            scrollDirectionRef.current = { sign, distance: 0 }
+          } else if (sign < 0 && distance > 42) {
+            setVisible(true)
+            scrollDirectionRef.current = { sign, distance: 0 }
+          }
         }
 
         lastScrollYRef.current = currentY
@@ -397,6 +734,15 @@ function AppContent() {
       }
     }
   }, [])
+
+  const collectionSets = useMemo(() => ({
+    watchlist: new Set(collections.watchlist),
+    playing: new Set(collections.playing),
+    seen: new Set(collections.seen),
+    completed: new Set(collections.completed),
+    liked: new Set(collections.liked),
+    favorites: new Set(collections.favorites),
+  }), [collections])
 
   const visibleGames = useMemo(() => {
     if (activePage === 'suggestions') {
@@ -429,7 +775,7 @@ function AppContent() {
 
   const readyProviders = providerStatuses.filter((p) => p.status === 'ready').length
 
-  const handleOpenTrailer = async (game: Game) => {
+  const handleOpenTrailer = useCallback(async (game: Game) => {
     setTrailerGame(game)
     setTrailerVideoId(null)
     setIsTrailerLoading(true)
@@ -441,9 +787,94 @@ function AppContent() {
     } finally {
       setIsTrailerLoading(false)
     }
-  }
+  }, [])
+
+  const handleFilterDeveloper = useCallback((developer: string) => {
+    setActivePage('catalog')
+    setFilters((p) => ({ ...p, developer, publisher: '' }))
+  }, [])
+
+  const handleFilterPublisher = useCallback((publisher: string) => {
+    setActivePage('catalog')
+    setFilters((p) => ({ ...p, publisher, developer: '' }))
+  }, [])
+
+  const handleFilterGenre = useCallback((genre: string) => {
+    setActivePage('catalog')
+    setFilters((p) => ({ ...p, genre }))
+  }, [])
+
+  const cancelTopScroll = useCallback(() => {
+    if (topScrollFrameRef.current !== null) {
+      window.cancelAnimationFrame(topScrollFrameRef.current)
+      topScrollFrameRef.current = null
+    }
+    topScrollCleanupRef.current?.()
+    topScrollCleanupRef.current = null
+    lastScrollYRef.current = window.scrollY
+  }, [])
+
+  useEffect(() => () => cancelTopScroll(), [cancelTopScroll])
+
+  const scrollCatalogToTop = useCallback(() => {
+    cancelTopScroll()
+    snapshotAnchorRef.current = null
+    mastheadVisibleRef.current = true
+    scrollDirectionRef.current = { sign: 0, distance: 0 }
+    setMastheadVisible(true)
+    const startY = window.scrollY
+    if (startY <= 0) {
+      lastScrollYRef.current = 0
+      window.scrollTo(0, 0)
+      return
+    }
+
+    const startedAt = performance.now()
+    const duration = Math.min(1200, Math.max(420, startY * 0.4))
+    const previousBehavior = document.documentElement.style.scrollBehavior
+    document.documentElement.style.scrollBehavior = 'auto'
+
+    const interruptEvents = ['wheel', 'touchstart', 'pointerdown', 'keydown'] as const
+    const cleanup = () => {
+      interruptEvents.forEach((eventName) => {
+        window.removeEventListener(eventName, cancelTopScroll)
+      })
+      document.documentElement.style.scrollBehavior = previousBehavior
+    }
+    topScrollCleanupRef.current = cleanup
+    interruptEvents.forEach((eventName) => {
+      window.addEventListener(eventName, cancelTopScroll, { passive: true })
+    })
+
+    const finish = () => {
+      topScrollFrameRef.current = null
+      topScrollCleanupRef.current?.()
+      topScrollCleanupRef.current = null
+    }
+
+    const step = (now: number) => {
+      const progress = Math.min(1, (now - startedAt) / duration)
+      const eased = 1 - Math.pow(1 - progress, 3)
+      const nextY = Math.max(0, Math.round(startY * (1 - eased)))
+
+      window.scrollTo(0, nextY)
+      lastScrollYRef.current = window.scrollY
+
+      if (progress < 1 && window.scrollY > 0) {
+        topScrollFrameRef.current = window.requestAnimationFrame(step)
+        return
+      }
+
+      window.scrollTo(0, 0)
+      lastScrollYRef.current = 0
+      finish()
+    }
+
+    topScrollFrameRef.current = window.requestAnimationFrame(step)
+  }, [cancelTopScroll])
 
   const goHome = () => {
+    scrollCatalogToTop()
     setActivePage('catalog')
     setFilters(DEFAULT_FILTERS)
     setActivePreset(null)
@@ -471,9 +902,6 @@ function AppContent() {
   }
 
   const isUtilityPage = utilityNavItems.some((item) => item.id === activePage)
-  const trailerQuery = trailerGame
-    ? encodeURIComponent(`${trailerGame.title} official trailer game`)
-    : ''
 
   return (
     <main className="app-shell">
@@ -534,7 +962,7 @@ function AppContent() {
       </aside>
 
       <section className="workspace">
-        <header className={`masthead ${mastheadVisible ? 'is-visible' : 'is-hidden'}`}>
+        <header ref={mastheadRef} className={`masthead ${mastheadVisible ? 'is-visible' : 'is-hidden'}`}>
           <button type="button" className="brand" onClick={goHome}>
             <img src="/favicon.svg" alt="" className="brand-icon" aria-hidden="true" />
             <span className="brand-text">
@@ -546,6 +974,10 @@ function AppContent() {
               type="search"
               placeholder="Title Search"
               value={filters.q}
+              onFocus={() => {
+                mastheadVisibleRef.current = true
+                setMastheadVisible(true)
+              }}
               onChange={(e) => setFilters((p) => ({ ...p, q: e.target.value }))}
               aria-label="Search games by title"
             />
@@ -567,9 +999,9 @@ function AppContent() {
             <h1>{pageTitle}</h1>
             {activePage === 'settings' ? (
               <>
-                <h2 style={{ fontSize: '0.9rem', color: '#6b7280', marginBottom: '6px', marginTop: '16px' }}>Score Weights</h2>
+                <h2 className="settings-subheading">Score Weights</h2>
                 <ScoreWeightSettings onSaved={() => { setPendingApply((n) => n + 1) }} />
-                <h2 style={{ fontSize: '0.9rem', color: '#6b7280', marginBottom: '6px', marginTop: '24px' }}>Score Data</h2>
+                <h2 className="settings-subheading">Score Data</h2>
                 <RefreshAllPanel />
               </>
             ) : activePage === 'about' ? (
@@ -734,9 +1166,42 @@ function AppContent() {
             </div>
 
             {error ? <p className="status status-error">{error}</p> : null}
-            {isLoading ? <p className="status">Loading games…</p> : null}
+            {isLoading ? (
+              <div className={`game-list game-list-${viewMode}`} aria-hidden="true">
+                {Array.from({ length: PAGE_SIZE / 3 }, (_, i) => (
+                  <div key={i} className="skeleton-card" />
+                ))}
+              </div>
+            ) : null}
             {!isLoading && visibleGames.length === 0 ? (
-              <p className="status">No games match this view yet.</p>
+              activePage === 'catalog' ? (
+                <div className="empty-state">
+                  <p>No games match these filters.</p>
+                  <button type="button" className="apply-button" onClick={goHome}>
+                    Reset filters
+                  </button>
+                </div>
+              ) : activePage === 'suggestions' ? (
+                <div className="empty-state">
+                  <p>Nothing to suggest yet.</p>
+                  <p className="empty-hint">
+                    Suggestions exclude games you have played, liked, or saved — browse the catalog to get started.
+                  </p>
+                  <button type="button" className="apply-button" onClick={goHome}>
+                    Browse the catalog
+                  </button>
+                </div>
+              ) : (
+                <div className="empty-state">
+                  <p>No games in {pageTitle} yet.</p>
+                  <p className="empty-hint">
+                    Add games with the action icons on any game card.
+                  </p>
+                  <button type="button" className="apply-button" onClick={goHome}>
+                    Browse the catalog
+                  </button>
+                </div>
+              )
             ) : null}
 
             <div className={`game-list game-list-${viewMode}`}>
@@ -745,25 +1210,17 @@ function AppContent() {
                   key={`${game.id}-${game.slug}`}
                   game={game}
                   compact={viewMode === 'grid'}
-                  isFavorite={collections.favorites.includes(game.slug)}
-                  isLiked={collections.liked.includes(game.slug)}
-                  isPlaying={collections.playing.includes(game.slug)}
-                  isSeen={collections.seen.includes(game.slug)}
-                  isCompleted={collections.completed.includes(game.slug)}
-                  isWatchlisted={collections.watchlist.includes(game.slug)}
+                  isFavorite={collectionSets.favorites.has(game.slug)}
+                  isLiked={collectionSets.liked.has(game.slug)}
+                  isPlaying={collectionSets.playing.has(game.slug)}
+                  isSeen={collectionSets.seen.has(game.slug)}
+                  isCompleted={collectionSets.completed.has(game.slug)}
+                  isWatchlisted={collectionSets.watchlist.has(game.slug)}
+                  onOpenDetail={saveCatalogSnapshot}
                   onOpenTrailer={handleOpenTrailer}
-                  onFilterDeveloper={(developer) => {
-                    setActivePage('catalog')
-                    setFilters((p) => ({ ...p, developer, publisher: '' }))
-                  }}
-                  onFilterGenre={(genre) => {
-                    setActivePage('catalog')
-                    setFilters((p) => ({ ...p, genre }))
-                  }}
-                  onFilterPublisher={(publisher) => {
-                    setActivePage('catalog')
-                    setFilters((p) => ({ ...p, publisher, developer: '' }))
-                  }}
+                  onFilterDeveloper={handleFilterDeveloper}
+                  onFilterGenre={handleFilterGenre}
+                  onFilterPublisher={handleFilterPublisher}
                   onToggleCollection={toggleCollection}
                 />
               ))}
@@ -776,290 +1233,17 @@ function AppContent() {
       </section>
 
       {trailerGame ? (
-        <div
-          className="trailer-modal"
-          role="dialog"
-          aria-modal="true"
-          aria-label={`${trailerGame.title} trailer`}
-        >
-          <button
-            type="button"
-            className="modal-backdrop"
-            aria-label="Close trailer"
-            onClick={() => {
-              setTrailerGame(null)
-              setTrailerVideoId(null)
-            }}
-          />
-          <div className="modal-panel">
-            <div className="modal-heading">
-              <h2>{trailerGame.title}</h2>
-              <button
-                type="button"
-                aria-label="Close trailer"
-                onClick={() => {
-                  setTrailerGame(null)
-                  setTrailerVideoId(null)
-                }}
-              >
-                <X size={18} aria-hidden="true" />
-              </button>
-            </div>
-            {isTrailerLoading ? (
-              <div className="trailer-loading">Loading trailer...</div>
-            ) : trailerVideoId ? (
-              <iframe
-                title={`${trailerGame.title} trailer`}
-                src={`https://www.youtube-nocookie.com/embed/${trailerVideoId}?autoplay=1&rel=0`}
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                allowFullScreen
-              />
-            ) : (
-              <a
-                className="trailer-fallback-link"
-                href={`https://www.youtube.com/results?search_query=${trailerQuery}`}
-                target="_blank"
-                rel="noreferrer"
-              >
-                Open trailer search on YouTube
-              </a>
-            )}
-          </div>
-        </div>
+        <TrailerModal
+          title={trailerGame.title}
+          videoId={trailerVideoId}
+          loading={isTrailerLoading}
+          onClose={() => {
+            setTrailerGame(null)
+            setTrailerVideoId(null)
+          }}
+        />
       ) : null}
     </main>
-  )
-}
-
-function RefreshAllPanel() {
-  const [status, setStatus] = useState<string | null>(null)
-  const [busy, setBusy] = useState(false)
-  const [rateLimits, setRateLimits] = useState<Record<string, { remaining: number; limit: number }> | null>(null)
-
-  useEffect(() => {
-    void getRateLimits().then(setRateLimits).catch(() => {})
-  }, [])
-
-  const trigger = async (force: boolean) => {
-    setBusy(true)
-    setStatus(null)
-    try {
-      const { message } = await refreshAllScores(force, 3)
-      setStatus(message)
-      void getRateLimits().then(setRateLimits).catch(() => {})
-    } catch {
-      setStatus('Failed to start refresh.')
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  return (
-    <div className="score-weight-panel">
-      <p>Scores are fetched automatically every 6 hours. Use the buttons below for manual control.</p>
-      <div style={{ display: 'flex', gap: '10px', marginTop: '12px', flexWrap: 'wrap' }}>
-        <button type="button" className="apply-button" disabled={busy} onClick={() => trigger(false)}>
-          {busy ? 'Starting…' : '⚡ Refresh stale games'}
-        </button>
-        <button type="button" className="apply-button" disabled={busy} onClick={() => trigger(true)}
-          style={{ background: '#dc2626' }}>
-          {busy ? 'Starting…' : '🔄 Force refresh ALL'}
-        </button>
-      </div>
-      {status && <p style={{ marginTop: '10px', color: '#9ca3af', fontSize: '0.82rem' }}>{status}</p>}
-      {rateLimits && (
-        <div style={{ marginTop: '16px' }}>
-          <p style={{ color: '#6b7280', fontSize: '0.78rem', marginBottom: '8px' }}>Today's API budget (resets at midnight):</p>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 20px' }}>
-            {Object.entries(rateLimits).map(([source, { remaining, limit }]) => {
-              const pct = limit > 0 ? (remaining / limit) * 100 : 0
-              const color = remaining === 0 ? '#dc2626' : pct < 20 ? '#f59e0b' : '#22c55e'
-              return (
-                <div key={source} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.79rem' }}>
-                  <span style={{ color: '#9ca3af', minWidth: '88px' }}>{source}</span>
-                  <div style={{ flex: 1, height: '3px', background: '#1f2937', borderRadius: '2px' }}>
-                    <div style={{ height: '100%', width: `${pct}%`, background: color, borderRadius: '2px', transition: 'width 0.3s' }} />
-                  </div>
-                  <span style={{ color, minWidth: '44px', textAlign: 'right' }}>{remaining}/{limit}</span>
-                </div>
-              )
-            })}
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
-
-function ScoreWeightSettings({ onSaved }: { onSaved: () => void }) {
-  const [weights, setWeights] = useState<Record<string, number>>({})
-  const [message, setMessage] = useState<string>('Loading score weights…')
-
-  useEffect(() => {
-    void getScoreWeights()
-      .then((response) => {
-        setWeights(response.weights)
-        setMessage('Tune how strongly each source contributes to Metrix Score.')
-      })
-      .catch(() => setMessage('Score weights could not be loaded.'))
-  }, [])
-
-  const saveWeights = async () => {
-    setMessage('Saving weights and recalculating scores…')
-    try {
-      await updateScoreWeights(weights)
-      const result = await recalculateScores()
-      setMessage(`Saved. Recalculated ${result.recalculated} games.`)
-      onSaved()
-    } catch {
-      setMessage('Weights could not be saved.')
-    }
-  }
-
-  return (
-    <div className="score-weight-panel">
-      <p>{message}</p>
-      <div className="weight-grid">
-        {Object.entries(weights).map(([source, value]) => (
-          <label key={source}>
-            <span>{source}</span>
-            <input
-              type="range"
-              min="0"
-              max="1"
-              step="0.01"
-              value={value}
-              onChange={(event) =>
-                setWeights((current) => ({
-                  ...current,
-                  [source]: Number(event.target.value),
-                }))
-              }
-            />
-            <output>{value.toFixed(2)}</output>
-          </label>
-        ))}
-      </div>
-      <button type="button" className="apply-button settings-save" onClick={saveWeights}>
-        Save weights
-      </button>
-    </div>
-  )
-}
-
-function RatingExplainer() {
-  return (
-    <div className="about-rating">
-      <p className="about-lead">
-        GameMetrix pulls scores from multiple independent sources and combines them into one transparent signal.
-        Here's exactly how it works.
-      </p>
-
-      {/* Sources */}
-      <div className="about-block">
-        <h3>Rating sources</h3>
-        <div className="about-source-list">
-          <div className="about-source-row">
-            <div className="about-badges">
-              <span className="about-badge badge-primary">Metacritic</span>
-              <span className="about-badge badge-primary">OpenCritic</span>
-            </div>
-            <span className="about-source-desc">Professional critic reviews — highest signal quality</span>
-          </div>
-          <div className="about-source-row">
-            <div className="about-badges">
-              <span className="about-badge badge-primary">Steam</span>
-              <span className="about-badge badge-primary">IGDB</span>
-            </div>
-            <span className="about-source-desc">Player scores — Steam applies to PC games only</span>
-          </div>
-          <div className="about-source-row">
-            <div className="about-badges">
-              <span className="about-badge badge-secondary">RAWG</span>
-            </div>
-            <span className="about-source-desc">Backup only — fills a missing primary slot at 70% weight</span>
-          </div>
-          <div className="about-source-row">
-            <div className="about-badges">
-              <span className="about-badge badge-support">SteamSpy</span>
-              <span className="about-badge badge-support">CheapShark</span>
-              <span className="about-badge badge-support">FreeToGame</span>
-            </div>
-            <span className="about-source-desc">Support data only — popularity, pricing, availability. Never affect the score.</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Score */}
-      <div className="about-block">
-        <h3>GameMetrix Score</h3>
-        <p>
-          Up to 4 sources averaged with equal weight (25% each). If a primary source
-          is unavailable for a game, RAWG can fill the gap at reduced weight.
-        </p>
-        <div className="about-score-demo">
-          {[['Metacritic', 96], ['OpenCritic', 94], ['Steam', 92], ['IGDB', 90]].map(([src, val]) => (
-            <div key={src as string} className="about-score-row">
-              <span className="about-score-src">{src}</span>
-              <div className="about-score-track">
-                <div className="about-score-fill" style={{ width: `${val}%` }} />
-              </div>
-              <strong>{val}</strong>
-            </div>
-          ))}
-          <div className="about-score-result">
-            <span>GameMetrix Score</span>
-            <span className="about-score-eq">= (96 + 94 + 92 + 90) ÷ 4</span>
-            <strong className="about-score-final">93</strong>
-          </div>
-        </div>
-      </div>
-
-      {/* Rank */}
-      <div className="about-block">
-        <h3>
-          GameMetrix Rank
-          <span className="about-tag">Default sort</span>
-        </h3>
-        <p>
-          A game showing 96 from one source shouldn't outrank Elden Ring with four.
-          Rank shrinks the score toward a neutral baseline (70) based on how much
-          reliable data exists. The card score never changes — only the ordering.
-        </p>
-        <div className="about-strength-table">
-          <div className="about-strength-row">
-            <span className="about-str-badge str-strong">Strong</span>
-            <span className="about-str-desc">3–4 sources, critic + player mix</span>
-            <span className="about-str-example">96 → <strong>96.0</strong></span>
-          </div>
-          <div className="about-strength-row">
-            <span className="about-str-badge str-solid">Solid</span>
-            <span className="about-str-desc">2+ sources or strong single coverage</span>
-            <span className="about-str-example">96 → <strong>93.4</strong></span>
-          </div>
-          <div className="about-strength-row">
-            <span className="about-str-badge str-limited">Limited</span>
-            <span className="about-str-desc">1 source or backup-only data</span>
-            <span className="about-str-example">96 → <strong>86.9</strong></span>
-          </div>
-          <div className="about-strength-row">
-            <span className="about-str-badge str-catalog">Catalog</span>
-            <span className="about-str-desc">No live rating data yet</span>
-            <span className="about-str-example">Excluded from top lists</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Platform fairness */}
-      <div className="about-block">
-        <h3>Platform fairness</h3>
-        <p>
-          Steam is only counted for PC games. A Nintendo exclusive missing Steam is not penalized —
-          its applicable sources are Metacritic, OpenCritic, and IGDB, and full coverage across
-          those three still qualifies as <strong>Data Strong</strong>.
-        </p>
-      </div>
-    </div>
   )
 }
 

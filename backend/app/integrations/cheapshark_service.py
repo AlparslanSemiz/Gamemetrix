@@ -22,13 +22,62 @@ SMOKE_TEST_TITLE = "Portal 2"
 # CheapShark store IDs (subset of common stores)
 STORE_NAMES: dict[str, str] = {
     "1": "Steam",
-    "25": "Epic Games Store",
-    "8": "GOG",
-    "13": "Fanatical",
     "2": "GamersGate",
     "3": "GreenManGaming",
-    "27": "GameBillet",
+    "4": "Amazon",
+    "5": "GameStop",
+    "6": "Direct2Drive",
+    "7": "GOG",
+    "8": "Origin",
+    "9": "Get Games",
+    "10": "Shiny Loot",
+    "11": "Humble Store",
+    "12": "Desura",
+    "13": "Ubisoft Store",
+    "14": "IndieGameStand",
+    "15": "Fanatical",
+    "16": "Gamesrocket",
+    "17": "Games Republic",
+    "18": "SilaGames",
+    "19": "Playfield",
+    "20": "ImperialGames",
+    "21": "WinGameStore",
+    "22": "FunStockDigital",
+    "23": "GameBillet",
+    "24": "Voidu",
+    "25": "Epic Games Store",
+    "26": "Razer Game Store",
+    "27": "Gamesplanet",
+    "28": "Gamesload",
+    "29": "2Game",
+    "30": "IndieGala",
+    "31": "Blizzard Shop",
+    "32": "AllYouPlay",
+    "33": "DLGamer",
+    "34": "Noctre",
+    "35": "DreamGame",
 }
+
+_ADDON_TITLE_TERMS = (
+    "upgrade",
+    "dlc",
+    "soundtrack",
+    "bundle",
+    "pack",
+    "season pass",
+    "expansion",
+)
+
+
+def _normalize_title(value: str) -> str:
+    return " ".join(
+        "".join(ch.lower() if ch.isalnum() else " " for ch in value).split()
+    )
+
+
+def _looks_like_addon(title: str) -> bool:
+    normalized = _normalize_title(title)
+    return any(term in normalized for term in _ADDON_TITLE_TERMS)
 
 
 class CheapSharkService:
@@ -88,30 +137,60 @@ class CheapSharkService:
         try:
             async with httpx.AsyncClient(timeout=10, headers=self._headers()) as client:
                 resp = await client.get(
-                    f"{CS_BASE}/deals",
-                    params={"id": cs_game_id, "pageSize": 20},
+                    f"{CS_BASE}/games",
+                    params={"id": cs_game_id},
                 )
                 resp.raise_for_status()
-                return resp.json()
+                payload = resp.json()
         except Exception as exc:
             log.warning("CheapShark game deals failed for %s: %s", cs_game_id, exc)
             return []
 
-    async def lookup_game_id(self, title: str) -> str | None:
+        info = payload.get("info") or {}
+        game_title = info.get("title") or ""
+        steam_app_id = info.get("steamAppID")
+        deals: list[dict] = []
+        for deal in payload.get("deals") or []:
+            if not isinstance(deal, dict):
+                continue
+            deals.append({
+                **deal,
+                "title": game_title,
+                "gameID": cs_game_id,
+                "steamAppID": steam_app_id,
+                "salePrice": deal.get("price"),
+                "normalPrice": deal.get("retailPrice"),
+            })
+        return deals
+
+    async def lookup_game_id(self, title: str, steam_appid: int | None = None) -> str | None:
         """Search games endpoint to find the CheapShark game ID."""
         try:
             async with httpx.AsyncClient(timeout=10, headers=self._headers()) as client:
                 resp = await client.get(
                     f"{CS_BASE}/games",
-                    params={"title": title, "limit": 3},
+                    params={"title": title, "limit": 10},
                 )
                 resp.raise_for_status()
                 results = resp.json()
-                if results:
-                    return str(results[0].get("gameID"))
         except Exception as exc:
             log.warning("CheapShark game lookup failed for %r: %s", title, exc)
-        return None
+            return None
+
+        expected = _normalize_title(title)
+        best_id: str | None = None
+        for result in results:
+            if not isinstance(result, dict):
+                continue
+            external = str(result.get("external") or "")
+            if not external or _looks_like_addon(external):
+                continue
+            result_appid = str(result.get("steamAppID") or "")
+            if steam_appid and result_appid == str(steam_appid):
+                return str(result.get("gameID"))
+            if _normalize_title(external) == expected and best_id is None:
+                best_id = str(result.get("gameID"))
+        return best_id
 
     def normalize_deal(self, raw: dict) -> NormalizedGame:
         """Convert one CheapShark deal into a NormalizedGame with price fields."""

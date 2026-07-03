@@ -21,6 +21,7 @@ export interface Game {
   official_release_date?: string | null
   metacritic_score?: number | null
   image_url?: string | null
+  website_url?: string | null
   ratings_refreshed_at?: string | null
   metadata_refreshed_at?: string | null
   content_type: string

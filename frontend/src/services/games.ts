@@ -53,6 +53,12 @@ export async function getGameBySlug(slug: string): Promise<Game> {
   return response.json()
 }
 
+export async function getSimilarGames(slug: string, limit = 10): Promise<GameListResponse> {
+  const response = await fetch(`${API_BASE_URL}/api/games/${slug}/similar?limit=${limit}`)
+  if (!response.ok) throw new Error('Failed to fetch similar games')
+  return response.json()
+}
+
 export async function getFacets(): Promise<Facets> {
   const response = await fetch(`${API_BASE_URL}/api/facets`)
   if (!response.ok) throw new Error('Failed to fetch facets')
@@ -84,6 +90,14 @@ export async function fetchGameScreenshots(slug: string): Promise<Game> {
     method: 'POST',
   })
   if (!response.ok) throw new Error('Failed to fetch screenshots')
+  return response.json()
+}
+
+export async function fetchGameSystemRequirements(slug: string): Promise<Game> {
+  const response = await fetch(`${API_BASE_URL}/api/games/${slug}/fetch-system-requirements`, {
+    method: 'POST',
+  })
+  if (!response.ok) throw new Error('Failed to fetch system requirements')
   return response.json()
 }
 

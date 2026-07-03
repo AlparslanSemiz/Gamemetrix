@@ -54,6 +54,7 @@ def _run_migrations(conn: Connection) -> None:
         ("games", "playtime_minutes", "INTEGER DEFAULT 0"),
         ("games", "metacritic_score", "INTEGER"),
         ("games", "image_url", "VARCHAR(500)"),
+        ("games", "website_url", "VARCHAR(500)"),
         ("games", "ratings_refreshed_at", "TIMESTAMP"),
         ("games", "metadata_refreshed_at", "TIMESTAMP"),
         ("games", "content_type", "VARCHAR(40) DEFAULT 'game'"),
@@ -119,7 +120,7 @@ async def _repair_known_media(db: Session) -> None:
         "disco-elysium-the-final-cut": (632470, "capsule_616x353.jpg"),
         "resident-evil-4-remake": (2050650, "capsule_616x353.jpg"),
         "resident-evil-4": (254700, "library_hero.jpg"),
-        "the-last-of-us-part-2": (2328620, "capsule_616x353.jpg"),
+        "the-last-of-us-part-2": (2531310, "capsule_616x353.jpg"),
     }
     for slug, (app_id, cover_file) in known_media.items():
         game = db.scalar(select(Game).where(Game.slug == slug))

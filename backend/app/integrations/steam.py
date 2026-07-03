@@ -1,6 +1,8 @@
 import logging
 import re
+from html import unescape
 from datetime import date, datetime
+from urllib.parse import urlparse
 
 import httpx
 
@@ -43,6 +45,8 @@ STEAM_APP_IDS: dict[str, int] = {
     "cyberpunk-2077": 1091500,
     "god-of-war-2018": 1593500,
     "god-of-war-ragnarok": 2322010,
+    "the-last-of-us-part-2": 2531310,
+    "the-last-of-us-part-ii-remastered": 2531310,
 }
 
 STEAM_APP_ID_RE = re.compile(r"(?:steam/apps/|/app/|^|[-_])(\d{3,})(?:/|$)")
@@ -168,6 +172,148 @@ async def fetch_steam_screenshots(app_id: int) -> list[str]:
         for s in (payload.get("data", {}).get("screenshots") or [])
         if isinstance(s, dict) and s.get("path_full")
     ][:_MAX_SCREENSHOTS]
+
+
+def _html_to_text(value: str | None) -> str:
+    if not value:
+        return ""
+    text = value.replace("\r", "")
+    text = re.sub(r"(?i)<\s*br\s*/?>", "\n", text)
+    text = re.sub(r"(?i)</li\s*>", "\n", text)
+    text = re.sub(r"(?i)<li[^>]*>", "", text)
+    text = re.sub(r"(?i)</?(?:ul|p|div)[^>]*>", "\n", text)
+    text = re.sub(r"<[^>]+>", "", text)
+    text = unescape(text)
+    lines = [re.sub(r"[ \t]+", " ", line).strip(" -•\t") for line in text.splitlines()]
+    return "\n".join(line for line in lines if line)
+
+
+def _clean_requirement_block(value: str | None) -> str:
+    text = _html_to_text(value)
+    if not text:
+        return ""
+    lower = text.lower().strip()
+    if lower in {"minimum:", "recommended:"}:
+        return ""
+    if lower in {"minimum", "recommended"}:
+        return ""
+    return text
+
+
+async def fetch_steam_system_requirements(app_id: int) -> list[dict]:
+    """Return Steam's published system requirements as plain text."""
+    async with httpx.AsyncClient(timeout=_TIMEOUT_DETAILS) as client:
+        response = await client.get(
+            _STEAM_APP_DETAILS_URL,
+            params={"appids": app_id, "cc": "us", "l": "english"},
+        )
+        if not response.is_success:
+            return []
+
+    payload = response.json().get(str(app_id), {})
+    if not payload.get("success"):
+        return []
+
+    data = payload.get("data", {})
+    result: list[dict] = []
+    for key, platform in (
+        ("pc_requirements", "PC"),
+        ("mac_requirements", "Mac"),
+        ("linux_requirements", "Linux"),
+    ):
+        raw = data.get(key) or {}
+        if isinstance(raw, str):
+            minimum = _clean_requirement_block(raw)
+            recommended = ""
+        elif isinstance(raw, dict):
+            minimum = _clean_requirement_block(raw.get("minimum"))
+            recommended = _clean_requirement_block(raw.get("recommended"))
+        else:
+            continue
+        if minimum or recommended:
+            result.append({
+                "platform": platform,
+                "minimum": minimum,
+                "recommended": recommended,
+            })
+    return result
+
+
+def _clean_website_url(value: str | None) -> str | None:
+    if not value:
+        return None
+    url = value.strip()
+    if not url:
+        return None
+    parsed = urlparse(url)
+    if not parsed.scheme:
+        url = f"https://{url}"
+        parsed = urlparse(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        return None
+    return url[:500]
+
+
+async def fetch_steam_website(app_id: int) -> str | None:
+    """Return the official website listed on Steam, when one is published."""
+    async with httpx.AsyncClient(timeout=_TIMEOUT_DETAILS) as client:
+        response = await client.get(
+            _STEAM_APP_DETAILS_URL,
+            params={"appids": app_id, "filters": "basic", "cc": "us", "l": "english"},
+        )
+        if not response.is_success:
+            return None
+
+    payload = response.json().get(str(app_id), {})
+    if not payload.get("success"):
+        return None
+
+    return _clean_website_url(payload.get("data", {}).get("website"))
+
+
+async def fetch_steam_price(app_id: int, country: str = "US") -> dict | None:
+    """Return official Steam store price data for one app."""
+    async with httpx.AsyncClient(timeout=_TIMEOUT_DETAILS) as client:
+        response = await client.get(
+            _STEAM_APP_DETAILS_URL,
+            params={"appids": app_id, "cc": country.lower(), "l": "english"},
+        )
+        if not response.is_success:
+            return None
+
+    payload = response.json().get(str(app_id), {})
+    if not payload.get("success"):
+        return None
+
+    data = payload.get("data", {})
+    if data.get("is_free"):
+        return {
+            "store": "Steam",
+            "currency": "USD",
+            "list_price": 0.0,
+            "sale_price": 0.0,
+            "discount_percent": 0,
+            "is_free": True,
+            "url": f"https://store.steampowered.com/app/{app_id}/",
+            "raw": {"steam_app_id": app_id, "is_free": True},
+        }
+
+    price = data.get("price_overview") or {}
+    if not price:
+        return None
+
+    initial = price.get("initial")
+    final = price.get("final")
+    return {
+        "store": "Steam",
+        "currency": price.get("currency") or "USD",
+        "list_price": (float(initial) / 100) if initial is not None else None,
+        "sale_price": (float(final) / 100) if final is not None else None,
+        "discount_percent": int(price.get("discount_percent") or 0),
+        "is_free": False,
+        "url": f"https://store.steampowered.com/app/{app_id}/",
+        "raw": {"steam_app_id": app_id, "price_overview": price},
+    }
 
 
 async def fetch_steam_dlcs(app_id: int) -> list[dict]:

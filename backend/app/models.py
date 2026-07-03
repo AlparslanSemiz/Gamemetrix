@@ -82,6 +82,7 @@ class Game(Base):
     official_release_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     metacritic_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
     image_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    website_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     ratings_refreshed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     metadata_refreshed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     content_type: Mapped[str] = mapped_column(String(40), nullable=False, default="game")

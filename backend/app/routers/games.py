@@ -13,14 +13,15 @@ Routes:
 """
 
 import datetime
+import logging
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from sqlalchemy import Select, asc, desc, func, select, text
 from sqlalchemy.orm import Session, noload
 
 from ..config import get_settings
-from ..database import get_db
+from ..database import SessionLocal, get_db
 from ..models import Game, PriceSnapshot, infer_content_type
 from ..schemas import (
     FacetsResponse,
@@ -30,7 +31,14 @@ from ..schemas import (
     SortDirection,
     TrailerResponse,
 )
-from ..integrations.steam import extract_steam_app_id, fetch_steam_dlcs, fetch_steam_screenshots
+from ..integrations.steam import (
+    extract_steam_app_id,
+    fetch_steam_dlcs,
+    fetch_steam_price,
+    fetch_steam_screenshots,
+    fetch_steam_system_requirements,
+    fetch_steam_website,
+)
 from ..integrations.sync import refresh_game_sources
 from ..integrations.rawg import enrich_rawg_game_detail
 from ..integrations.cheapshark_service import cheapshark_service
@@ -50,9 +58,11 @@ from ..services.game_filter import (
     sort_in_memory,
 )
 from ..services.deduplication import find_existing_duplicate, merge_game_data
+from ..services.game_similarity import find_similar_games
 from ..services.rawg_import import apply_rawg_to_game, game_from_rawg_search
 
 router = APIRouter(tags=["games"])
+log = logging.getLogger(__name__)
 
 _RAWG_SEARCH_TIMEOUT = 15
 
@@ -268,28 +278,116 @@ def _apply_in_memory_filters(
 
 
 @router.get("/api/games/{slug}", response_model=GameRead)
-async def get_game(slug: str, db: Session = Depends(get_db)) -> Game:
+async def get_game(
+    slug: str,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+) -> Game:
     game = db.scalar(select(Game).where(Game.slug == slug))
     if game is None:
         raise HTTPException(status_code=404, detail="Game not found")
-    if not game.metadata_refreshed_at:
-        try:
-            await enrich_rawg_game_detail(db, game)
-        except Exception:
-            pass
-    if not game.dlcs:
-        app_id = extract_steam_app_id(game.cover_url, game.image_url, game.slug)
-        if app_id is not None:
-            try:
-                dlcs = await fetch_steam_dlcs(app_id)
-                if dlcs:
-                    game.dlcs = dlcs
-                    db.add(game)
-                    db.commit()
-                    db.refresh(game)
-            except Exception:
-                pass
+    app_id = extract_steam_app_id(game.cover_url, game.image_url, game.slug)
+    if (
+        not game.metadata_refreshed_at
+        or not game.website_url
+        or not game.dlcs
+        or (app_id and _system_requirements_need_repair(game.system_requirements))
+    ):
+        background_tasks.add_task(_refresh_game_detail_metadata, game.slug)
     return game
+
+
+async def _refresh_game_detail_metadata(slug: str) -> None:
+    """Best-effort metadata backfill that keeps the detail endpoint responsive."""
+    with SessionLocal() as db:
+        game = db.scalar(select(Game).where(Game.slug == slug))
+        if game is None:
+            return
+
+        if not game.metadata_refreshed_at or not game.website_url:
+            try:
+                await enrich_rawg_game_detail(db, game)
+            except Exception:
+                log.debug("RAWG metadata enrichment failed for %s", slug, exc_info=True)
+
+        app_id = extract_steam_app_id(game.cover_url, game.image_url, game.slug)
+        if app_id is None:
+            return
+
+        if not game.website_url:
+            try:
+                website_url = await fetch_steam_website(app_id)
+            except Exception:
+                log.debug("Steam website fetch failed for %s", slug, exc_info=True)
+                website_url = None
+            if website_url:
+                game.website_url = website_url
+                db.add(game)
+                db.commit()
+
+        if _system_requirements_need_repair(game.system_requirements):
+            try:
+                requirements = await fetch_steam_system_requirements(app_id)
+            except Exception:
+                log.debug("Steam system requirements fetch failed for %s", slug, exc_info=True)
+                requirements = []
+            if requirements:
+                game.system_requirements = requirements
+                db.add(game)
+                db.commit()
+
+        if game.dlcs:
+            return
+
+        try:
+            dlcs = await fetch_steam_dlcs(app_id)
+        except Exception:
+            log.debug("Steam DLC fetch failed for %s", slug, exc_info=True)
+            return
+
+        if dlcs:
+            game.dlcs = dlcs
+            db.add(game)
+            db.commit()
+
+
+_BAD_SYSTEM_REQUIREMENT_MARKERS = (
+    "windows xp",
+    "1.2ghz",
+    "256mb",
+    "250 mb",
+)
+
+
+def _system_requirements_need_repair(requirements: list[dict] | None) -> bool:
+    if not requirements:
+        return True
+    pc_req = next(
+        (req for req in requirements if str(req.get("platform", "")).lower() in {"pc", "windows"}),
+        requirements[0],
+    )
+    text = " ".join(
+        str(pc_req.get(key) or "")
+        for key in ("minimum", "recommended")
+    ).lower()
+    if not text.strip():
+        return True
+    if any(marker in text for marker in _BAD_SYSTEM_REQUIREMENT_MARKERS):
+        return True
+    return False
+
+
+@router.get("/api/games/{slug}/similar", response_model=GameListResponse)
+def get_similar_games(
+    slug: str,
+    limit: int = Query(default=10, ge=1, le=24),
+    db: Session = Depends(get_db),
+) -> GameListResponse:
+    game = db.scalar(select(Game).where(Game.slug == slug))
+    if game is None:
+        raise HTTPException(status_code=404, detail="Game not found")
+    similar = find_similar_games(db, game, display_limit=limit)
+    return GameListResponse(games=similar, total=len(similar))
 
 
 @router.post("/api/games/{slug}/refresh-scores", response_model=GameRead)
@@ -319,6 +417,25 @@ async def fetch_game_screenshots(slug: str, db: Session = Depends(get_db)) -> Ga
     return game
 
 
+@router.post("/api/games/{slug}/fetch-system-requirements", response_model=GameRead)
+async def fetch_game_system_requirements(slug: str, db: Session = Depends(get_db)) -> Game:
+    game = db.scalar(select(Game).where(Game.slug == slug))
+    if game is None:
+        raise HTTPException(status_code=404, detail="Game not found")
+
+    app_id = extract_steam_app_id(game.cover_url, game.image_url, game.slug)
+    if app_id is None:
+        raise HTTPException(status_code=422, detail="No Steam App ID found for this game.")
+
+    requirements = await fetch_steam_system_requirements(app_id)
+    if requirements:
+        game.system_requirements = requirements
+        db.commit()
+        db.refresh(game)
+
+    return game
+
+
 @router.post("/api/games/{slug}/fetch-prices", response_model=GameRead)
 async def fetch_game_prices(slug: str, db: Session = Depends(get_db)) -> Game:
     game = db.scalar(select(Game).where(Game.slug == slug))
@@ -331,17 +448,64 @@ async def fetch_game_prices(slug: str, db: Session = Depends(get_db)) -> Game:
 
 
 async def _fetch_and_store_prices(db: Session, game: Game) -> int:
-    if game.price_snapshots:
+    now = datetime.datetime.now(datetime.UTC)
+    fresh_cutoff = now - datetime.timedelta(hours=12)
+    app_id = extract_steam_app_id(game.cover_url, game.image_url, game.slug)
+
+    def _snapshot_is_recent(snapshot: PriceSnapshot) -> bool:
+        fetched_at = snapshot.fetched_at
+        if fetched_at is None:
+            return False
+        if fetched_at.tzinfo is None:
+            fetched_at = fetched_at.replace(tzinfo=datetime.UTC)
+        return fetched_at >= fresh_cutoff
+
+    def _snapshot_needs_repair(snapshot: PriceSnapshot) -> bool:
+        raw = snapshot.raw_payload or {}
+        if snapshot.store.startswith("Store "):
+            return True
+        if snapshot.source == "CheapShark" and app_id is not None:
+            steam_app_id = raw.get("steam_app_id")
+            if steam_app_id is None:
+                return True
+            return str(steam_app_id) != str(app_id)
+        return False
+
+    if (
+        game.price_snapshots
+        and (app_id is None or any(snapshot.source == "Steam" and snapshot.store == "Steam" for snapshot in game.price_snapshots))
+        and not any(_snapshot_needs_repair(snapshot) for snapshot in game.price_snapshots)
+        and any(_snapshot_is_recent(snapshot) for snapshot in game.price_snapshots)
+    ):
         return 0
 
-    now = datetime.datetime.now(datetime.UTC)
-    created = 0
-    app_id = extract_steam_app_id(game.cover_url, game.image_url, game.slug)
+    rows: list[PriceSnapshot] = []
+
+    if app_id is not None:
+        steam_price = await fetch_steam_price(app_id)
+        if steam_price:
+            rows.append(PriceSnapshot(
+                game_id=game.id,
+                source="Steam",
+                external_price_id=str(app_id),
+                store="Steam",
+                platform="PC",
+                region="US",
+                currency=steam_price["currency"],
+                list_price=steam_price["list_price"],
+                sale_price=steam_price["sale_price"],
+                discount_percent=steam_price["discount_percent"],
+                is_free=steam_price["is_free"],
+                url=steam_price["url"],
+                raw_payload=steam_price["raw"],
+                fetched_at=now,
+                created_at=now,
+            ))
 
     if itad_service.is_configured():
         price_data = await itad_service.fetch_price_data(game.title, steam_appid=app_id)
         if price_data:
-            db.add(PriceSnapshot(
+            rows.append(PriceSnapshot(
                 game_id=game.id,
                 source="ITAD",
                 store=price_data.store or "Best tracked PC store",
@@ -360,34 +524,80 @@ async def _fetch_and_store_prices(db: Session, game: Game) -> int:
                 fetched_at=now,
                 created_at=now,
             ))
-            created += 1
 
-    deals = await cheapshark_service.search_deals(game.title, limit=8)
+    cs_game_id = await cheapshark_service.lookup_game_id(game.title, steam_appid=app_id)
+    deals = await cheapshark_service.get_game_deals(cs_game_id) if cs_game_id else []
+    if not deals:
+        deals = [
+            deal for deal in await cheapshark_service.search_deals(game.title, limit=20)
+            if _cheapshark_deal_matches_game(deal, game, app_id)
+        ]
     if deals:
-        best = min(deals, key=lambda d: float(d.get("salePrice", 9999)))
-        normalized = cheapshark_service.normalize_deal(best)
-        deal_id = normalized.raw.get("cs_deal_id")
-        db.add(PriceSnapshot(
-            game_id=game.id,
-            source="CheapShark",
-            external_price_id=str(deal_id) if deal_id else None,
-            store=str(normalized.raw.get("store_name") or "PC store"),
-            platform="PC",
-            region="US",
-            currency=normalized.currency,
-            list_price=normalized.list_price,
-            sale_price=normalized.sale_price,
-            discount_percent=int(normalized.raw.get("savings_pct", 0) or 0),
-            url=f"https://www.cheapshark.com/redirect?dealID={deal_id}" if deal_id else None,
-            raw_payload=normalized.raw,
-            fetched_at=now,
-            created_at=now,
-        ))
-        created += 1
+        seen_stores: set[str] = {row.store.lower() for row in rows}
+        sorted_deals = sorted(deals, key=lambda d: float(d.get("salePrice", 9999)))
+        for deal in sorted_deals:
+            normalized = cheapshark_service.normalize_deal(deal)
+            store = str(normalized.raw.get("store_name") or "PC store")
+            store_key = store.lower()
+            if store_key in seen_stores:
+                continue
+            seen_stores.add(store_key)
+            deal_id = normalized.raw.get("cs_deal_id")
+            rows.append(PriceSnapshot(
+                game_id=game.id,
+                source="CheapShark",
+                external_price_id=str(deal_id) if deal_id else None,
+                store=store,
+                platform="PC",
+                region="US",
+                currency=normalized.currency,
+                list_price=normalized.list_price,
+                sale_price=normalized.sale_price,
+                discount_percent=int(normalized.raw.get("savings_pct", 0) or 0),
+                url=f"https://www.cheapshark.com/redirect?dealID={deal_id}" if deal_id else None,
+                raw_payload=normalized.raw,
+                fetched_at=now,
+                created_at=now,
+            ))
+            if len(seen_stores) >= 12:
+                break
 
-    if created:
+    if rows:
+        game.price_snapshots.clear()
+        db.flush()
+        db.add_all(rows)
         db.commit()
-    return created
+    return len(rows)
+
+
+_PRICE_ADDON_TERMS = (
+    "upgrade",
+    "dlc",
+    "soundtrack",
+    "bundle",
+    "pack",
+    "season pass",
+    "expansion",
+)
+
+
+def _price_title_key(value: str) -> str:
+    return " ".join(
+        "".join(ch.lower() if ch.isalnum() else " " for ch in value).split()
+    )
+
+
+def _cheapshark_deal_matches_game(raw: dict, game: Game, app_id: int | None) -> bool:
+    title = str(raw.get("title") or "")
+    normalized_title = _price_title_key(title)
+    expected = _price_title_key(game.title)
+    if not normalized_title:
+        return False
+    if app_id is not None and raw.get("steamAppID") and str(raw.get("steamAppID")) != str(app_id):
+        return False
+    if any(term in normalized_title for term in _PRICE_ADDON_TERMS) and normalized_title != expected:
+        return False
+    return normalized_title == expected or expected in normalized_title or normalized_title in expected
 
 
 @router.get("/api/games/{slug}/trailer", response_model=TrailerResponse)
@@ -417,10 +627,11 @@ def get_facets(db: Session = Depends(get_db)) -> FacetsResponse:
     current_year = datetime.date.today().year
 
     # Use json_each to expand JSON arrays at SQL level — no ORM object loading.
+    # TRIM collapses variants like " MMORPG" / "MMORPG" into one facet entry.
     genre_rows = db.execute(
         text(
-            "SELECT DISTINCT j.value FROM games, json_each(games.genres) j"
-            " WHERE games.content_type = 'game' ORDER BY j.value"
+            "SELECT DISTINCT TRIM(j.value) FROM games, json_each(games.genres) j"
+            " WHERE games.content_type = 'game' AND TRIM(j.value) != '' ORDER BY 1"
         )
     ).fetchall()
     genres = [r[0] for r in genre_rows]
@@ -436,8 +647,8 @@ def get_facets(db: Session = Depends(get_db)) -> FacetsResponse:
 
     platform_rows = db.execute(
         text(
-            "SELECT DISTINCT j.value FROM games, json_each(games.platforms) j"
-            " WHERE games.content_type = 'game'"
+            "SELECT DISTINCT TRIM(j.value) FROM games, json_each(games.platforms) j"
+            " WHERE games.content_type = 'game' AND TRIM(j.value) != ''"
         )
     ).fetchall()
     raw_platforms = {r[0] for r in platform_rows}

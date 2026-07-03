@@ -65,6 +65,7 @@ class GameRead(BaseModel):
     official_release_date: date | None = None
     metacritic_score: int | None = None
     image_url: str | None = None
+    website_url: str | None = None
     ratings_refreshed_at: datetime | None = None
     metadata_refreshed_at: datetime | None = None
     content_type: str = "game"
@@ -114,6 +115,7 @@ class GameListItem(BaseModel):
     official_release_date: date | None = None
     metacritic_score: int | None = None
     image_url: str | None = None
+    website_url: str | None = None
     ratings_refreshed_at: datetime | None = None
     metadata_refreshed_at: datetime | None = None
     content_type: str = "game"

@@ -54,7 +54,11 @@ def dedupe_near_duplicates(games: list[Game]) -> list[Game]:
 
 
 def filter_by_genre(games: list[Game], genre: str) -> list[Game]:
-    return [g for g in games if genre in g.genres]
+    wanted = genre.strip().lower()
+    return [
+        g for g in games
+        if any(stored.strip().lower() == wanted for stored in g.genres)
+    ]
 
 
 def filter_by_developer(games: list[Game], developer: str) -> list[Game]:
