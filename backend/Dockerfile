@@ -13,4 +13,4 @@ EXPOSE 8000
 
 # FastAPI uygulamasını ayağa kaldıralım
 # Not: Eğer ana çalıştırma dosyan app/main.py içindeyse bu komut aynen kalır.
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips", "*"]

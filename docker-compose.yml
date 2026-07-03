@@ -24,6 +24,8 @@ services:
     restart: always
     env_file:
       - ./backend/.env # .env dosyasını buraya aldığın için yolunu böyle belirttik
+    environment:
+      DATABASE_URL: postgresql+psycopg://admin:password123@db:5432/gamemetrix
     expose:
       - "8000"
     depends_on:

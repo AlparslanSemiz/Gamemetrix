@@ -23,7 +23,7 @@ class Settings:
         )
         self.ADMIN_USERNAME: str = os.getenv("ADMIN_USERNAME", "")
         self.ADMIN_PASSWORD_HASH: str = os.getenv("ADMIN_PASSWORD_HASH", "")
-        self.PUBLIC_READ_RATE_LIMIT: str = os.getenv("PUBLIC_READ_RATE_LIMIT", "30/minute")
+        self.PUBLIC_READ_RATE_LIMIT: str = os.getenv("PUBLIC_READ_RATE_LIMIT", "300/minute")
         self.AUTH_RATE_LIMIT: str = os.getenv("AUTH_RATE_LIMIT", "5/minute")
         self.RATE_LIMIT_STORAGE_URI: str = os.getenv("RATE_LIMIT_STORAGE_URI", "memory://")
         # ── API credentials ──────────────────────────────────────────────────
@@ -58,6 +58,8 @@ class Settings:
                         "http://127.0.0.1:5174",
                         "http://gamemetrix.me",
                         "https://gamemetrix.me",
+                        "http://www.gamemetrix.me",
+                        "https://www.gamemetrix.me",
                     ]
                 ),
             )

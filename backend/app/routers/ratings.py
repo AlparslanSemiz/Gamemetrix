@@ -41,9 +41,7 @@ router = APIRouter(tags=["ratings"])
 
 
 @router.get("/api/integrations/status", response_model=list[ProviderStatus])
-def integration_status(
-    _admin=Depends(require_admin_user),
-) -> list[dict[str, str]]:
+def integration_status() -> list[dict[str, str]]:
     return get_provider_statuses()
 
 

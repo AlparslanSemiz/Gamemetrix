@@ -648,6 +648,19 @@ _facets_cache_time: float = 0.0
 _FACETS_TTL = 300.0  # 5 minutes
 
 
+def _json_array_values_sql(column: str, dialect_name: str) -> str:
+    if dialect_name == "postgresql":
+        return (
+            f"SELECT DISTINCT TRIM(value) FROM games, "
+            f"LATERAL jsonb_array_elements_text(games.{column}::jsonb) AS value"
+            " WHERE games.content_type = 'game' AND TRIM(value) != ''"
+        )
+    return (
+        f"SELECT DISTINCT TRIM(j.value) FROM games, json_each(games.{column}) j"
+        " WHERE games.content_type = 'game' AND TRIM(j.value) != ''"
+    )
+
+
 @router.get("/api/facets", response_model=FacetsResponse)
 @limiter.limit(get_settings().PUBLIC_READ_RATE_LIMIT)
 def get_facets(
@@ -660,14 +673,12 @@ def get_facets(
         return _facets_cache
 
     current_year = datetime.date.today().year
+    dialect_name = db.bind.dialect.name if db.bind is not None else ""
 
     # Use json_each to expand JSON arrays at SQL level — no ORM object loading.
     # TRIM collapses variants like " MMORPG" / "MMORPG" into one facet entry.
     genre_rows = db.execute(
-        text(
-            "SELECT DISTINCT TRIM(j.value) FROM games, json_each(games.genres) j"
-            " WHERE games.content_type = 'game' AND TRIM(j.value) != '' ORDER BY 1"
-        )
+        text(f"{_json_array_values_sql('genres', dialect_name)} ORDER BY 1")
     ).fetchall()
     genres = [r[0] for r in genre_rows]
 
@@ -681,10 +692,7 @@ def get_facets(
     years = [r[0] for r in year_rows]
 
     platform_rows = db.execute(
-        text(
-            "SELECT DISTINCT TRIM(j.value) FROM games, json_each(games.platforms) j"
-            " WHERE games.content_type = 'game' AND TRIM(j.value) != ''"
-        )
+        text(_json_array_values_sql("platforms", dialect_name))
     ).fetchall()
     raw_platforms = {r[0] for r in platform_rows}
 

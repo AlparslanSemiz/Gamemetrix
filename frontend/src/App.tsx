@@ -79,6 +79,7 @@ interface CuratedPreset {
   label: string
   icon: typeof Search
   filters: Partial<GameFilters>
+  comingSoon?: boolean
 }
 
 interface SidebarGroup {
@@ -136,12 +137,14 @@ const SIDEBAR_GROUPS: SidebarGroup[] = [
         label: 'Best Deals',
         icon: Tag,
         filters: { minScore: 80, minLiveSources: 1, sort: 'rank_score', direction: 'desc' },
+        comingSoon: true,
       },
       {
         id: 'free-games',
         label: 'Free Games',
         icon: Gift,
         filters: { sort: 'rank_score', direction: 'desc' },
+        comingSoon: true,
       },
     ],
   },
@@ -227,6 +230,11 @@ function readCatalogSnapshot(): CatalogSnapshot | null {
     if (parsed.version !== 1 || !parsed.savedAt) return null
     if (Date.now() - parsed.savedAt > CATALOG_SNAPSHOT_TTL_MS) return null
     if (!Array.isArray(parsed.games)) return null
+    const catalogTotal = parsed.catalogTotal ?? parsed.games.length
+    const restoredOffset = Math.min(
+      parsed.offset ?? Math.max(0, parsed.games.length - PAGE_SIZE),
+      Math.max(0, parsed.games.length - PAGE_SIZE),
+    )
     return {
       version: 1,
       savedAt: parsed.savedAt,
@@ -234,12 +242,12 @@ function readCatalogSnapshot(): CatalogSnapshot | null {
       activePreset: parsed.activePreset ?? null,
       filters: { ...DEFAULT_FILTERS, ...(parsed.filters ?? {}) },
       games: parsed.games,
-      catalogTotal: parsed.catalogTotal ?? parsed.games.length,
+      catalogTotal,
       libraryTotal: parsed.libraryTotal ?? 0,
       viewMode: parsed.viewMode === 'grid' ? 'grid' : 'list',
       filtersOpen: Boolean(parsed.filtersOpen),
-      offset: parsed.offset ?? Math.max(0, parsed.games.length - PAGE_SIZE),
-      hasMore: parsed.hasMore ?? false,
+      offset: restoredOffset,
+      hasMore: (parsed.hasMore ?? false) && parsed.games.length < catalogTotal,
       scrollY: parsed.scrollY ?? 0,
       mastheadVisible: parsed.mastheadVisible ?? (parsed.scrollY ?? 0) < 80,
       focusedGameSlug: typeof parsed.focusedGameSlug === 'string' ? parsed.focusedGameSlug : null,
@@ -330,10 +338,10 @@ const mainNavItems: Array<{ id: MainPage; label: string; icon: typeof Search }> 
   { id: 'suggestions', label: 'For You', icon: Compass },
 ]
 
-const utilityNavItems: Array<{ id: UtilityPage; label: string; icon: typeof Search }> = [
-  { id: 'login', label: 'Login', icon: LogIn },
+const utilityNavItems: Array<{ id: UtilityPage; label: string; icon: typeof Search; comingSoon?: boolean }> = [
+  { id: 'login', label: 'Login', icon: LogIn, comingSoon: true },
   { id: 'settings', label: 'Settings', icon: Settings },
-  { id: 'alerts', label: 'Alerts', icon: Bell },
+  { id: 'alerts', label: 'Alerts', icon: Bell, comingSoon: true },
   { id: 'about', label: 'About', icon: Info },
 ]
 
@@ -398,6 +406,7 @@ function AppContent() {
   const [offset, setOffset] = useState(restoredSnapshot?.offset ?? 0)
   const [hasMore, setHasMore] = useState(restoredSnapshot?.hasMore ?? true)
   const [isLoadingMore, setIsLoadingMore] = useState(false)
+  const [comingSoonNotice, setComingSoonNotice] = useState<string | null>(null)
   const loaderRef = useRef<HTMLDivElement>(null)
   const mastheadRef = useRef<HTMLElement>(null)
   const lastScrollYRef = useRef(restoredSnapshot?.scrollY ?? 0)
@@ -425,6 +434,12 @@ function AppContent() {
   useEffect(() => {
     filtersRef.current = filters
   }, [filters])
+
+  useEffect(() => {
+    if (!comingSoonNotice) return undefined
+    const timer = window.setTimeout(() => setComingSoonNotice(null), 1800)
+    return () => window.clearTimeout(timer)
+  }, [comingSoonNotice])
 
   useEffect(() => {
     latestCatalogRef.current = {
@@ -595,6 +610,11 @@ function AppContent() {
   // An aborted run (StrictMode replay, rapid dep change) clears the ref so
   // the next run with the same signature fetches for real.
   useEffect(() => {
+    if (offset > 0 && catalogTotal > 0 && offset >= catalogTotal) {
+      setHasMore(false)
+      setIsLoadingMore(false)
+      return
+    }
     const fetchSignature = `${fetchKey}:${offset}`
     if (lastFetchSignatureRef.current === fetchSignature) return
     lastFetchSignatureRef.current = fetchSignature
@@ -620,12 +640,12 @@ function AppContent() {
       }
       setCatalogTotal(total)
       const newCount = offset + games.length
-      setHasMore(newCount < total)
+      setHasMore(games.length > 0 && newCount < total)
       if (isFirst) setIsLoading(false)
       else setIsLoadingMore(false)
       // Prefetch the next page in the background
       const nextOffset = newCount
-      if (nextOffset < total) {
+      if (games.length > 0 && nextOffset < total) {
         getGames(f, PAGE_SIZE, nextOffset).then((prefetched) => {
           if (active) {
             prefetchRef.current = { offset: nextOffset, games: prefetched.games, total: prefetched.total }
@@ -663,7 +683,7 @@ function AppContent() {
       active = false
       if (!settled) lastFetchSignatureRef.current = null
     }
-  }, [fetchKey, offset])
+  }, [catalogTotal, fetchKey, offset])
 
   // IntersectionObserver — load next page when sentinel enters viewport
   useEffect(() => {
@@ -672,14 +692,20 @@ function AppContent() {
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries[0]?.isIntersecting && hasMore && !isLoadingMore && !isLoading) {
-          setOffset((prev) => prev + PAGE_SIZE)
+          setOffset((prev) => {
+            const next = prev + PAGE_SIZE
+            if (catalogTotal > 0 && prev >= Math.max(0, catalogTotal - PAGE_SIZE)) {
+              return prev
+            }
+            return next
+          })
         }
       },
       { rootMargin: '300px' },
     )
     observer.observe(el)
     return () => observer.disconnect()
-  }, [hasMore, isLoadingMore, isLoading])
+  }, [catalogTotal, hasMore, isLoadingMore, isLoading])
 
   useEffect(() => {
     lastScrollYRef.current = window.scrollY
@@ -882,6 +908,10 @@ function AppContent() {
   }
 
   const applyPreset = (preset: CuratedPreset) => {
+    if (preset.comingSoon) {
+      setComingSoonNotice(`${preset.label} coming soon`)
+      return
+    }
     setActivePage('catalog')
     setActivePreset(preset.id)
     if (preset.id === 'best-of-year') {
@@ -931,13 +961,15 @@ function AppContent() {
                   return (
                     <button
                       type="button"
-                      className={activePreset === preset.id ? 'is-active' : ''}
+                      className={`${activePreset === preset.id ? 'is-active' : ''}${preset.comingSoon ? ' is-coming-soon' : ''}`}
                       key={preset.id}
-                      title={preset.label}
+                      title={preset.comingSoon ? `${preset.label} - Coming soon` : preset.label}
+                      aria-disabled={preset.comingSoon ? 'true' : undefined}
                       onClick={() => applyPreset(preset)}
                     >
                       <Icon size={18} aria-hidden="true" />
                       <span>{preset.label}</span>
+                      {preset.comingSoon ? <small>Soon</small> : null}
                     </button>
                   )
                 })}
@@ -946,19 +978,32 @@ function AppContent() {
           ))}
         </div>
         <div className="rail-group">
-          {utilityNavItems.map(({ icon: Icon, id, label }) => (
+          {utilityNavItems.map(({ icon: Icon, id, label, comingSoon }) => (
             <button
               type="button"
-              className={activePage === id ? 'is-active' : ''}
+              className={`${activePage === id ? 'is-active' : ''}${comingSoon ? ' is-coming-soon' : ''}`}
               key={id}
-              title={label}
-              onClick={() => setActivePage(id)}
+              title={comingSoon ? `${label} - Coming soon` : label}
+              aria-disabled={comingSoon ? 'true' : undefined}
+              onClick={() => {
+                if (comingSoon) {
+                  setComingSoonNotice(`${label} coming soon`)
+                  return
+                }
+                setActivePage(id)
+              }}
             >
               <Icon size={22} aria-hidden="true" />
               <span>{label}</span>
+              {comingSoon ? <small>Soon</small> : null}
             </button>
           ))}
         </div>
+        {comingSoonNotice ? (
+          <div className="coming-soon-toast" role="status">
+            {comingSoonNotice}
+          </div>
+        ) : null}
       </aside>
 
       <section className="workspace">
