@@ -6,8 +6,26 @@ Keys are never exposed outside this module — callers get bool/status, not raw 
 import os
 
 
+def _csv(value: str) -> list[str]:
+    return [item.strip().rstrip("/") for item in value.split(",") if item.strip()]
+
+
 class Settings:
     def __init__(self) -> None:
+        # ── Runtime / security ───────────────────────────────────────────────
+        self.ENV: str = os.getenv("ENV", "development").strip().lower()
+        self.JWT_SECRET_KEY: str = os.getenv("JWT_SECRET_KEY", "")
+        self.JWT_ALGORITHM: str = os.getenv("JWT_ALGORITHM", "HS256")
+        self.JWT_ISSUER: str = os.getenv("JWT_ISSUER", "gamemetrix-api")
+        self.JWT_AUDIENCE: str = os.getenv("JWT_AUDIENCE", "")
+        self.JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = int(
+            os.getenv("JWT_ACCESS_TOKEN_EXPIRE_MINUTES", "30")
+        )
+        self.ADMIN_USERNAME: str = os.getenv("ADMIN_USERNAME", "")
+        self.ADMIN_PASSWORD_HASH: str = os.getenv("ADMIN_PASSWORD_HASH", "")
+        self.PUBLIC_READ_RATE_LIMIT: str = os.getenv("PUBLIC_READ_RATE_LIMIT", "30/minute")
+        self.AUTH_RATE_LIMIT: str = os.getenv("AUTH_RATE_LIMIT", "5/minute")
+        self.RATE_LIMIT_STORAGE_URI: str = os.getenv("RATE_LIMIT_STORAGE_URI", "memory://")
         # ── API credentials ──────────────────────────────────────────────────
         self.IGDB_CLIENT_ID: str = os.getenv("IGDB_CLIENT_ID", "")
         self.IGDB_CLIENT_SECRET: str = os.getenv("IGDB_CLIENT_SECRET", "")
@@ -28,6 +46,21 @@ class Settings:
         self.DATABASE_URL: str = os.getenv(
             "DATABASE_URL",
             "postgresql+psycopg://admin:password123@localhost:5432/gamemetrix",
+        )
+        self.CORS_ALLOW_ORIGINS: list[str] = _csv(
+            os.getenv(
+                "CORS_ALLOW_ORIGINS",
+                ",".join(
+                    [
+                        "http://localhost:5173",
+                        "http://127.0.0.1:5173",
+                        "http://localhost:5174",
+                        "http://127.0.0.1:5174",
+                        "http://gamemetrix.me",
+                        "https://gamemetrix.me",
+                    ]
+                ),
+            )
         )
         # ── Background refresh tuning ─────────────────────────────────────────
         self.DAILY_RATING_REFRESH_LIMIT: int = int(
@@ -74,6 +107,10 @@ class Settings:
         self.REFRESH_ALL_INTER_GAME_DELAY: float = float(
             os.getenv("REFRESH_ALL_INTER_GAME_DELAY", "0.3")
         )
+
+    @property
+    def is_production(self) -> bool:
+        return self.ENV == "production"
 
     # ── Configured checks — never return raw key values ─────────────────────
 

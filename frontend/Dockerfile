@@ -1,19 +1,22 @@
-# 1. Aşama: Projeyi derleme (Build)
-FROM node:20-alpine AS builder
+FROM node:22-alpine AS build
+
 WORKDIR /app
+
 COPY package*.json ./
-RUN npm install
+RUN npm ci
+
 COPY . .
+
+ARG VITE_API_BASE_URL=http://api.gamemetrix.me
+ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
+
 RUN npm run build
 
-# 2. Aşama: Derlenen dosyaları hafif bir Node sunucusu ile servis etme
-FROM node:20-alpine
-WORKDIR /app
-RUN npm install -g serve
-# Üst aşamada oluşan 'dist' klasörünü buraya taşıyoruz
-COPY --from=builder /app/dist ./dist
+FROM nginx:1.29-alpine AS runtime
+
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY --from=build /app/dist /usr/share/nginx/html
 
 EXPOSE 3000
 
-# Port 3000 üzerinden siteyi yayına alıyoruz
-CMD ["serve", "-s", "dist", "-l", "3000"]
+CMD ["nginx", "-g", "daemon off;"]

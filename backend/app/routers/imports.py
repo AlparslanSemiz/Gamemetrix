@@ -21,8 +21,13 @@ from ..integrations.free_to_game import import_free_to_game_games
 from ..integrations.igdb_import import import_igdb_nintendo_games
 from ..integrations.rawg import import_catalog_to_size, import_rawg_games, import_rawg_nintendo_games
 from ..integrations.steamspy import import_steamspy_games
+from ..security import require_admin_user
 
-router = APIRouter(prefix="/api/import", tags=["imports"])
+router = APIRouter(
+    prefix="/api/import",
+    tags=["imports"],
+    dependencies=[Depends(require_admin_user)],
+)
 
 
 @router.post("/rawg", response_model=ImportResponse)

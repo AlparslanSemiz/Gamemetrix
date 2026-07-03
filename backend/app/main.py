@@ -5,6 +5,9 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
+from slowapi import _rate_limit_exceeded_handler
 from sqlalchemy import select, text
 from sqlalchemy.engine import Connection
 
@@ -12,11 +15,13 @@ from sqlalchemy.orm import Session
 from .config import get_settings
 from .database import Base, SessionLocal, engine
 from .integrations.rate_limiter import get_rate_limiter
+from .rate_limit import limiter
 from .integrations.steam import fetch_steam_screenshots
 from .integrations.sync import calculate_metrix_score, compute_rank_fields
 from .models import Game, infer_content_type, infer_content_type_with_parent
 from .seed import seed_games
 from .routers import admin
+from .routers.auth import router as auth_router
 from .routers.games import router as games_router
 from .routers.imports import router as imports_router
 from .routers.ratings import router as ratings_router
@@ -25,6 +30,7 @@ from .services.deduplication import consolidate_duplicate_games
 
 
 log = logging.getLogger(__name__)
+settings = get_settings()
 
 
 # ── SQLite column migrations ───────────────────────────────────────────────────
@@ -201,21 +207,28 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 # ── App wiring ────────────────────────────────────────────────────────────────
 
 
-app = FastAPI(title="GameMetrix API", version="0.1.0", lifespan=lifespan)
+app = FastAPI(
+    title="GameMetrix API",
+    version="0.1.0",
+    lifespan=lifespan,
+    docs_url=None if settings.is_production else "/docs",
+    redoc_url=None if settings.is_production else "/redoc",
+    openapi_url=None if settings.is_production else "/openapi.json",
+)
+
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_middleware(SlowAPIMiddleware)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://localhost:5174",
-        "http://127.0.0.1:5174",
-    ],
+    allow_origins=settings.CORS_ALLOW_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+app.include_router(auth_router)
 app.include_router(games_router)
 app.include_router(imports_router)
 app.include_router(ratings_router)

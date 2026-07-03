@@ -35,12 +35,15 @@ from ..services.background import fix_year_batch, rating_refresh_candidates, ref
 from ..services.metadata import summary_needs_enrichment
 from ..services.rawg_import import apply_rawg_metadata
 from ..services.summarizer import shorten_summary_batch
+from ..security import require_admin_user
 
 router = APIRouter(tags=["ratings"])
 
 
 @router.get("/api/integrations/status", response_model=list[ProviderStatus])
-def integration_status() -> list[dict[str, str]]:
+def integration_status(
+    _admin=Depends(require_admin_user),
+) -> list[dict[str, str]]:
     return get_provider_statuses()
 
 
@@ -50,14 +53,20 @@ def get_score_weights() -> dict[str, dict[str, float]]:
 
 
 @router.put("/api/score-weights", response_model=ScoreWeightsResponse)
-def update_score_weights(payload: ScoreWeightsUpdate) -> dict[str, dict[str, float]]:
+def update_score_weights(
+    payload: ScoreWeightsUpdate,
+    _admin=Depends(require_admin_user),
+) -> dict[str, dict[str, float]]:
     for source, value in payload.weights.items():
         SOURCE_WEIGHTS[source] = max(0.0, min(float(value), 1.0))
     return {"weights": SOURCE_WEIGHTS}
 
 
 @router.post("/api/score-weights/recalculate", response_model=RecalculateResponse)
-def recalculate_scores(db: Session = Depends(get_db)) -> dict[str, int]:
+def recalculate_scores(
+    db: Session = Depends(get_db),
+    _admin=Depends(require_admin_user),
+) -> dict[str, int]:
     games = db.query(Game).all()
     for game in games:
         game.metrix_score = calculate_metrix_score(game.source_scores)
@@ -69,6 +78,7 @@ def recalculate_scores(db: Session = Depends(get_db)) -> dict[str, int]:
 async def enrich_ratings(
     limit: int = Query(default=24, ge=1, le=100),
     db: Session = Depends(get_db),
+    _admin=Depends(require_admin_user),
 ) -> dict[str, int]:
     enriched = 0
     for game in rating_refresh_candidates(db):
@@ -80,7 +90,9 @@ async def enrich_ratings(
 
 
 @router.get("/api/rate-limits")
-def get_rate_limit_status() -> dict[str, dict[str, int]]:
+def get_rate_limit_status(
+    _admin=Depends(require_admin_user),
+) -> dict[str, dict[str, int]]:
     """Remaining daily request budget per source. Resets at midnight."""
     return get_rate_limiter().status()
 
@@ -90,6 +102,7 @@ async def refresh_all_scores(
     background_tasks: BackgroundTasks,
     force: bool = Query(default=False),
     concurrency: int = Query(default=3, ge=1, le=8),
+    _admin=Depends(require_admin_user),
 ) -> dict[str, str]:
     """
     Trigger a full refresh of every game's scores in the background.
@@ -102,6 +115,7 @@ async def refresh_all_scores(
 @router.post("/api/metadata/fix-years", response_model=MetadataFixResponse)
 async def fix_missing_years(
     limit: int = Query(default=100, ge=1, le=500),
+    _admin=Depends(require_admin_user),
 ) -> dict[str, int]:
     return await fix_year_batch(limit)
 
@@ -110,6 +124,7 @@ async def fix_missing_years(
 async def shorten_summaries(
     limit: int = Query(default=50, ge=1, le=500),
     db: Session = Depends(get_db),
+    _admin=Depends(require_admin_user),
 ) -> dict[str, int]:
     result = await shorten_summary_batch(db, limit)
     return {"fixed": result["shortened"], "skipped": result["skipped"]}
@@ -119,6 +134,7 @@ async def shorten_summaries(
 async def enrich_summaries(
     limit: int = Query(default=40, ge=1, le=200),
     db: Session = Depends(get_db),
+    _admin=Depends(require_admin_user),
 ) -> dict[str, int]:
     fixed = 0
     skipped = 0
