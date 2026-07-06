@@ -130,7 +130,7 @@ function fallbackCoverUrl(title: string): string {
       <rect width="1600" height="900" fill="url(#bg)"/>
       <rect x="64" y="64" width="1472" height="772" rx="28" fill="none" stroke="#3c4642" stroke-width="6"/>
       <text x="120" y="450" fill="#f1f3f7" font-family="Inter, Segoe UI, sans-serif" font-size="86" font-weight="800">${safeTitle}</text>
-      <text x="120" y="540" fill="#57d46d" font-family="Inter, Segoe UI, sans-serif" font-size="34" font-weight="800">GAMEMETRIX</text>
+      <text x="120" y="540" fill="#a78bfa" font-family="Inter, Segoe UI, sans-serif" font-size="34" font-weight="800">GAMEMETRIX</text>
     </svg>`
   return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`
 }
@@ -441,6 +441,9 @@ export const GameCard = memo(function GameCard({
         />
         <div className="cover-play-hint">
           <Play size={16} aria-hidden="true" />
+        </div>
+        <div className="mobile-cover-score">
+          <ScoreRing score={game.metrix_score} size="sm" />
         </div>
       </div>
 
