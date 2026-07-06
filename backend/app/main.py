@@ -21,6 +21,7 @@ from .integrations.sync import calculate_metrix_score, compute_rank_fields
 from .models import Game, infer_content_type, infer_content_type_with_parent
 from .seed import seed_games
 from .routers import admin
+from .routers.analytics import router as analytics_router
 from .routers.auth import router as auth_router
 from .routers.games import router as games_router
 from .routers.imports import router as imports_router
@@ -229,6 +230,7 @@ app.add_middleware(
 )
 
 app.include_router(auth_router)
+app.include_router(analytics_router)
 app.include_router(games_router)
 app.include_router(imports_router)
 app.include_router(ratings_router)

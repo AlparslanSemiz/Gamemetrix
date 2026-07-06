@@ -20,16 +20,17 @@ Endpoints:
 import asyncio
 import dataclasses
 import logging
-from datetime import UTC, datetime
+from collections import defaultdict
+from datetime import UTC, datetime, timedelta
 from enum import Enum
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select
+from sqlalchemy import desc, func, select
 from sqlalchemy.orm import Session
 
 from ..config import get_settings
 from ..database import get_db
-from ..models import ExternalId, Game, PriceSnapshot, RatingSnapshot, SourceSnapshot, infer_content_type_with_parent
+from ..models import ExternalId, Game, PriceSnapshot, RatingSnapshot, SourceSnapshot, VisitEvent, infer_content_type_with_parent
 from ..services.deduplication import consolidate_duplicate_games
 from ..integrations.cheapshark_service import cheapshark_service
 from ..integrations.igdb_service import igdb_service
@@ -110,6 +111,108 @@ async def api_health() -> dict:
             **({"latency_ms": h.latency_ms} if h.latency_ms is not None else {}),
         }
         for h in results
+    }
+
+
+# ── Dashboard / traffic analytics ────────────────────────────────────────────
+
+
+@router.get("/dashboard")
+def dashboard(
+    days: int = Query(default=7, ge=1, le=90),
+    db: Session = Depends(get_db),
+) -> dict:
+    now = datetime.now(UTC)
+    since = now - timedelta(days=days)
+    today_start = datetime(now.year, now.month, now.day, tzinfo=UTC)
+
+    total_games = db.scalar(select(func.count(Game.id))) or 0
+    rankable_games = db.scalar(select(func.count(Game.id)).where(Game.is_rankable.is_(True))) or 0
+    catalog_only_games = db.scalar(select(func.count(Game.id)).where(Game.content_type != "game")) or 0
+    rating_snapshots = db.scalar(select(func.count(RatingSnapshot.id))) or 0
+    source_snapshots = db.scalar(select(func.count(SourceSnapshot.id))) or 0
+
+    total_visits = db.scalar(
+        select(func.count(VisitEvent.id)).where(VisitEvent.created_at >= since)
+    ) or 0
+    unique_visitors = db.scalar(
+        select(func.count(func.distinct(VisitEvent.visitor_id_hash))).where(VisitEvent.created_at >= since)
+    ) or 0
+    visits_today = db.scalar(
+        select(func.count(VisitEvent.id)).where(VisitEvent.created_at >= today_start)
+    ) or 0
+    unique_today = db.scalar(
+        select(func.count(func.distinct(VisitEvent.visitor_id_hash))).where(VisitEvent.created_at >= today_start)
+    ) or 0
+
+    path_count = func.count(VisitEvent.id).label("visits")
+    top_pages = [
+        {"path": path, "visits": visits}
+        for path, visits in db.execute(
+            select(VisitEvent.path, path_count)
+            .where(VisitEvent.created_at >= since)
+            .group_by(VisitEvent.path)
+            .order_by(desc(path_count))
+            .limit(10)
+        ).all()
+    ]
+
+    daily_counts: dict[str, dict[str, int | set[str]]] = defaultdict(lambda: {"visits": 0, "visitors": set()})
+    for event in db.scalars(select(VisitEvent).where(VisitEvent.created_at >= since)).all():
+        key = event.created_at.date().isoformat()
+        daily_counts[key]["visits"] = int(daily_counts[key]["visits"]) + 1
+        visitors = daily_counts[key]["visitors"]
+        if isinstance(visitors, set):
+            visitors.add(event.visitor_id_hash)
+
+    daily = []
+    for i in range(days - 1, -1, -1):
+        date_key = (now - timedelta(days=i)).date().isoformat()
+        row = daily_counts.get(date_key, {"visits": 0, "visitors": set()})
+        visitors = row["visitors"]
+        daily.append({
+            "date": date_key,
+            "visits": int(row["visits"]),
+            "visitors": len(visitors) if isinstance(visitors, set) else 0,
+        })
+
+    recent_visits = [
+        {
+            "path": event.path,
+            "created_at": event.created_at.isoformat(),
+            "visitor": event.visitor_id_hash[:10],
+            "referrer": event.referrer,
+            "screen": (
+                f"{event.screen_width}x{event.screen_height}"
+                if event.screen_width and event.screen_height
+                else None
+            ),
+        }
+        for event in db.scalars(
+            select(VisitEvent)
+            .order_by(VisitEvent.created_at.desc())
+            .limit(20)
+        ).all()
+    ]
+
+    return {
+        "catalog": {
+            "total_games": total_games,
+            "rankable_games": rankable_games,
+            "non_game_rows": catalog_only_games,
+            "rating_snapshots": rating_snapshots,
+            "source_snapshots": source_snapshots,
+        },
+        "traffic": {
+            "days": days,
+            "total_visits": total_visits,
+            "unique_visitors": unique_visitors,
+            "visits_today": visits_today,
+            "unique_today": unique_today,
+            "top_pages": top_pages,
+            "daily": daily,
+            "recent_visits": recent_visits,
+        },
     }
 
 

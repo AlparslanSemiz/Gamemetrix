@@ -294,6 +294,23 @@ class SourceSnapshot(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
+class VisitEvent(Base):
+    """Privacy-preserving page-view event for admin traffic analytics."""
+
+    __tablename__ = "visit_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    visitor_id_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    ip_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    user_agent_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    path: Mapped[str] = mapped_column(String(500), nullable=False, index=True)
+    referrer: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    title: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    screen_width: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    screen_height: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+
+
 class PriceSnapshot(Base):
     """Current + historical price data per game/store, sourced from ITAD or CheapShark."""
 

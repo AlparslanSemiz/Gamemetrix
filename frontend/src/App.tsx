@@ -30,10 +30,12 @@ import { BrowserRouter, Route, Routes } from 'react-router-dom'
 import './App.css'
 import { FilterBar } from './components/FilterBar'
 import { GameCard } from './components/GameCard'
+import { PageViewTracker } from './components/PageViewTracker'
 import { RatingExplainer } from './components/RatingExplainer'
 import { RefreshAllPanel } from './components/RefreshAllPanel'
 import { ScoreWeightSettings } from './components/ScoreWeightSettings'
 import { TrailerModal } from './components/TrailerModal'
+import { AdminPage } from './pages/AdminPage'
 import { GameDetailPage } from './pages/GameDetailPage'
 import {
   getFacets,
@@ -986,7 +988,7 @@ function AppContent() {
         ))}
       </nav>
 
-      <section className="workspace">
+      <section className={`workspace ${mastheadVisible ? 'masthead-open' : 'masthead-collapsed'}`}>
         <header ref={mastheadRef} className={`masthead ${mastheadVisible ? 'is-visible' : 'is-hidden'}`}>
           <button type="button" className="brand" onClick={goHome}>
             <img src="/favicon.svg" alt="" className="brand-icon" aria-hidden="true" />
@@ -1275,8 +1277,10 @@ function AppContent() {
 function App() {
   return (
     <BrowserRouter>
+      <PageViewTracker />
       <CollectionsProvider>
         <Routes>
+          <Route path="/admin" element={<AdminPage />} />
           <Route path="/game/:slug" element={<GameDetailPage />} />
           <Route path="*" element={<AppContent />} />
         </Routes>
