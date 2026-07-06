@@ -52,8 +52,12 @@ export interface Game {
   system_requirements: SystemRequirement[]
   dlcs: RelatedGame[]
   similar_games: RelatedGame[]
+  proton_tier?: ProtonTier | null
+  proton_score?: number | null
   price_snapshots?: PriceSnapshot[]
 }
+
+export type ProtonTier = 'platinum' | 'gold' | 'silver' | 'bronze' | 'borked'
 
 export interface SystemRequirement {
   platform: string

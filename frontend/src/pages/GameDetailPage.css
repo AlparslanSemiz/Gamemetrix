@@ -658,6 +658,72 @@
   font-weight: 900;
 }
 
+/* ─── ProtonDB compatibility ─────────────────────────────────────────────── */
+
+.dp-proton {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.055);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.14);
+  padding: 10px 12px;
+}
+
+.dp-proton-badge {
+  display: inline-grid;
+  place-items: center;
+  min-width: 78px;
+  border: 1px solid var(--proton-color, #a6a6a6);
+  border-radius: 999px;
+  padding: 4px 12px;
+  color: var(--proton-color, #a6a6a6);
+  background: color-mix(in srgb, var(--proton-color, #a6a6a6) 12%, transparent);
+  font-size: 0.74rem;
+  font-weight: 900;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+}
+
+.dp-proton-platinum { --proton-color: #b4c7dc; }
+.dp-proton-gold { --proton-color: #cfb53b; }
+.dp-proton-silver { --proton-color: #a6a6a6; }
+.dp-proton-bronze { --proton-color: #cd7f32; }
+.dp-proton-borked { --proton-color: #f87171; }
+
+.dp-proton-detail {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.dp-proton-detail strong {
+  color: #dce3ef;
+  font-size: 0.82rem;
+}
+
+.dp-proton-detail small {
+  color: #6f7a8e;
+  font-size: 0.68rem;
+}
+
+.dp-proton-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #aab2c1;
+  font-size: 0.74rem;
+  font-weight: 800;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: color 0.14s;
+}
+
+.dp-proton-link:hover {
+  color: #eef4ff;
+}
+
 /* ─── System requirements ────────────────────────────────────────────────── */
 
 .dp-sysreq-block {

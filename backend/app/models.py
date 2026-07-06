@@ -108,6 +108,8 @@ class Game(Base):
     system_requirements: Mapped[list[dict]] = mapped_column(JSON, nullable=False, default=list)
     dlcs: Mapped[list[dict]] = mapped_column(JSON, nullable=False, default=list)
     similar_games: Mapped[list[dict]] = mapped_column(JSON, nullable=False, default=list)
+    proton_tier: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    proton_score: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     price_snapshots: Mapped[list["PriceSnapshot"]] = relationship("PriceSnapshot", back_populates="game", cascade="all, delete-orphan", lazy="select")
 

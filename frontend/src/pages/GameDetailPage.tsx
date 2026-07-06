@@ -20,6 +20,7 @@ import type { Game, PriceSnapshot, SourceScore } from '../types/game'
 import { DlcSection } from './detail/DlcSection'
 import { Gallery } from './detail/Gallery'
 import { PricePanel } from './detail/PricePanel'
+import { ProtonCompat } from './detail/ProtonCompat'
 import { SimilarGamesSection, SIMILAR_DISPLAY_LIMIT } from './detail/SimilarGamesSection'
 import { SysReqBlock } from './detail/SysReqBlock'
 import { formatCompactCount, formatDate } from './detail/format'
@@ -615,6 +616,13 @@ export function GameDetailPage() {
                 )}
               </div>
             </div>
+
+            {game.proton_tier && (
+              <div className="dp-section">
+                <h3 className="dp-section-title">Linux / Steam Deck compatibility</h3>
+                <ProtonCompat game={game} />
+              </div>
+            )}
 
             {priceSnapshots.length > 0 && (
               <div className="dp-section">

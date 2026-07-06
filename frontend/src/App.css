@@ -2632,18 +2632,9 @@ a.source-name-link:hover {
   }
 
   .list-toolbar {
-    position: sticky;
-    top: 103px;
-    z-index: 4;
     grid-template-columns: 1fr auto;
     margin-bottom: 14px;
     padding: 8px 0;
-    background: rgba(18, 18, 18, 0.94);
-    backdrop-filter: blur(12px);
-  }
-
-  .workspace.masthead-collapsed .list-toolbar {
-    top: 0;
   }
 
   .filter-toggle-button,

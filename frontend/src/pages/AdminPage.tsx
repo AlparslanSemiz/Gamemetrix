@@ -11,6 +11,7 @@ import {
   Users,
 } from 'lucide-react'
 import {
+  AdminApiError,
   getAdminApiHealth,
   getAdminDashboard,
   loginAdmin,
@@ -20,6 +21,9 @@ import {
 import './AdminPage.css'
 
 const ADMIN_TOKEN_KEY = 'gamemetrix.adminToken.v1'
+const TRAFFIC_DAY_OPTIONS = [7, 14, 30] as const
+// Past this range, per-bar labels no longer fit — the chart switches to tooltips only.
+const DENSE_TRAFFIC_THRESHOLD = 10
 
 function formatNumber(value: number): string {
   return new Intl.NumberFormat('en-US').format(value)
@@ -45,6 +49,7 @@ export function AdminPage() {
   const [password, setPassword] = useState('')
   const [dashboard, setDashboard] = useState<AdminDashboard | null>(null)
   const [health, setHealth] = useState<AdminApiHealth>({})
+  const [trafficDays, setTrafficDays] = useState<number>(TRAFFIC_DAY_OPTIONS[0])
   const [isLoading, setIsLoading] = useState(false)
   const [isSigningIn, setIsSigningIn] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -55,17 +60,25 @@ export function AdminPage() {
     setError(null)
     try {
       const [dashboardResponse, healthResponse] = await Promise.all([
-        getAdminDashboard(token),
+        getAdminDashboard(token, trafficDays),
         getAdminApiHealth(token),
       ])
       setDashboard(dashboardResponse)
       setHealth(healthResponse)
     } catch (err) {
+      if (err instanceof AdminApiError && err.status === 401) {
+        window.localStorage.removeItem(ADMIN_TOKEN_KEY)
+        setToken('')
+        setDashboard(null)
+        setHealth({})
+        setError('Session expired. Please sign in again.')
+        return
+      }
       setError(err instanceof Error ? err.message : 'Admin dashboard could not be loaded.')
     } finally {
       setIsLoading(false)
     }
-  }, [token])
+  }, [token, trafficDays])
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -187,11 +200,26 @@ export function AdminPage() {
         <article className="admin-panel admin-panel-wide">
           <div className="admin-panel-head">
             <h2>Traffic</h2>
-            <span>{dashboard?.traffic.days ?? 7} days</span>
+            <div className="admin-day-picker" role="group" aria-label="Traffic range">
+              {TRAFFIC_DAY_OPTIONS.map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  className={option === trafficDays ? 'is-active' : ''}
+                  onClick={() => setTrafficDays(option)}
+                  disabled={isLoading}
+                >
+                  {option}d
+                </button>
+              ))}
+            </div>
           </div>
-          <div className="admin-traffic-bars">
+          <div
+            className={`admin-traffic-bars${trafficDays > DENSE_TRAFFIC_THRESHOLD ? ' admin-traffic-dense' : ''}`}
+            style={{ gridTemplateColumns: `repeat(${dashboard?.traffic.daily.length ?? trafficDays}, minmax(0, 1fr))` }}
+          >
             {dashboard?.traffic.daily.map((row) => (
-              <div className="admin-traffic-day" key={row.date}>
+              <div className="admin-traffic-day" key={row.date} title={`${row.date}: ${row.visits} visits, ${row.visitors} visitors`}>
                 <div className="admin-bar-track">
                   <span style={{ height: `${Math.max(6, (row.visits / maxDailyVisits) * 100)}%` }} />
                 </div>

@@ -42,24 +42,36 @@ export interface AdminDashboard {
   }
 }
 
+export class AdminApiError extends Error {
+  readonly status: number
+
+  constructor(message: string, status: number) {
+    super(message)
+    this.name = 'AdminApiError'
+    this.status = status
+  }
+}
+
 function adminHeaders(token: string): HeadersInit {
   return { Authorization: `Bearer ${token}` }
 }
 
-async function parseError(response: Response): Promise<Error> {
+async function parseError(response: Response): Promise<AdminApiError> {
   try {
-    const body = await response.json()
-    if (typeof body?.detail === 'string') return new Error(body.detail)
+    const body: unknown = await response.json()
+    if (typeof body === 'object' && body !== null && 'detail' in body && typeof body.detail === 'string') {
+      return new AdminApiError(body.detail, response.status)
+    }
   } catch {
     // Keep the status fallback.
   }
-  return new Error(`Request failed with ${response.status}`)
+  return new AdminApiError(`Request failed with ${response.status}`, response.status)
 }
 
 export async function loginAdmin(username: string, password: string): Promise<AdminTokenResponse> {
   const body = new URLSearchParams()
-  body.set('admin', username)
-  body.set('admin', password)
+  body.set('username', username)
+  body.set('password', password)
 
   const response = await fetch(`${API_BASE_URL}/api/auth/token`, {
     method: 'POST',

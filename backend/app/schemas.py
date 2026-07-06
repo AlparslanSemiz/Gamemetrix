@@ -96,6 +96,8 @@ class GameRead(BaseModel):
     system_requirements: list[dict] = []
     dlcs: list[dict] = []
     similar_games: list[dict] = []
+    proton_tier: str | None = None
+    proton_score: float | None = None
     price_snapshots: list[PriceSnapshotRead] = []
 
 
@@ -146,6 +148,8 @@ class GameListItem(BaseModel):
     system_requirements: list[dict] = []
     dlcs: list[dict] = []
     similar_games: list[dict] = []
+    proton_tier: str | None = None
+    proton_score: float | None = None
 
 
 class GameListResponse(BaseModel):

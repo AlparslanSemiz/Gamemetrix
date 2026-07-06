@@ -78,6 +78,8 @@ def _run_migrations(conn: Connection) -> None:
         ("games", "official_release_date", "DATE"),
         ("games", "rank_score", "FLOAT NOT NULL DEFAULT 0.0"),
         ("games", "is_rankable", "BOOLEAN NOT NULL DEFAULT 0"),
+        ("games", "proton_tier", "VARCHAR(16)"),
+        ("games", "proton_score", "FLOAT"),
     ]
     for table, column, col_type in migrations:
         _add_column_if_missing(conn, table, column, col_type)
