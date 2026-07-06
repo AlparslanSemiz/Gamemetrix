@@ -7,6 +7,7 @@ Public API:
   refresh_all_games(concurrency, force)        -> Awaitable[dict[str, int]]
   fix_year_batch(limit)                        -> Awaitable[dict[str, int]]
   daily_refresh_loop()                         -> Awaitable[None]  (runs forever; cancel to stop)
+  metadata_backfill_loop()                     -> Awaitable[None]  (runs forever; cancel to stop)
 """
 
 import asyncio
@@ -18,10 +19,12 @@ from sqlalchemy.orm import Session
 
 from ..config import get_settings
 from ..database import SessionLocal
+from ..heavy_jobs import HEAVY_JOB_LOCK
 from ..models import Game
 from ..integrations.sync import game_needs_rating_refresh, refresh_game_sources
 from ..integrations.steam import extract_steam_app_id, get_steam_release_dates
 from .metadata import fix_game_year
+from .metadata_backfill import metadata_backfill_batch
 
 
 log = logging.getLogger(__name__)
@@ -47,7 +50,9 @@ def _refreshed_timestamp(game: Game) -> float:
     return ts.timestamp()
 
 
-_REFRESH_ALL_LOCK = asyncio.Lock()
+# Shared with app/routers/imports.py — see app/heavy_jobs.py. Ensures an
+# import and a refresh-all can never run concurrently on this 1GB host.
+_REFRESH_ALL_LOCK = HEAVY_JOB_LOCK
 
 
 async def refresh_all_games(
@@ -213,3 +218,37 @@ async def daily_refresh_loop() -> None:
                 await fix_year_batch(cfg.DAILY_METADATA_FIX_LIMIT)
             except Exception:
                 log.exception("Periodic metadata fix failed")
+
+
+async def metadata_backfill_loop() -> None:
+    """
+    Runs forever in small batches. This backfills non-score metadata such as
+    covers, summaries, screenshots, requirements, websites, and external IDs.
+
+    The job is intentionally separate from refresh_all_games: it spreads API
+    calls across the day and uses the shared heavy-job lock plus per-source
+    budgets, so imports / full score refreshes / metadata backfill do not stack.
+    """
+    cfg = get_settings()
+    await asyncio.sleep(45)
+
+    limit = cfg.METADATA_BACKFILL_BATCH_SIZE
+    delay = cfg.METADATA_BACKFILL_INTER_GAME_DELAY
+
+    if cfg.STARTUP_METADATA_BACKFILL_LIMIT > 0:
+        try:
+            await metadata_backfill_batch(
+                limit=cfg.STARTUP_METADATA_BACKFILL_LIMIT,
+                inter_game_delay=delay,
+            )
+        except Exception:
+            log.exception("Startup metadata backfill failed")
+
+    interval_seconds = max(60, int(cfg.METADATA_BACKFILL_INTERVAL_MINUTES * 60))
+    while True:
+        await asyncio.sleep(interval_seconds)
+        log.info("Periodic metadata backfill starting (every %.1fm)", cfg.METADATA_BACKFILL_INTERVAL_MINUTES)
+        try:
+            await metadata_backfill_batch(limit=limit, inter_game_delay=delay)
+        except Exception:
+            log.exception("Periodic metadata backfill failed")

@@ -1381,6 +1381,33 @@ html { font-size: 16px; }
   background: rgba(var(--score-rgb, 167, 139, 250), 0.12);
 }
 
+.proton-badge {
+  display: inline-flex;
+  width: fit-content;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid rgba(34, 197, 94, 0.16);
+  border-radius: 20px;
+  background: rgba(22, 163, 74, 0.08);
+  color: #86efac;
+  font-size: 12px;
+  font-weight: 800;
+  padding: 4px 12px;
+  text-decoration: none;
+}
+
+.proton-badge:hover {
+  border-color: rgba(34, 197, 94, 0.35);
+  background: rgba(22, 163, 74, 0.14);
+  color: #dcfce7;
+}
+
+.proton-badge-platinum { color: #c4b5fd; border-color: rgba(196, 181, 253, 0.22); background: rgba(124, 58, 237, 0.10); }
+.proton-badge-gold { color: #fde68a; border-color: rgba(245, 158, 11, 0.24); background: rgba(180, 83, 9, 0.10); }
+.proton-badge-silver { color: #d1d5db; border-color: rgba(209, 213, 219, 0.18); background: rgba(107, 114, 128, 0.11); }
+.proton-badge-bronze { color: #fdba74; border-color: rgba(234, 88, 12, 0.2); background: rgba(154, 52, 18, 0.1); }
+.proton-badge-borked { color: #fca5a5; border-color: rgba(239, 68, 68, 0.22); background: rgba(127, 29, 29, 0.12); }
+
 /* ─── Platform icons (new system) ─────────────────────────────────────────── */
 .platform-icons {
   display: flex;
@@ -1435,6 +1462,93 @@ a.pf-icon-link {
 a.pf-icon-link:hover,
 a.pf-icon-link:focus-visible {
   text-decoration: none;
+}
+
+/* ── "More from this series" strip ─────────────────────────────────── */
+.series-row {
+  margin: 20px 0 8px;
+}
+
+.series-row-title {
+  margin: 0 0 10px;
+  font-size: 1rem;
+  font-weight: 800;
+  color: #dfe3ea;
+}
+
+.series-row-scroller {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding-bottom: 6px;
+  scrollbar-width: thin;
+}
+
+.series-tile {
+  flex: 0 0 148px;
+  display: grid;
+  gap: 4px;
+  align-content: start;
+  text-decoration: none;
+}
+
+.series-tile-cover {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #1a1d24;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.series-tile-cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  transition: transform 0.18s;
+}
+
+.series-tile:hover .series-tile-cover img {
+  transform: scale(1.05);
+}
+
+.series-tile-score {
+  position: absolute;
+  right: 5px;
+  bottom: 5px;
+  display: grid;
+  place-items: center;
+  min-width: 24px;
+  height: 21px;
+  padding: 0 5px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.72);
+  color: var(--score-color, #4cc458);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.series-tile-name {
+  font-size: 12px;
+  font-weight: 700;
+  color: #ccd2dc;
+  line-height: 1.25;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.series-tile:hover .series-tile-name {
+  color: #f1f3f7;
+}
+
+.series-tile-year {
+  font-size: 11px;
+  font-weight: 600;
+  color: #7d8390;
 }
 
 .pf-label {
@@ -1593,20 +1707,20 @@ a.platform-badge:hover {
 }
 
 .score-confidence-catalog span {
-  color: #7d8590;
+  color: #6b7280;
 }
 
 .score-confidence-limited span,
 .score-confidence-low span {
-  color: #f59e0b;
+  color: #d0a042;
 }
 
 .score-confidence-solid span {
-  color: #06b6d4;
+  color: #4cc458;
 }
 
 .score-confidence-strong span {
-  color: #8b5cf6;
+  color: #06b6d4;
 }
 
 .ranked-lower-hint {
@@ -1935,11 +2049,11 @@ a.source-name-link:hover {
     0 2px 8px rgba(0, 0, 0, 0.55);
 }
 
-.compact-score-catalog { --confidence-color: #7d8590; }
+.compact-score-catalog { --confidence-color: #6b7280; }
 .compact-score-limited,
-.compact-score-low { --confidence-color: #f59e0b; }
-.compact-score-solid { --confidence-color: #06b6d4; }
-.compact-score-strong { --confidence-color: #8b5cf6; }
+.compact-score-low { --confidence-color: #d0a042; }
+.compact-score-solid { --confidence-color: #4cc458; }
+.compact-score-strong { --confidence-color: #06b6d4; }
 
 .compact-body {
   display: grid;
@@ -2030,6 +2144,22 @@ a.source-name-link:hover {
   font-size: 11px;
   font-weight: 600;
 }
+
+.compact-proton {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin: -2px 0 0;
+  color: #6ee7b7;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.compact-proton-platinum { color: #c4b5fd; }
+.compact-proton-gold { color: #fde68a; }
+.compact-proton-silver { color: #d1d5db; }
+.compact-proton-bronze { color: #fdba74; }
+.compact-proton-borked { color: #fca5a5; }
 
 /* ─── Responsive ──────────────────────────────────────────────────── */
 @media (max-width: 1100px) {

@@ -1,10 +1,13 @@
 export function scoreColor(score: number): string {
-  if (score >= 90) return '#22c55e'
-  if (score >= 80) return '#84cc16'
-  if (score >= 70) return '#eab308'
-  if (score >= 60) return '#f97316'
-  if (score >= 50) return '#ef4444'
-  return '#6b7280'
+  if (score >= 95) return '#8b5cf6'
+  if (score >= 90) return '#1d4ed8'
+  if (score >= 85) return '#16a34a'
+  if (score >= 80) return '#22c55e'
+  if (score >= 75) return '#eab308'
+  if (score >= 70) return '#ca8a04'
+  if (score >= 60) return '#ea580c'
+  if (score >= 50) return '#dc2626'
+  return '#374151'
 }
 
 export function scoreColorRgb(score: number): string {
@@ -16,10 +19,13 @@ export function scoreColorRgb(score: number): string {
 }
 
 export function sourceScoreColor(score: number): string {
-  if (score >= 90) return '#86efac'
-  if (score >= 80) return '#bef264'
-  if (score >= 70) return '#fde047'
-  if (score >= 60) return '#fdba74'
-  if (score >= 50) return '#fca5a5'
-  return '#9ca3af'
+  if (score >= 95) return '#a79bd6'
+  if (score >= 90) return '#89a4d6'
+  if (score >= 85) return '#7db394'
+  if (score >= 80) return '#91b783'
+  if (score >= 75) return '#c1b574'
+  if (score >= 70) return '#bf986d'
+  if (score >= 60) return '#c08a72'
+  if (score >= 50) return '#bc7777'
+  return '#6f7787'
 }

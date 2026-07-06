@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from ..config import get_settings
 from ..models import ExternalId, Game, SourceSnapshot
+from .rate_limiter import get_rate_limiter
 from ..services.rawg_import import (
     apply_rawg_metadata,
     apply_rawg_related,
@@ -113,6 +114,18 @@ def _store_rawg_snapshot(
     ))
 
 
+async def _budgeted_rawg_get(
+    client: httpx.AsyncClient,
+    url: str,
+    *,
+    params: dict,
+) -> httpx.Response | None:
+    if not await get_rate_limiter().acquire("RAWG"):
+        log.debug("RAWG metadata budget exhausted for %s", url)
+        return None
+    return await client.get(url, params=params)
+
+
 async def import_rawg_games(
     db: Session,
     target: int = 2000,
@@ -137,6 +150,10 @@ async def import_rawg_games(
             }
             if parent_platform_ids:
                 params["parent_platforms"] = ",".join(str(platform_id) for platform_id in parent_platform_ids)
+
+            if not await get_rate_limiter().acquire("RAWG"):
+                log.info("RAWG import stopped: daily request budget exhausted")
+                break
 
             response = await client.get(
                 _RAWG_LIST_URL,
@@ -220,8 +237,8 @@ async def enrich_rawg_game_detail(db: Session, game: Game) -> bool:
             }
             if exact:
                 params["search_exact"] = "true"
-            search_resp = await client.get(_RAWG_LIST_URL, params=params)
-            if not search_resp.is_success:
+            search_resp = await _budgeted_rawg_get(client, _RAWG_LIST_URL, params=params)
+            if search_resp is None or not search_resp.is_success:
                 continue
             search_payload = search_resp.json()
             search_resp_status = search_resp.status_code
@@ -254,21 +271,25 @@ async def enrich_rawg_game_detail(db: Session, game: Game) -> bool:
             if not rawg_id:
                 return False
 
-        detail_resp = await client.get(
+        detail_resp = await _budgeted_rawg_get(
+            client,
             f"{_RAWG_LIST_URL}/{rawg_id}",
             params={"key": cfg.RAWG_API_KEY},
         )
+        if detail_resp is None:
+            return False
         if detail_resp.is_success:
             detail = detail_resp.json()
             if not _rawg_candidate_matches(game, detail):
                 rawg_id = await _search_rawg_id(client)
                 if not rawg_id:
                     return False
-                detail_resp = await client.get(
+                detail_resp = await _budgeted_rawg_get(
+                    client,
                     f"{_RAWG_LIST_URL}/{rawg_id}",
                     params={"key": cfg.RAWG_API_KEY},
                 )
-                if not detail_resp.is_success:
+                if detail_resp is None or not detail_resp.is_success:
                     return False
                 detail = detail_resp.json()
                 if not _rawg_candidate_matches(game, detail):
@@ -284,12 +305,13 @@ async def enrich_rawg_game_detail(db: Session, game: Game) -> bool:
                 rawg_id=rawg_id,
             )
 
-        additions_resp = await client.get(
+        additions_resp = await _budgeted_rawg_get(
+            client,
             f"{_RAWG_LIST_URL}/{rawg_id}/additions",
             params={"key": cfg.RAWG_API_KEY, "page_size": 12},
         )
-        additions = additions_resp.json().get("results", []) if additions_resp.is_success else []
-        if additions_resp.is_success:
+        additions = additions_resp.json().get("results", []) if additions_resp and additions_resp.is_success else []
+        if additions_resp and additions_resp.is_success:
             _store_rawg_snapshot(
                 db,
                 endpoint=f"/api/games/{rawg_id}/additions",
@@ -299,12 +321,13 @@ async def enrich_rawg_game_detail(db: Session, game: Game) -> bool:
                 rawg_id=rawg_id,
             )
 
-        similar_resp = await client.get(
+        similar_resp = await _budgeted_rawg_get(
+            client,
             f"{_RAWG_LIST_URL}/{rawg_id}/game-series",
             params={"key": cfg.RAWG_API_KEY, "page_size": 12},
         )
-        similar = similar_resp.json().get("results", []) if similar_resp.is_success else []
-        if similar_resp.is_success:
+        similar = similar_resp.json().get("results", []) if similar_resp and similar_resp.is_success else []
+        if similar_resp and similar_resp.is_success:
             _store_rawg_snapshot(
                 db,
                 endpoint=f"/api/games/{rawg_id}/game-series",

@@ -6,9 +6,12 @@ requests and re-scoring hundreds of games in the browser on every page load.
 
 Public API:
   find_similar_games(db, source, limit) -> list[Game]
+  find_series_games(db, source, limit)  -> list[Game]
+  series_key_for_title(title)           -> str
 """
 
 import re
+from datetime import date
 from functools import lru_cache
 
 from sqlalchemy import or_, select, text
@@ -580,6 +583,69 @@ def _search_signal_terms(source: Game) -> list[tuple[str, list[str]]]:
         for signal in SIGNAL_SEARCH_PRIORITY
         if signal in source_signals
     ][:3]
+
+
+# ── Franchise / series lookup ─────────────────────────────────────────────────
+
+# A series key's first token must be at least this long to identify a franchise
+# on its own ("persona", "witcher", "bioshock"). Shorter first tokens ("god",
+# "dark", "mass") are too generic, so those fall back to full-key equality —
+# which still works because numerals/editions are already stripped from keys
+# ("Dark Souls III" and "Dark Souls II" both normalize to "dark souls").
+_FRANCHISE_MIN_FIRST_TOKEN = 6
+_SERIES_CANDIDATE_POOL = 80
+
+
+def series_key_for_title(title: str) -> str:
+    return _title_series_key(title)
+
+
+def _same_franchise(source_key: str, candidate_key: str) -> bool:
+    if not source_key or not candidate_key:
+        return False
+    if source_key == candidate_key:
+        return True
+    source_first = source_key.split()[0]
+    candidate_first = candidate_key.split()[0]
+    return source_first == candidate_first and len(source_first) >= _FRANCHISE_MIN_FIRST_TOKEN
+
+
+def find_series_games(db: Session, source: Game, limit: int = 8) -> list[Game]:
+    """
+    Other entries in the source game's franchise, oldest first.
+
+    One ILIKE query pulls a candidate pool (broad, cheap); the series-key check
+    then filters it precisely in-process, so "Persona 5 Royal" matches
+    "Persona 4 Golden" but not "Personal Trainer".
+    """
+    source_key = _title_series_key(source.title)
+    if not source_key:
+        return []
+
+    first_token = source_key.split()[0]
+    if len(first_token) >= _FRANCHISE_MIN_FIRST_TOKEN:
+        pattern = f"%{first_token}%"
+    else:
+        pattern = _series_title_pattern(source)
+    if not pattern:
+        return []
+
+    candidates = db.scalars(
+        select(Game)
+        .options(noload(Game.price_snapshots))
+        .where(Game.content_type == "game")
+        .where(Game.id != source.id)
+        .where(Game.title.ilike(pattern))
+        .order_by(Game.rank_score.desc())
+        .limit(_SERIES_CANDIDATE_POOL)
+    )
+
+    matches = [
+        game for game in candidates
+        if _same_franchise(source_key, _title_series_key(game.title))
+    ]
+    matches.sort(key=lambda g: (g.release_year or 0, g.release_date or date.min))
+    return matches[:limit]
 
 
 def find_similar_games(db: Session, source: Game, display_limit: int = 10) -> list[Game]:

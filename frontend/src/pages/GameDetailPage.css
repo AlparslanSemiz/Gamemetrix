@@ -227,11 +227,11 @@
   width: fit-content;
 }
 
-.dp-confidence-catalog { color: #7d8590; }
+.dp-confidence-catalog { color: #6b7280; }
 .dp-confidence-limited,
-.dp-confidence-low { color: #f59e0b; }
-.dp-confidence-solid { color: #06b6d4; }
-.dp-confidence-strong { color: #8b5cf6; }
+.dp-confidence-low { color: #d0a042; }
+.dp-confidence-solid { color: #4cc458; }
+.dp-confidence-strong { color: #06b6d4; }
 
 .dp-score-stats {
   display: grid;
@@ -294,12 +294,12 @@
   font-size: 0.72rem;
   line-height: 1.45;
 }
-.dp-signal-strong strong { color: #8b5cf6; }
-.dp-signal-solid strong { color: #06b6d4; }
+.dp-signal-strong strong { color: #06b6d4; }
+.dp-signal-solid strong { color: #4cc458; }
 .dp-signal-limited strong,
-.dp-signal-low strong { color: #f59e0b; }
+.dp-signal-low strong { color: #d0a042; }
 .dp-signal-catalog strong,
-.dp-signal-muted strong { color: #778196; }
+.dp-signal-muted strong { color: #6b7280; }
 
 /* ─── Section ────────────────────────────────────────────────────────────── */
 
@@ -473,6 +473,16 @@
 .dp-info-link:hover {
   color: #fff;
 }
+
+.dp-proton-tier {
+  font-weight: 800;
+}
+
+.dp-proton-platinum { color: #c4b5fd; }
+.dp-proton-gold { color: #fde68a; }
+.dp-proton-silver { color: #d1d5db; }
+.dp-proton-bronze { color: #fdba74; }
+.dp-proton-borked { color: #fca5a5; }
 
 /* ─── Price & availability ───────────────────────────────────────────────── */
 

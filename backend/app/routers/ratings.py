@@ -8,6 +8,7 @@ Routes:
   POST /api/score-weights/recalculate    — recompute all game scores
   POST /api/ratings/enrich               — trigger a rating refresh batch
   POST /api/metadata/fix-years           — fix games with release_year=1970
+  POST /api/metadata/backfill             — fill missing cover/media/source metadata
   POST /api/metadata/enrich-summaries    — enrich weak/placeholder summaries
 """
 
@@ -32,10 +33,12 @@ from ..integrations.rate_limiter import get_rate_limiter
 from ..integrations.sync import SOURCE_WEIGHTS, calculate_metrix_score, refresh_game_sources
 from ..integrations.rawg_score import get_rawg_game_metadata
 from ..services.background import fix_year_batch, rating_refresh_candidates, refresh_all_games
+from ..services.metadata_backfill import metadata_backfill_batch
 from ..services.metadata import summary_needs_enrichment
 from ..services.rawg_import import apply_rawg_metadata
 from ..services.summarizer import shorten_summary_batch
 from ..security import require_admin_user
+from ..heavy_jobs import require_not_peak_hours
 
 router = APIRouter(tags=["ratings"])
 
@@ -101,10 +104,16 @@ async def refresh_all_scores(
     force: bool = Query(default=False),
     concurrency: int = Query(default=3, ge=1, le=8),
     _admin=Depends(require_admin_user),
+    _peak=Depends(require_not_peak_hours),
 ) -> dict[str, str]:
     """
     Trigger a full refresh of every game's scores in the background.
     Returns immediately; refresh runs concurrently with the given semaphore size.
+
+    The actual work (services.background.refresh_all_games) acquires the same
+    HEAVY_JOB_LOCK that /api/import/* holds for its whole request — so this
+    can be triggered while an import is running and will simply report
+    "already_running" rather than doubling up the load. See app/heavy_jobs.py.
     """
     background_tasks.add_task(asyncio.ensure_future, refresh_all_games(concurrency=concurrency, force=force))
     return {"status": "started", "message": f"Refreshing all games (concurrency={concurrency}, force={force})"}
@@ -116,6 +125,15 @@ async def fix_missing_years(
     _admin=Depends(require_admin_user),
 ) -> dict[str, int]:
     return await fix_year_batch(limit)
+
+
+@router.post("/api/metadata/backfill")
+async def backfill_missing_metadata(
+    limit: int = Query(default=24, ge=1, le=100),
+    inter_game_delay: float = Query(default=0.5, ge=0, le=5),
+    _admin=Depends(require_admin_user),
+) -> dict[str, object]:
+    return await metadata_backfill_batch(limit=limit, inter_game_delay=inter_game_delay)
 
 
 @router.post("/api/metadata/shorten-summaries", response_model=MetadataFixResponse)

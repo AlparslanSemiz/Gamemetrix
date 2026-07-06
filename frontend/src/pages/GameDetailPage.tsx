@@ -21,6 +21,7 @@ import { DlcSection } from './detail/DlcSection'
 import { Gallery } from './detail/Gallery'
 import { PricePanel } from './detail/PricePanel'
 import { SimilarGamesSection, SIMILAR_DISPLAY_LIMIT } from './detail/SimilarGamesSection'
+import { SeriesRow } from '../components/SeriesRow'
 import { SysReqBlock } from './detail/SysReqBlock'
 import { formatCompactCount, formatDate } from './detail/format'
 import './GameDetailPage.css'
@@ -128,6 +129,17 @@ function websiteLabel(url: string): string {
   } catch {
     return 'Official site'
   }
+}
+
+function formatHours(minutes: number): string {
+  return `${Math.max(1, Math.round(minutes / 60))}h`
+}
+
+function protonLabel(game: Game): string | null {
+  if (!game.proton_tier && game.proton_score == null) return null
+  const tier = game.proton_tier ? game.proton_tier[0].toUpperCase() + game.proton_tier.slice(1) : 'ProtonDB'
+  const score = game.proton_score != null ? ` ${Math.round(game.proton_score)}/100` : ''
+  return `${tier}${score}`
 }
 
 function shouldFetchPrices(prices: PriceSnapshot[] | undefined): boolean {
@@ -368,6 +380,15 @@ export function GameDetailPage() {
   const earlyAccessLabel = formatDate(game.early_access_date)
   const officialReleaseLabel = formatDate(game.official_release_date ?? game.release_date)
   const websiteUrl = game.website_url?.trim() || null
+  const steamAppId = steamAppIdFromGame(game)
+  const protonText = protonLabel(game)
+  const protonUrl = steamAppId ? `https://www.protondb.com/app/${steamAppId}` : 'https://www.protondb.com/'
+  const hltbRows = [
+    ['HLTB main', game.hltb_main_story_minutes || (game.hltb_id ? game.playtime_minutes : 0)],
+    ['HLTB extra', game.hltb_main_extra_minutes],
+    ['HLTB 100%', game.hltb_completionist_minutes],
+    ['HLTB avg', game.hltb_all_styles_minutes],
+  ].filter(([, minutes]) => Number(minutes) > 0)
   const aboutParagraphs = buildAboutParagraphs(game)
   const priceSnapshots = game.price_snapshots ?? []
   const detailStyle = {
@@ -410,7 +431,7 @@ export function GameDetailPage() {
 
             {game.platforms.length > 0 && (
               <div className="dp-platform-strip">
-                <PlatformIcons platforms={game.platforms} mode="detail" maxVisible={6} />
+                <PlatformIcons platforms={game.platforms} mode="detail" maxVisible={6} game={game} />
               </div>
             )}
 
@@ -597,10 +618,41 @@ export function GameDetailPage() {
                     <span className="dp-info-val">{game.goty_year}</span>
                   </div>
                 )}
-                {game.playtime_minutes > 0 && (
+                {game.playtime_minutes > 0 && hltbRows.length === 0 && (
                   <div className="dp-info-row">
                     <span className="dp-info-key">Avg playtime</span>
-                    <span className="dp-info-val">{Math.round(game.playtime_minutes / 60)}h</span>
+                    <span className="dp-info-val">{formatHours(game.playtime_minutes)}</span>
+                  </div>
+                )}
+                {hltbRows.map(([label, minutes], index) => (
+                  <div className="dp-info-row" key={label}>
+                    <span className="dp-info-key">{label}</span>
+                    <span className="dp-info-val">
+                      {index === 0 && game.hltb_url ? (
+                        <a className="dp-info-link" href={game.hltb_url} target="_blank" rel="noopener noreferrer">
+                          {formatHours(Number(minutes))}
+                          <ExternalLink size={11} aria-hidden="true" />
+                        </a>
+                      ) : (
+                        formatHours(Number(minutes))
+                      )}
+                    </span>
+                  </div>
+                ))}
+                {protonText && (
+                  <div className="dp-info-row">
+                    <span className="dp-info-key">ProtonDB</span>
+                    <span className="dp-info-val">
+                      <a
+                        className={`dp-info-link dp-proton-tier dp-proton-${game.proton_tier ?? 'unknown'}`}
+                        href={protonUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        {protonText}
+                        <ExternalLink size={11} aria-hidden="true" />
+                      </a>
+                    </span>
                   </div>
                 )}
                 <div className="dp-info-row">
@@ -644,6 +696,8 @@ export function GameDetailPage() {
             </div>
           </div>
         </div>
+
+        <SeriesRow slug={game.slug} />
 
         {(game.dlcs.length > 0 || game.similar_games.length > 0 || similarCatalogGames.length > 0 || similarLoading) && (
           <div className="dp-bottom-related">

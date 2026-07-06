@@ -25,7 +25,7 @@ from .routers.auth import router as auth_router
 from .routers.games import router as games_router
 from .routers.imports import router as imports_router
 from .routers.ratings import router as ratings_router
-from .services.background import daily_refresh_loop
+from .services.background import daily_refresh_loop, metadata_backfill_loop
 from .services.deduplication import consolidate_duplicate_games
 
 
@@ -41,6 +41,7 @@ def _add_column_if_missing(conn: Connection, table: str, column: str, col_type: 
         conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}"))
         conn.commit()
     except Exception:
+        conn.rollback()
         log.debug("Column %s.%s already exists (skipping)", table, column)
 
 
@@ -50,6 +51,7 @@ def _add_index_if_missing(conn: Connection, index_name: str, table: str, columns
         conn.execute(text(f"CREATE {unique_kw}INDEX {index_name} ON {table} ({columns})"))
         conn.commit()
     except Exception:
+        conn.rollback()
         log.debug("Index %s already exists (skipping)", index_name)
 
 
@@ -58,6 +60,15 @@ def _run_migrations(conn: Connection) -> None:
         ("games", "developer", "VARCHAR(200)"),
         ("games", "publisher", "VARCHAR(200)"),
         ("games", "playtime_minutes", "INTEGER DEFAULT 0"),
+        ("games", "hltb_id", "INTEGER"),
+        ("games", "hltb_url", "VARCHAR(500)"),
+        ("games", "hltb_main_story_minutes", "INTEGER DEFAULT 0"),
+        ("games", "hltb_main_extra_minutes", "INTEGER DEFAULT 0"),
+        ("games", "hltb_completionist_minutes", "INTEGER DEFAULT 0"),
+        ("games", "hltb_all_styles_minutes", "INTEGER DEFAULT 0"),
+        ("games", "hltb_refreshed_at", "TIMESTAMP"),
+        ("games", "proton_tier", "VARCHAR(16)"),
+        ("games", "proton_score", "FLOAT"),
         ("games", "metacritic_score", "INTEGER"),
         ("games", "image_url", "VARCHAR(500)"),
         ("games", "website_url", "VARCHAR(500)"),
@@ -84,6 +95,7 @@ def _run_migrations(conn: Connection) -> None:
     _add_index_if_missing(conn, "ix_games_rank_score", "games", "rank_score")
     _add_index_if_missing(conn, "ix_games_content_type", "games", "content_type")
     _add_index_if_missing(conn, "ix_games_content_type_rank_score", "games", "content_type, rank_score DESC")
+    _add_index_if_missing(conn, "ix_games_hltb_id", "games", "hltb_id")
 
 
 # ── Startup seed / classify ────────────────────────────────────────────────────
@@ -121,18 +133,31 @@ def _seed_and_classify(db: Session) -> None:
         )
 
 
+def _steam_media_url(app_id: int, cover: str) -> str:
+    if cover.startswith("http"):
+        return cover
+    return f"https://cdn.akamai.steamstatic.com/steam/apps/{app_id}/{cover}"
+
+
 async def _repair_known_media(db: Session) -> None:
-    known_media = {
-        "disco-elysium-the-final-cut": (632470, "capsule_616x353.jpg"),
-        "resident-evil-4-remake": (2050650, "capsule_616x353.jpg"),
-        "resident-evil-4": (254700, "library_hero.jpg"),
-        "the-last-of-us-part-2": (2531310, "capsule_616x353.jpg"),
-    }
-    for slug, (app_id, cover_file) in known_media.items():
-        game = db.scalar(select(Game).where(Game.slug == slug))
+    known_media: tuple[tuple[tuple[str, ...], tuple[str, ...], int, str], ...] = (
+        (("disco-elysium-the-final-cut",), ("Disco Elysium - The Final Cut",), 632470, "capsule_616x353.jpg"),
+        (("resident-evil-4-remake",), ("Resident Evil 4 Remake",), 2050650, "capsule_616x353.jpg"),
+        (("resident-evil-4",), ("Resident Evil 4",), 254700, "library_hero.jpg"),
+        (
+            ("the-last-of-us-part-2", "the-last-of-us-part-ii-remastered"),
+            ("The Last of Us Part II Remastered",),
+            2531310,
+            "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/2531310/header.jpg",
+        ),
+    )
+    for slugs, titles, app_id, cover_file in known_media:
+        game = db.scalar(select(Game).where(Game.slug.in_(slugs)))
+        if game is None:
+            game = db.scalar(select(Game).where(Game.title.in_(titles)))
         if game is None:
             continue
-        expected_cover = f"https://cdn.akamai.steamstatic.com/steam/apps/{app_id}/{cover_file}"
+        expected_cover = _steam_media_url(app_id, cover_file)
         if game.cover_url != expected_cover:
             game.cover_url = expected_cover
             game.image_url = expected_cover
@@ -185,19 +210,24 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     limiter = get_rate_limiter()
     limiter.set_limit("OpenCritic", cfg.OPENCRITIC_DAILY_LIMIT)
     limiter.set_limit("IGDB", cfg.IGDB_DAILY_LIMIT)
-    limiter.set_limit("Metacritic", cfg.RAWG_DAILY_LIMIT)
     limiter.set_limit("RAWG", cfg.RAWG_DAILY_LIMIT)
+    # Metacritic scores are fetched through the RAWG API with the same key, so
+    # they must share one budget — separate budgets let combined traffic reach
+    # 2x the daily limit and exhaust RAWG's 20k/month quota mid-month.
+    limiter.share_budget("Metacritic", "RAWG")
     limiter.set_limit("Steam", cfg.STEAM_DAILY_LIMIT)
     limiter.set_limit("SteamSpy", cfg.STEAMSPY_DAILY_LIMIT)
 
     startup_task = asyncio.create_task(_background_startup())
     refresh_task = asyncio.create_task(daily_refresh_loop())
+    metadata_task = asyncio.create_task(metadata_backfill_loop())
     try:
         yield
     finally:
         startup_task.cancel()
         refresh_task.cancel()
-        for task in (startup_task, refresh_task):
+        metadata_task.cancel()
+        for task in (startup_task, refresh_task, metadata_task):
             try:
                 await task
             except asyncio.CancelledError:

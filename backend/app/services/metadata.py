@@ -14,6 +14,7 @@ import re
 from datetime import date
 
 from ..models import Game
+from ..integrations.rate_limiter import get_rate_limiter
 from ..integrations.rawg_score import get_rawg_game_metadata, get_rawg_release_date
 from ..integrations.steam import extract_steam_app_id, get_steam_release_date
 
@@ -87,6 +88,8 @@ async def enrich_game_summary(game: Game) -> None:
     if not summary_needs_enrichment(game):
         return
     try:
+        if not await get_rate_limiter().acquire("RAWG"):
+            return
         metadata = await get_rawg_game_metadata(game.title)
         if not metadata:
             return
@@ -105,8 +108,12 @@ async def fix_game_year(game: Game) -> bool:
         return False
 
     app_id = extract_steam_app_id(game.slug, game.cover_url)
-    release_date: date | None = await get_steam_release_date(app_id) if app_id else None
+    release_date: date | None = None
+    if app_id and await get_rate_limiter().acquire("Steam"):
+        release_date = await get_steam_release_date(app_id)
     if release_date is None:
+        if not await get_rate_limiter().acquire("RAWG"):
+            return False
         release_date = await get_rawg_release_date(game.title)
 
     if release_date is None or release_date.year <= 1970:
