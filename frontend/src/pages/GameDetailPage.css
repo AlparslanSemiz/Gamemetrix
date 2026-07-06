@@ -1300,6 +1300,67 @@
 }
 
 @media (max-width: 560px) {
+  .dp-inner {
+    padding: 0.85rem 0.9rem 2.5rem;
+  }
+
+  .dp-breadcrumb {
+    max-width: 100%;
+    overflow: hidden;
+    white-space: nowrap;
+  }
+
+  .dp-bc-current {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .dp-grid {
+    gap: 1.25rem;
+  }
+
+  .dp-title {
+    font-size: clamp(1.85rem, 10vw, 2.45rem);
+    line-height: 1.08;
+    letter-spacing: 0;
+  }
+
+  .dp-header-meta {
+    gap: 8px;
+  }
+
+  .dp-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 8px;
+    margin-bottom: 1.1rem;
+  }
+
+  .dp-btn {
+    width: 100%;
+    min-height: 40px;
+  }
+
+  .dp-score-block {
+    padding: 0.9rem;
+    border-radius: 8px;
+  }
+
+  .dp-score-main {
+    align-items: flex-start;
+  }
+
+  .dp-rating-panel,
+  .dp-about-card,
+  .dp-price-panel,
+  .dp-gallery-card,
+  .dp-sysreq-panel,
+  .dp-dlc-card,
+  .dp-similar-card {
+    border-radius: 8px;
+  }
+
   .dp-similar-heading {
     align-items: start;
     flex-direction: column;

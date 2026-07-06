@@ -337,6 +337,14 @@ const utilityNavItems: Array<{ id: UtilityPage; label: string; icon: typeof Sear
   { id: 'about', label: 'About', icon: Info },
 ]
 
+const mobileNavItems: Array<{ id: ActivePage; label: string; icon: typeof Search }> = [
+  { id: 'catalog', label: 'Search', icon: Search },
+  { id: 'watchlist', label: 'Wishlist', icon: CheckCircle2 },
+  { id: 'suggestions', label: 'For You', icon: Compass },
+  { id: 'favorites', label: 'Saved', icon: Star },
+  { id: 'settings', label: 'Settings', icon: Settings },
+]
+
 const collectionLabels: Record<CollectionKey, string> = {
   watchlist: 'Wishlist',
   playing: 'Playing',
@@ -960,6 +968,23 @@ function AppContent() {
           ))}
         </div>
       </aside>
+
+      <nav className="mobile-tabbar" aria-label="Mobile navigation">
+        {mobileNavItems.map(({ icon: Icon, id, label }) => (
+          <button
+            type="button"
+            className={activePage === id && (id !== 'catalog' || activePreset === null) ? 'is-active' : ''}
+            key={id}
+            onClick={() => {
+              setActivePage(id)
+              setActivePreset(null)
+            }}
+          >
+            <Icon size={20} aria-hidden="true" />
+            <span>{label}</span>
+          </button>
+        ))}
+      </nav>
 
       <section className="workspace">
         <header ref={mastheadRef} className={`masthead ${mastheadVisible ? 'is-visible' : 'is-hidden'}`}>
