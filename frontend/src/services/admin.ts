@@ -58,8 +58,8 @@ async function parseError(response: Response): Promise<Error> {
 
 export async function loginAdmin(username: string, password: string): Promise<AdminTokenResponse> {
   const body = new URLSearchParams()
-  body.set('username', username)
-  body.set('password', password)
+  body.set('admin', username)
+  body.set('admin123', password)
 
   const response = await fetch(`${API_BASE_URL}/api/auth/token`, {
     method: 'POST',
