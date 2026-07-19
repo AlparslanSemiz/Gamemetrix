@@ -88,6 +88,15 @@ class GameRead(BaseModel):
     developer: str | None = None
     publisher: str | None = None
     playtime_minutes: int = 0
+    hltb_id: int | None = None
+    hltb_url: str | None = None
+    hltb_main_story_minutes: int = 0
+    hltb_main_extra_minutes: int = 0
+    hltb_completionist_minutes: int = 0
+    hltb_all_styles_minutes: int = 0
+    hltb_refreshed_at: datetime | None = None
+    proton_tier: str | None = None
+    proton_score: float | None = None
     award_count: int = 0
     award_nominations: int = 0
     goty_year: int | None = None
@@ -96,8 +105,6 @@ class GameRead(BaseModel):
     system_requirements: list[dict] = []
     dlcs: list[dict] = []
     similar_games: list[dict] = []
-    proton_tier: str | None = None
-    proton_score: float | None = None
     price_snapshots: list[PriceSnapshotRead] = []
 
 
@@ -140,6 +147,15 @@ class GameListItem(BaseModel):
     developer: str | None = None
     publisher: str | None = None
     playtime_minutes: int = 0
+    hltb_id: int | None = None
+    hltb_url: str | None = None
+    hltb_main_story_minutes: int = 0
+    hltb_main_extra_minutes: int = 0
+    hltb_completionist_minutes: int = 0
+    hltb_all_styles_minutes: int = 0
+    hltb_refreshed_at: datetime | None = None
+    proton_tier: str | None = None
+    proton_score: float | None = None
     award_count: int = 0
     award_nominations: int = 0
     goty_year: int | None = None
@@ -148,12 +164,28 @@ class GameListItem(BaseModel):
     system_requirements: list[dict] = []
     dlcs: list[dict] = []
     similar_games: list[dict] = []
-    proton_tier: str | None = None
-    proton_score: float | None = None
 
 
 class GameListResponse(BaseModel):
     games: list[GameListItem]
+    total: int
+
+
+class SeriesGameItem(BaseModel):
+    """Minimal payload for the franchise strip — keep this lean, it renders as small tiles."""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    title: str
+    slug: str
+    cover_url: str
+    release_year: int
+    metrix_score: float
+
+
+class SeriesResponse(BaseModel):
+    series_key: str
+    games: list[SeriesGameItem]
     total: int
 
 

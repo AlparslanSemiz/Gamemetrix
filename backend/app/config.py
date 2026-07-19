@@ -23,7 +23,7 @@ class Settings:
         )
         self.ADMIN_USERNAME: str = os.getenv("ADMIN_USERNAME", "")
         self.ADMIN_PASSWORD_HASH: str = os.getenv("ADMIN_PASSWORD_HASH", "")
-        self.PUBLIC_READ_RATE_LIMIT: str = os.getenv("PUBLIC_READ_RATE_LIMIT", "30/minute")
+        self.PUBLIC_READ_RATE_LIMIT: str = os.getenv("PUBLIC_READ_RATE_LIMIT", "300/minute")
         self.AUTH_RATE_LIMIT: str = os.getenv("AUTH_RATE_LIMIT", "5/minute")
         self.RATE_LIMIT_STORAGE_URI: str = os.getenv("RATE_LIMIT_STORAGE_URI", "memory://")
         # ── API credentials ──────────────────────────────────────────────────
@@ -58,6 +58,8 @@ class Settings:
                         "http://127.0.0.1:5174",
                         "http://gamemetrix.me",
                         "https://gamemetrix.me",
+                        "http://www.gamemetrix.me",
+                        "https://www.gamemetrix.me",
                     ]
                 ),
             )
@@ -107,6 +109,27 @@ class Settings:
         self.REFRESH_ALL_INTER_GAME_DELAY: float = float(
             os.getenv("REFRESH_ALL_INTER_GAME_DELAY", "0.3")
         )
+        # ── Metadata backfill scheduling ─────────────────────────────────────
+        # Small source-aware batches fill missing covers, summaries, media,
+        # external IDs, and store/detail metadata without exhausting API quotas.
+        self.METADATA_BACKFILL_INTERVAL_MINUTES: float = float(
+            os.getenv("METADATA_BACKFILL_INTERVAL_MINUTES", "30")
+        )
+        self.METADATA_BACKFILL_BATCH_SIZE: int = int(
+            os.getenv("METADATA_BACKFILL_BATCH_SIZE", "24")
+        )
+        self.METADATA_BACKFILL_INTER_GAME_DELAY: float = float(
+            os.getenv("METADATA_BACKFILL_INTER_GAME_DELAY", "0.5")
+        )
+        self.STARTUP_METADATA_BACKFILL_LIMIT: int = int(
+            os.getenv("STARTUP_METADATA_BACKFILL_LIMIT", "12")
+        )
+        # ── Heavy admin jobs (imports, refresh-all) — peak-hour block ────────
+        # Both 0 (default) disables the block entirely. To pause heavy jobs
+        # 18:00-23:00 local time, set HEAVY_JOB_BLOCK_START_HOUR=18 and
+        # HEAVY_JOB_BLOCK_END_HOUR=23.
+        self.HEAVY_JOB_BLOCK_START_HOUR: int = int(os.getenv("HEAVY_JOB_BLOCK_START_HOUR", "0"))
+        self.HEAVY_JOB_BLOCK_END_HOUR: int = int(os.getenv("HEAVY_JOB_BLOCK_END_HOUR", "0"))
 
     @property
     def is_production(self) -> bool:

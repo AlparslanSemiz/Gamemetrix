@@ -29,19 +29,17 @@ from ..schemas import (
     GameListResponse,
     GameRead,
     GameSort,
+    SeriesResponse,
     SortDirection,
     TrailerResponse,
 )
 from ..integrations.steam import (
     extract_steam_app_id,
-    fetch_steam_dlcs,
     fetch_steam_price,
     fetch_steam_screenshots,
     fetch_steam_system_requirements,
-    fetch_steam_website,
 )
 from ..integrations.sync import refresh_game_sources
-from ..integrations.rawg import enrich_rawg_game_detail
 from ..integrations.cheapshark_service import cheapshark_service
 from ..integrations.itad_service import itad_service
 from ..integrations.youtube import find_trailer_video_id
@@ -59,7 +57,8 @@ from ..services.game_filter import (
     sort_in_memory,
 )
 from ..services.deduplication import find_existing_duplicate, merge_game_data
-from ..services.game_similarity import find_similar_games
+from ..services.game_similarity import find_series_games, find_similar_games, series_key_for_title
+from ..services.metadata_backfill import game_needs_metadata_backfill, refresh_game_metadata
 from ..services.rawg_import import apply_rawg_to_game, game_from_rawg_search
 from ..rate_limit import limiter
 from ..security import require_admin_user
@@ -235,23 +234,25 @@ def _build_db_query(
 
 
 def _apply_db_sort(query: Select[tuple[Game]], sort: str, direction: str) -> Select[tuple[Game]]:
+    score_tiebreakers = (desc(Game.rank_score), desc(Game.metrix_score), desc(Game.is_rankable), asc(Game.title), asc(Game.id))
     if sort == "title":
-        return query.order_by(asc(Game.title))
+        col = desc(Game.title) if direction == "desc" else asc(Game.title)
+        return query.order_by(col, desc(Game.rank_score), desc(Game.metrix_score), asc(Game.id))
     if sort == "release_year":
         col = desc(Game.release_year) if direction == "desc" else asc(Game.release_year)
-        return query.order_by(col, desc(Game.rank_score))
+        return query.order_by(col, desc(Game.rank_score), desc(Game.metrix_score), asc(Game.title), asc(Game.id))
     if sort == "critic_score":
         col = desc(Game.critic_score) if direction == "desc" else asc(Game.critic_score)
-        return query.order_by(col)
+        return query.order_by(col, *score_tiebreakers)
     if sort == "user_score":
         col = desc(Game.user_score) if direction == "desc" else asc(Game.user_score)
-        return query.order_by(col)
+        return query.order_by(col, *score_tiebreakers)
     if sort == "metrix_score":
         col = desc(Game.metrix_score) if direction == "desc" else asc(Game.metrix_score)
-        return query.order_by(col)
+        return query.order_by(col, desc(Game.rank_score), desc(Game.is_rankable), asc(Game.title), asc(Game.id))
     # Default (rank_score) — reliability-weighted ranking
     col = desc(Game.rank_score) if direction == "desc" else asc(Game.rank_score)
-    return query.order_by(col)
+    return query.order_by(col, desc(Game.metrix_score), desc(Game.is_rankable), asc(Game.title), asc(Game.id))
 
 
 def _apply_in_memory_filters(
@@ -299,12 +300,7 @@ async def get_game(
     if game is None:
         raise HTTPException(status_code=404, detail="Game not found")
     app_id = extract_steam_app_id(game.cover_url, game.image_url, game.slug)
-    if (
-        not game.metadata_refreshed_at
-        or not game.website_url
-        or not game.dlcs
-        or (app_id and _system_requirements_need_repair(game.system_requirements))
-    ):
+    if game_needs_metadata_backfill(game) or (app_id and _system_requirements_need_repair(game.system_requirements)):
         background_tasks.add_task(_refresh_game_detail_metadata, game.slug)
     return game
 
@@ -315,52 +311,10 @@ async def _refresh_game_detail_metadata(slug: str) -> None:
         game = db.scalar(select(Game).where(Game.slug == slug))
         if game is None:
             return
-
-        if not game.metadata_refreshed_at or not game.website_url:
-            try:
-                await enrich_rawg_game_detail(db, game)
-            except Exception:
-                log.debug("RAWG metadata enrichment failed for %s", slug, exc_info=True)
-
-        app_id = extract_steam_app_id(game.cover_url, game.image_url, game.slug)
-        if app_id is None:
-            return
-
-        if not game.website_url:
-            try:
-                website_url = await fetch_steam_website(app_id)
-            except Exception:
-                log.debug("Steam website fetch failed for %s", slug, exc_info=True)
-                website_url = None
-            if website_url:
-                game.website_url = website_url
-                db.add(game)
-                db.commit()
-
-        if _system_requirements_need_repair(game.system_requirements):
-            try:
-                requirements = await fetch_steam_system_requirements(app_id)
-            except Exception:
-                log.debug("Steam system requirements fetch failed for %s", slug, exc_info=True)
-                requirements = []
-            if requirements:
-                game.system_requirements = requirements
-                db.add(game)
-                db.commit()
-
-        if game.dlcs:
-            return
-
         try:
-            dlcs = await fetch_steam_dlcs(app_id)
+            await refresh_game_metadata(db, game)
         except Exception:
-            log.debug("Steam DLC fetch failed for %s", slug, exc_info=True)
-            return
-
-        if dlcs:
-            game.dlcs = dlcs
-            db.add(game)
-            db.commit()
+            log.debug("Detail metadata backfill failed for %s", slug, exc_info=True)
 
 
 _BAD_SYSTEM_REQUIREMENT_MARKERS = (
@@ -402,6 +356,26 @@ def get_similar_games(
         raise HTTPException(status_code=404, detail="Game not found")
     similar = find_similar_games(db, game, display_limit=limit)
     return GameListResponse(games=similar, total=len(similar))
+
+
+@router.get("/api/games/{slug}/series", response_model=SeriesResponse)
+@limiter.limit(get_settings().PUBLIC_READ_RATE_LIMIT)
+def get_series_games(
+    request: Request,
+    slug: str,
+    limit: int = Query(default=8, ge=1, le=20),
+    db: Session = Depends(get_db),
+) -> SeriesResponse:
+    """Other games in the same franchise (e.g. Persona 5 Royal → other Persona games), oldest first."""
+    game = db.scalar(select(Game).where(Game.slug == slug))
+    if game is None:
+        raise HTTPException(status_code=404, detail="Game not found")
+    series = find_series_games(db, game, limit=limit)
+    return SeriesResponse(
+        series_key=series_key_for_title(game.title),
+        games=series,
+        total=len(series),
+    )
 
 
 @router.post("/api/games/{slug}/refresh-scores", response_model=GameRead)
@@ -652,6 +626,19 @@ _facets_cache_time: float = 0.0
 _FACETS_TTL = 300.0  # 5 minutes
 
 
+def _json_array_values_sql(column: str, dialect_name: str) -> str:
+    if dialect_name == "postgresql":
+        return (
+            f"SELECT DISTINCT TRIM(value) FROM games, "
+            f"LATERAL jsonb_array_elements_text(games.{column}::jsonb) AS value"
+            " WHERE games.content_type = 'game' AND TRIM(value) != ''"
+        )
+    return (
+        f"SELECT DISTINCT TRIM(j.value) FROM games, json_each(games.{column}) j"
+        " WHERE games.content_type = 'game' AND TRIM(j.value) != ''"
+    )
+
+
 @router.get("/api/facets", response_model=FacetsResponse)
 @limiter.limit(get_settings().PUBLIC_READ_RATE_LIMIT)
 def get_facets(
@@ -664,14 +651,12 @@ def get_facets(
         return _facets_cache
 
     current_year = datetime.date.today().year
+    dialect_name = db.bind.dialect.name if db.bind is not None else ""
 
     # Use json_each to expand JSON arrays at SQL level — no ORM object loading.
     # TRIM collapses variants like " MMORPG" / "MMORPG" into one facet entry.
     genre_rows = db.execute(
-        text(
-            "SELECT DISTINCT TRIM(j.value) FROM games, json_each(games.genres) j"
-            " WHERE games.content_type = 'game' AND TRIM(j.value) != '' ORDER BY 1"
-        )
+        text(f"{_json_array_values_sql('genres', dialect_name)} ORDER BY 1")
     ).fetchall()
     genres = [r[0] for r in genre_rows]
 
@@ -685,10 +670,7 @@ def get_facets(
     years = [r[0] for r in year_rows]
 
     platform_rows = db.execute(
-        text(
-            "SELECT DISTINCT TRIM(j.value) FROM games, json_each(games.platforms) j"
-            " WHERE games.content_type = 'game' AND TRIM(j.value) != ''"
-        )
+        text(_json_array_values_sql("platforms", dialect_name))
     ).fetchall()
     raw_platforms = {r[0] for r in platform_rows}
 

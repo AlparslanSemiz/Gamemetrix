@@ -21,6 +21,7 @@ import { ScoreRing } from './ScoreRing'
 import { scoreColor, scoreColorRgb, sourceScoreColor } from '../utils/scoreColors'
 import { steamAppIdFromGame } from '../utils/steam'
 import { PROTON_TIER_DESCRIPTIONS, PROTON_TIER_LABELS, isProtonTier } from '../utils/proton'
+import { safeExternalUrl } from '../utils/url'
 
 interface GameCardProps {
   game: Game
@@ -133,6 +134,22 @@ function playtimeColor(minutes: number): string {
   return '#dc2626'
 }
 
+function formatHours(minutes: number): string {
+  return `${Math.max(1, Math.round(minutes / 60))}h`
+}
+
+function hltbTooltip(game: Game): string {
+  const rows = [
+    ['Main', game.hltb_main_story_minutes],
+    ['Extra', game.hltb_main_extra_minutes],
+    ['100%', game.hltb_completionist_minutes],
+    ['Avg', game.hltb_all_styles_minutes],
+  ]
+    .filter(([, minutes]) => Number(minutes) > 0)
+    .map(([label, minutes]) => `${label}: ${formatHours(Number(minutes))}`)
+  return rows.length > 0 ? `HowLongToBeat - ${rows.join(' | ')}` : 'HowLongToBeat - click to search'
+}
+
 function fallbackCoverUrl(title: string): string {
   const words = title
     .split(/\s+/)
@@ -180,14 +197,18 @@ export const GameCard = memo(function GameCard({
     'Sports', 'Racing', 'Sandbox', 'Party', 'Pinball',
   ])
   const isEndless = game.genres.some((g) => ENDLESS_GENRES.has(g))
+  const hltbMinutes = game.hltb_main_story_minutes > 0
+    ? game.hltb_main_story_minutes
+    : game.playtime_minutes
   const playtimeFmt = isEndless
     ? '∞'
-    : game.playtime_minutes > 0
-      ? `${Math.round(game.playtime_minutes / 60)}h`
+    : hltbMinutes > 0
+      ? formatHours(hltbMinutes)
       : null
   const protonTier = game.proton_tier && isProtonTier(game.proton_tier)
     ? game.proton_tier
     : null
+  const hltbHref = safeExternalUrl(game.hltb_url) ?? `https://howlongtobeat.com/?q=${encodeURIComponent(game.title)}`
   const coverSrc = game.cover_url || fallbackCoverUrl(game.title)
   const displayScore = Math.round(game.metrix_score)
   const cardStyle = {
@@ -536,11 +557,11 @@ export const GameCard = memo(function GameCard({
                 ) : (
                   <a
                     className="playtime-badge"
-                    href={`https://howlongtobeat.com/?q=${encodeURIComponent(game.title)}`}
+                    href={hltbHref}
                     target="_blank"
                     rel="noopener noreferrer"
-                    style={{ color: playtimeColor(game.playtime_minutes) }}
-                    title="HowLongToBeat — click to search"
+                    style={{ color: playtimeColor(hltbMinutes) }}
+                    title={hltbTooltip(game)}
                   >
                     <Clock3 size={13} aria-hidden="true" />
                     {playtimeFmt}
@@ -550,7 +571,7 @@ export const GameCard = memo(function GameCard({
               {protonTier ? <ProtonBadge game={game} tier={protonTier} /> : null}
             </div>
           ) : null}
-          <PlatformIcons platforms={game.platforms} mode="list" />
+          <PlatformIcons platforms={game.platforms} mode="list" game={game} />
         </div>
       </div>
 

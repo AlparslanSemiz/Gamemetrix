@@ -44,6 +44,13 @@ export interface Game {
   developer?: string | null
   publisher?: string | null
   playtime_minutes: number
+  hltb_id?: number | null
+  hltb_url?: string | null
+  hltb_main_story_minutes: number
+  hltb_main_extra_minutes: number
+  hltb_completionist_minutes: number
+  hltb_all_styles_minutes: number
+  hltb_refreshed_at?: string | null
   award_count: number
   award_nominations: number
   goty_year?: number | null
@@ -99,6 +106,21 @@ export interface PriceSnapshot {
 
 export interface GameListResponse {
   games: Game[]
+  total: number
+}
+
+export interface SeriesGameItem {
+  id: number
+  title: string
+  slug: string
+  cover_url: string
+  release_year: number
+  metrix_score: number
+}
+
+export interface SeriesResponse {
+  series_key: string
+  games: SeriesGameItem[]
   total: number
 }
 

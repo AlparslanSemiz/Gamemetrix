@@ -69,11 +69,18 @@ class _SourceBudget:
 class RateLimiter:
     def __init__(self) -> None:
         self._budgets: dict[str, _SourceBudget] = {}
+        self._aliases: dict[str, str] = {}
 
     def set_limit(self, source: str, daily_limit: int) -> None:
         self._budgets[source] = _SourceBudget(daily_limit)
 
+    def share_budget(self, source: str, target: str) -> None:
+        """Make `source` draw from `target`'s budget — for sources served by the
+        same upstream API key (e.g. Metacritic scores come from the RAWG API)."""
+        self._aliases[source] = target
+
     def _budget(self, source: str) -> _SourceBudget:
+        source = self._aliases.get(source, source)
         if source not in self._budgets:
             self._budgets[source] = _SourceBudget(_DEFAULT_DAILY_LIMITS.get(source, 100))
         return self._budgets[source]

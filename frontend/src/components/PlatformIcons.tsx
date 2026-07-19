@@ -1,4 +1,7 @@
 import type React from 'react'
+import { siApple } from 'simple-icons'
+import type { Game } from '../types/game'
+import { storeUrlForGroup } from '../utils/storeLinks'
 
 // ─── Platform icon SVGs ───────────────────────────────────────────────────────
 // All icons: 16×16 viewBox, fill="currentColor" for CSS color control
@@ -42,9 +45,8 @@ const SwitchIcon = () => (
 )
 
 const AppleIcon = () => (
-  <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-    {/* Apple logo: round body with bite + leaf stem */}
-    <path d="M10.5 5.7C9.9 5 9.1 4.6 8.3 4.6c-.7 0-1.2.3-1.7.5-.4.2-.7.3-1 .3-.3 0-.6-.1-1-.3C4.1 4.9 3.5 4.6 2.8 4.7 1.7 4.9 1 5.9 1 7.3c0 2.6 2.1 6 3.5 6 .5 0 1-.3 1.5-.5.4-.2.8-.3 1-.3.2 0 .6.1 1 .3.5.2 1 .5 1.5.5 1.5 0 3-3.1 3.5-5.5-.7-.4-1.2-1.2-1.5-2.1zM9 1.5c-.3.4-.8 1-1.5 1.3.7.3 1.5-.2 1.8-.7.2-.3.4-.7.4-1.1C9.4.9 9.2 1.2 9 1.5z" />
+  <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+    <path d={siApple.path} />
   </svg>
 )
 
@@ -169,9 +171,12 @@ interface PlatformIconsProps {
   platforms: string[]
   mode?: 'compact' | 'list' | 'detail'
   maxVisible?: number
+  /** When provided, icons become links to the game's store page (price
+   *  snapshot URL → Steam app page → store search, in that order). */
+  game?: Game
 }
 
-export function PlatformIcons({ platforms, mode = 'list', maxVisible }: PlatformIconsProps) {
+export function PlatformIcons({ platforms, mode = 'list', maxVisible, game }: PlatformIconsProps) {
   const defaultMax = mode === 'compact' ? 4 : mode === 'list' ? 5 : 99
   const limit = maxVisible ?? defaultMax
 
@@ -188,11 +193,30 @@ export function PlatformIcons({ platforms, mode = 'list', maxVisible }: Platform
     >
       {visible.map((def) => {
         const label = mode === 'detail' ? def.name : mode === 'list' ? def.short : undefined
+        const href = game ? storeUrlForGroup(def.group, game) : null
+        const style = { '--pf-color': def.color } as React.CSSProperties
+        if (href) {
+          return (
+            <a
+              key={def.group}
+              className="pf-icon pf-icon-link"
+              href={href}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={style}
+              title={`${def.name} — view in store`}
+              aria-label={`${def.name} store page`}
+            >
+              <def.Icon />
+              {label ? <span className="pf-label">{label}</span> : null}
+            </a>
+          )
+        }
         return (
           <span
             key={def.group}
             className="pf-icon"
-            style={{ '--pf-color': def.color } as React.CSSProperties}
+            style={style}
             title={def.name}
             aria-label={def.name}
           >

@@ -19,7 +19,7 @@ import time
 import httpx
 
 from ..config import get_settings
-from .steam import STEAM_APP_IDS, _lookup_steam_app_id  # reuse existing helpers
+from .steam import STEAM_APP_IDS, _clean_requirement_block, _lookup_steam_app_id  # reuse existing helpers
 from .types import NormalizedGame, SourceHealth
 
 log = logging.getLogger(__name__)
@@ -130,6 +130,32 @@ class SteamService:
 
         genres = [g["description"] for g in raw.get("genres") or [] if isinstance(g, dict)]
         categories = [c["description"] for c in raw.get("categories") or [] if isinstance(c, dict)]
+        screenshots = [
+            s["path_full"]
+            for s in raw.get("screenshots") or []
+            if isinstance(s, dict) and s.get("path_full")
+        ]
+        system_requirements: list[dict[str, str]] = []
+        for key, platform in (
+            ("pc_requirements", "PC"),
+            ("mac_requirements", "Mac"),
+            ("linux_requirements", "Linux"),
+        ):
+            req = raw.get(key) or {}
+            if isinstance(req, str):
+                minimum = _clean_requirement_block(req)
+                recommended = ""
+            elif isinstance(req, dict):
+                minimum = _clean_requirement_block(req.get("minimum"))
+                recommended = _clean_requirement_block(req.get("recommended"))
+            else:
+                continue
+            if minimum or recommended:
+                system_requirements.append({
+                    "platform": platform,
+                    "minimum": minimum,
+                    "recommended": recommended,
+                })
 
         return NormalizedGame(
             source="Steam",
@@ -149,6 +175,15 @@ class SteamService:
                 "is_free": raw.get("is_free"),
                 "categories": categories,
                 "metacritic": raw.get("metacritic"),
+                "header_image": raw.get("header_image"),
+                "website": raw.get("website"),
+                "screenshots": screenshots,
+                "system_requirements": system_requirements,
+                "dlc_ids": [
+                    int(item)
+                    for item in raw.get("dlc") or []
+                    if str(item).isdigit()
+                ],
             },
         )
 

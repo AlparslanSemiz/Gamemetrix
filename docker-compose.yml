@@ -14,6 +14,17 @@ services:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+    # postgres:15-alpine idles ~20-25MB; 160m covers connection/autovacuum
+    # bursts without letting a runaway query eat the whole 1GB host.
+    mem_limit: 160m
+    mem_reservation: 64m
+    memswap_limit: 224m # mem_limit + 64m swap cushion (not unbounded swap use)
+    cpus: 0.5
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # --- 2. BACKEND (FastAPI) ---
   backend:
@@ -24,10 +35,24 @@ services:
     restart: always
     env_file:
       - ./backend/.env # .env dosyasını buraya aldığın için yolunu böyle belirttik
+    environment:
+      DATABASE_URL: postgresql+psycopg://admin:password123@db:5432/gamemetrix
     expose:
       - "8000"
     depends_on:
       - db # Veri tabanı ayağa kalkmadan backend başlamasın
+    # Single uvicorn worker (see Dockerfile CMD) is I/O-bound most of the time;
+    # 400m gives headroom for RAWG import / refresh-all batches without
+    # letting a leak or traffic spike take down the whole VM.
+    mem_limit: 400m
+    mem_reservation: 150m
+    memswap_limit: 528m # +128m swap cushion for heavy-job memory spikes
+    cpus: 0.75
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
 
   # --- 3. FRONTEND (React / Vite) ---
   frontend:
@@ -38,6 +63,15 @@ services:
     restart: always
     expose:
       - "3000"
+    # Static nginx serving a prebuilt SPA bundle — a few MB is normal.
+    mem_limit: 48m
+    mem_reservation: 16m
+    cpus: 0.25
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"
 
   # --- 4. ORKESTRA ŞEFİ / REVERSE PROXY (Nginx) ---
   nginx:
@@ -51,6 +85,14 @@ services:
     depends_on:
       - backend
       - frontend
+    mem_limit: 48m
+    mem_reservation: 16m
+    cpus: 0.25
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 volumes:
   pgdata: # Veri tabanı verilerinin sunucu kapansa bile silinmemesini sağlar

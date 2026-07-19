@@ -25,6 +25,11 @@ def get_provider_statuses() -> list[dict[str, str]]:
             "detail": "No authentication required; imports broad Steam catalog popularity and review aggregates.",
         },
         {
+            "source": "HowLongToBeat",
+            "status": "ready",
+            "detail": "No authentication required; enriches completion times and can repair missing cover art.",
+        },
+        {
             "source": "RAWG",
             "status": "ready" if rawg_ready else "needs_credentials",
             "detail": "Provides large game catalogs, descriptions, images, platforms, ratings, and Metacritic fields.",

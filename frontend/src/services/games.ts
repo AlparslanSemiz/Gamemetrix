@@ -5,6 +5,7 @@ import type {
   GameListResponse,
   ProviderStatus,
   ScoreWeightsResponse,
+  SeriesResponse,
   TrailerResponse,
 } from '../types/game'
 import { API_BASE_URL } from './api'
@@ -55,6 +56,12 @@ export async function getGameBySlug(slug: string): Promise<Game> {
 export async function getSimilarGames(slug: string, limit = 10): Promise<GameListResponse> {
   const response = await fetch(`${API_BASE_URL}/api/games/${slug}/similar?limit=${limit}`)
   if (!response.ok) throw new Error('Failed to fetch similar games')
+  return response.json()
+}
+
+export async function getSeriesGames(slug: string, limit = 8): Promise<SeriesResponse> {
+  const response = await fetch(`${API_BASE_URL}/api/games/${slug}/series?limit=${limit}`)
+  if (!response.ok) throw new Error('Failed to fetch series games')
   return response.json()
 }
 

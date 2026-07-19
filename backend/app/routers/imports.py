@@ -8,6 +8,7 @@ Routes:
   POST /api/import/free-to-game  — FreeToGame catalog import
   POST /api/import/cheapshark    — CheapShark deals import
   POST /api/import/steamspy      — SteamSpy top-games import
+  POST /api/import/hltb          — HowLongToBeat playtime/covers backfill
   POST /api/import/free-sources  — all three free sources in one call
 """
 
@@ -19,14 +20,25 @@ from ..schemas import ImportResponse, MultiImportResponse
 from ..integrations.cheapshark import import_cheapshark_deals
 from ..integrations.free_to_game import import_free_to_game_games
 from ..integrations.igdb_import import import_igdb_nintendo_games
+from ..integrations.hltb import backfill_hltb_playtimes
 from ..integrations.rawg import import_catalog_to_size, import_rawg_games, import_rawg_nintendo_games
 from ..integrations.steamspy import import_steamspy_games
 from ..security import require_admin_user
+from ..heavy_jobs import require_heavy_job_slot, require_not_peak_hours
 
 router = APIRouter(
     prefix="/api/import",
     tags=["imports"],
-    dependencies=[Depends(require_admin_user)],
+    dependencies=[
+        Depends(require_admin_user),
+        # Fails fast (429) if we're in a configured peak-hour window, or if
+        # another import / ratings refresh-all is already running — these
+        # imports run inline (not as background tasks) and each one fans out
+        # hundreds-to-thousands of outbound HTTP calls, so on a 1GB host only
+        # one heavy job may run at a time. See app/heavy_jobs.py.
+        Depends(require_not_peak_hours),
+        Depends(require_heavy_job_slot),
+    ],
 )
 
 
@@ -96,6 +108,19 @@ async def import_from_steamspy(
     db: Session = Depends(get_db),
 ) -> dict[str, int]:
     return await import_steamspy_games(db, target=target)
+
+
+@router.post("/hltb")
+async def import_from_hltb(
+    target: int = Query(default=500, ge=1, le=5000),
+    refresh_existing: bool = Query(default=False),
+    db: Session = Depends(get_db),
+) -> dict[str, int]:
+    return await backfill_hltb_playtimes(
+        db,
+        target=target,
+        refresh_existing=refresh_existing,
+    )
 
 
 @router.post("/free-sources", response_model=MultiImportResponse)

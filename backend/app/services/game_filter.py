@@ -110,7 +110,7 @@ def filter_min_live_sources(games: list[Game], min_live: int) -> list[Game]:
 def sort_in_memory(games: list[Game], sort: str, direction: str) -> list[Game]:
     reverse = direction == "desc"
     if sort == "review_count":
-        return sorted(games, key=_total_review_count, reverse=reverse)
+        return sorted(games, key=lambda g: (_total_review_count(g), g.rank_score, g.metrix_score, -g.id), reverse=reverse)
     source_map = {
         "metacritic_score": "Metacritic",
         "opencritic_score": "OpenCritic",
@@ -118,9 +118,17 @@ def sort_in_memory(games: list[Game], sort: str, direction: str) -> list[Game]:
     }
     if sort in source_map:
         src = source_map[sort]
-        return sorted(games, key=lambda g: _source_score(g, src), reverse=reverse)
+        return sorted(games, key=lambda g: (_source_score(g, src), g.rank_score, g.metrix_score, -g.id), reverse=reverse)
     if sort == "title" and direction == "desc":
         return sorted(games, key=lambda g: g.title.lower(), reverse=True)
     if sort == "rank_score":
-        return sorted(games, key=lambda g: g.rank_score, reverse=reverse)
+        return sorted(games, key=lambda g: (g.rank_score, g.metrix_score, g.live_primary_source_count, -g.id), reverse=reverse)
+    if sort == "metrix_score":
+        return sorted(games, key=lambda g: (g.metrix_score, g.rank_score, g.live_primary_source_count, -g.id), reverse=reverse)
+    if sort == "critic_score":
+        return sorted(games, key=lambda g: (g.critic_score, g.rank_score, g.metrix_score, -g.id), reverse=reverse)
+    if sort == "user_score":
+        return sorted(games, key=lambda g: (g.user_score, g.rank_score, g.metrix_score, -g.id), reverse=reverse)
+    if sort == "release_year":
+        return sorted(games, key=lambda g: (g.release_year, g.rank_score, g.metrix_score, -g.id), reverse=reverse)
     return games

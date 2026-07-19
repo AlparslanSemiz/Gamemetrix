@@ -96,6 +96,10 @@ html { font-size: 16px; }
   white-space: nowrap;
 }
 
+.side-rail button.is-coming-soon {
+  color: #858995;
+}
+
 .rail-group-curated button {
   min-height: 30px;
   color: #6a6e78;
@@ -122,6 +126,21 @@ html { font-size: 16px; }
   transition: opacity 0.1s ease;
 }
 
+.side-rail button small {
+  margin-left: auto;
+  margin-right: 14px;
+  border: 1px solid #30333a;
+  border-radius: 5px;
+  color: #8d95a3;
+  font-size: 9px;
+  font-weight: 900;
+  line-height: 1;
+  opacity: 0;
+  padding: 3px 5px;
+  text-transform: uppercase;
+  transition: opacity 0.1s ease;
+}
+
 .side-rail:hover {
   width: 210px;
   box-shadow: 22px 0 40px rgba(0, 0, 0, 0.24);
@@ -133,6 +152,29 @@ html { font-size: 16px; }
   transition: opacity 0.13s ease 0.13s;
 }
 
+.side-rail:hover button small {
+  opacity: 1;
+  transition: opacity 0.13s ease 0.13s;
+}
+
+.coming-soon-toast {
+  position: absolute;
+  left: 100%;
+  bottom: 72px;
+  margin-left: 10px;
+  border: 1px solid #2b2f38;
+  border-radius: 7px;
+  background: #15171b;
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.32);
+  color: #f2f4f8;
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1;
+  padding: 10px 12px;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
 .mobile-tabbar {
   display: none;
 }
@@ -142,6 +184,12 @@ html { font-size: 16px; }
   width: min(1520px, calc(100% - 106px));
   margin: 0 12px 0 max(94px, calc(50% - 760px));
   padding: 36px 24px 100px;
+  transition: margin-left 0.16s cubic-bezier(0.22, 1, 0.36, 1), width 0.16s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.side-rail:hover + .workspace {
+  width: min(1520px, calc(100% - 242px));
+  margin-left: max(230px, calc(50% - 760px));
 }
 
 /* ─── Masthead ────────────────────────────────────────────────────── */
@@ -1443,6 +1491,104 @@ a.proton-badge:hover {
   }
 }
 
+/* Icons rendered as store links */
+a.pf-icon-link {
+  text-decoration: none;
+  cursor: pointer;
+}
+
+a.pf-icon-link:hover,
+a.pf-icon-link:focus-visible {
+  text-decoration: none;
+}
+
+/* ── "More from this series" strip ─────────────────────────────────── */
+.series-row {
+  margin: 20px 0 8px;
+}
+
+.series-row-title {
+  margin: 0 0 10px;
+  font-size: 1rem;
+  font-weight: 800;
+  color: #dfe3ea;
+}
+
+.series-row-scroller {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding-bottom: 6px;
+  scrollbar-width: thin;
+}
+
+.series-tile {
+  flex: 0 0 148px;
+  display: grid;
+  gap: 4px;
+  align-content: start;
+  text-decoration: none;
+}
+
+.series-tile-cover {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #1a1d24;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.series-tile-cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  transition: transform 0.18s;
+}
+
+.series-tile:hover .series-tile-cover img {
+  transform: scale(1.05);
+}
+
+.series-tile-score {
+  position: absolute;
+  right: 5px;
+  bottom: 5px;
+  display: grid;
+  place-items: center;
+  min-width: 24px;
+  height: 21px;
+  padding: 0 5px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.72);
+  color: var(--score-color, #4cc458);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.series-tile-name {
+  font-size: 12px;
+  font-weight: 700;
+  color: #ccd2dc;
+  line-height: 1.25;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.series-tile:hover .series-tile-name {
+  color: #f1f3f7;
+}
+
+.series-tile-year {
+  font-size: 11px;
+  font-weight: 600;
+  color: #7d8390;
+}
+
 .pf-label {
   line-height: 1;
 }
@@ -1505,6 +1651,7 @@ a.proton-badge:hover {
 a.platform-badge:hover {
   filter: brightness(1.18);
   transform: translateY(-1px);
+  text-decoration: none;
 }
 
 .platform-steam    { background: #171a21; }
@@ -1579,8 +1726,11 @@ a.platform-badge:hover {
   text-align: center;
 }
 
+/* Confidence label colors are tied to the confidence LEVEL (how much source
+   coverage backs the score), deliberately independent of the score color —
+   a 95-rated game with thin data should still read as "Limited". */
 .score-confidence span {
-  color: var(--score-color, #4cc458);
+  color: #aeb3bd;
   font-size: 12px;
   font-weight: 900;
   text-transform: uppercase;
@@ -1595,20 +1745,20 @@ a.platform-badge:hover {
 }
 
 .score-confidence-catalog span {
-  color: var(--score-color, #6b7280);
+  color: #6b7280;
 }
 
 .score-confidence-limited span,
 .score-confidence-low span {
-  color: var(--score-color, #d0a042);
+  color: #d0a042;
 }
 
 .score-confidence-solid span {
-  color: var(--score-color, #4cc458);
+  color: #4cc458;
 }
 
 .score-confidence-strong span {
-  color: var(--score-color, #7c3aed);
+  color: #06b6d4;
 }
 
 .ranked-lower-hint {
@@ -1935,9 +2085,15 @@ a.source-name-link:hover {
 /* Confidence ring: colored outline on the score bubble in compact view */
 .compact-score .score-ring-sm {
   box-shadow:
-    0 0 0 2px var(--score-color, #4cc458),
+    0 0 0 2px var(--confidence-color, #7d8590),
     0 2px 8px rgba(0, 0, 0, 0.55);
 }
+
+.compact-score-catalog { --confidence-color: #6b7280; }
+.compact-score-limited,
+.compact-score-low { --confidence-color: #d0a042; }
+.compact-score-solid { --confidence-color: #4cc458; }
+.compact-score-strong { --confidence-color: #06b6d4; }
 
 .compact-body {
   display: grid;
@@ -2704,9 +2860,14 @@ a.proton-badge-compact:hover {
   }
 
   .list-toolbar {
+    position: sticky;
+    top: 103px;
+    z-index: 4;
     grid-template-columns: 1fr auto;
     margin-bottom: 14px;
     padding: 8px 0;
+    background: rgba(18, 18, 18, 0.94);
+    backdrop-filter: blur(12px);
   }
 
   .filter-toggle-button,
