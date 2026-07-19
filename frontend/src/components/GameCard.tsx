@@ -6,6 +6,7 @@ import {
   Gamepad2,
   Heart,
   Medal,
+  MonitorCheck,
   Play,
   Share2,
   Star,
@@ -13,12 +14,13 @@ import {
 } from 'lucide-react'
 import { memo, type CSSProperties, type SyntheticEvent } from 'react'
 import { Link } from 'react-router-dom'
-import type { Game, SourceScore } from '../types/game'
+import type { Game, ProtonTier, SourceScore } from '../types/game'
 import type { CollectionKey } from '../state/collections'
 import { PlatformIcons } from './PlatformIcons'
 import { ScoreRing } from './ScoreRing'
 import { scoreColor, scoreColorRgb, sourceScoreColor } from '../utils/scoreColors'
 import { steamAppIdFromGame } from '../utils/steam'
+import { PROTON_TIER_DESCRIPTIONS, PROTON_TIER_LABELS, isProtonTier } from '../utils/proton'
 
 interface GameCardProps {
   game: Game
@@ -68,6 +70,49 @@ function sourceUrl(source: string, game: Game): string | null {
     default:
       return null
   }
+}
+
+function protonReportUrl(game: Game): string | null {
+  const steamAppId = steamAppIdFromGame(game)
+  return steamAppId ? `https://www.protondb.com/app/${steamAppId}` : null
+}
+
+function ProtonBadge({
+  game,
+  tier,
+  compact = false,
+}: {
+  game: Game
+  tier: ProtonTier
+  compact?: boolean
+}) {
+  const reportUrl = protonReportUrl(game)
+  const scoreText = typeof game.proton_score === 'number'
+    ? ` · ${Math.round(game.proton_score)}/100 community score`
+    : ''
+  const title = `ProtonDB: ${PROTON_TIER_DESCRIPTIONS[tier]}${scoreText}`
+  const className = `proton-badge proton-badge-${tier}${compact ? ' proton-badge-compact' : ''}`
+  const label = compact ? PROTON_TIER_LABELS[tier] : `Linux ${PROTON_TIER_LABELS[tier]}`
+  const content = (
+    <>
+      <MonitorCheck size={compact ? 10 : 13} aria-hidden="true" />
+      <span>{label}</span>
+    </>
+  )
+
+  if (!reportUrl) {
+    return (
+      <span className={className} title={title}>
+        {content}
+      </span>
+    )
+  }
+
+  return (
+    <a className={className} href={reportUrl} target="_blank" rel="noopener noreferrer" title={title}>
+      {content}
+    </a>
+  )
 }
 
 function playtimeColor(minutes: number): string {
@@ -140,6 +185,9 @@ export const GameCard = memo(function GameCard({
     : game.playtime_minutes > 0
       ? `${Math.round(game.playtime_minutes / 60)}h`
       : null
+  const protonTier = game.proton_tier && isProtonTier(game.proton_tier)
+    ? game.proton_tier
+    : null
   const coverSrc = game.cover_url || fallbackCoverUrl(game.title)
   const displayScore = Math.round(game.metrix_score)
   const cardStyle = {
@@ -285,10 +333,15 @@ export const GameCard = memo(function GameCard({
           </h3>
           <p className="compact-meta">{game.release_year} · {game.genres.slice(0, 2).join(' · ')}</p>
           {game.developer ? <p className="compact-dev">{game.developer}</p> : null}
-          {playtimeFmt ? (
-            <p className="compact-hltb">
-              <Clock3 size={10} aria-hidden="true" /> {playtimeFmt}
-            </p>
+          {(playtimeFmt || protonTier) ? (
+            <div className="compact-meta-badges">
+              {playtimeFmt ? (
+                <span className="compact-hltb">
+                  <Clock3 size={10} aria-hidden="true" /> {playtimeFmt}
+                </span>
+              ) : null}
+              {protonTier ? <ProtonBadge game={game} tier={protonTier} compact /> : null}
+            </div>
           ) : null}
           {(game.goty_year || (game.award_count ?? 0) > 0) ? (
             <div className="compact-award">
@@ -472,25 +525,30 @@ export const GameCard = memo(function GameCard({
         ) : null}
 
         <div className="meta-lines">
-          {playtimeFmt ? (
-            isEndless ? (
-              <span className="playtime-badge playtime-badge-endless" title="Endlessly replayable — no fixed completion time">
-                <Clock3 size={13} aria-hidden="true" />
-                {playtimeFmt}
-              </span>
-            ) : (
-              <a
-                className="playtime-badge"
-                href={`https://howlongtobeat.com/?q=${encodeURIComponent(game.title)}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{ color: playtimeColor(game.playtime_minutes) }}
-                title="HowLongToBeat — click to search"
-              >
-                <Clock3 size={13} aria-hidden="true" />
-                {playtimeFmt}
-              </a>
-            )
+          {(playtimeFmt || protonTier) ? (
+            <div className="meta-badge-row">
+              {playtimeFmt ? (
+                isEndless ? (
+                  <span className="playtime-badge playtime-badge-endless" title="Endlessly replayable — no fixed completion time">
+                    <Clock3 size={13} aria-hidden="true" />
+                    {playtimeFmt}
+                  </span>
+                ) : (
+                  <a
+                    className="playtime-badge"
+                    href={`https://howlongtobeat.com/?q=${encodeURIComponent(game.title)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ color: playtimeColor(game.playtime_minutes) }}
+                    title="HowLongToBeat — click to search"
+                  >
+                    <Clock3 size={13} aria-hidden="true" />
+                    {playtimeFmt}
+                  </a>
+                )
+              ) : null}
+              {protonTier ? <ProtonBadge game={game} tier={protonTier} /> : null}
+            </div>
           ) : null}
           <PlatformIcons platforms={game.platforms} mode="list" />
         </div>
