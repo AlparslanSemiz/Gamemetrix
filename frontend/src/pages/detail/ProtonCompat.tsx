@@ -15,9 +15,6 @@ export function ProtonCompat({ game }: { game: Game }) {
       <span className={`dp-proton-badge dp-proton-${tier}`}>{PROTON_TIER_LABELS[tier]}</span>
       <span className="dp-proton-detail">
         <strong>{PROTON_TIER_DESCRIPTIONS[tier]}</strong>
-        {typeof game.proton_score === 'number' && (
-          <small>{Math.round(game.proton_score)}/100 community report score</small>
-        )}
       </span>
       {reportUrl && (
         <a className="dp-proton-link" href={reportUrl} target="_blank" rel="noopener noreferrer">

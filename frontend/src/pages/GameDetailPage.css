@@ -475,14 +475,31 @@
 }
 
 .dp-proton-tier {
-  font-weight: 800;
+  --proton-tier-color: #a6a6a6;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid var(--proton-tier-color);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--proton-tier-color) 12%, transparent);
+  color: var(--proton-tier-color);
+  font-size: 0.72rem;
+  font-weight: 900;
+  line-height: 1;
+  padding: 4px 9px;
+  text-transform: uppercase;
 }
 
-.dp-proton-platinum { color: #c4b5fd; }
-.dp-proton-gold { color: #fde68a; }
-.dp-proton-silver { color: #d1d5db; }
-.dp-proton-bronze { color: #fdba74; }
-.dp-proton-borked { color: #fca5a5; }
+.dp-proton-tier:hover {
+  background: color-mix(in srgb, var(--proton-tier-color) 18%, transparent);
+  color: color-mix(in srgb, var(--proton-tier-color) 84%, white);
+}
+
+.dp-proton-platinum { --proton-tier-color: #b4c7dc; }
+.dp-proton-gold { --proton-tier-color: #cfb53b; }
+.dp-proton-silver { --proton-tier-color: #a6a6a6; }
+.dp-proton-bronze { --proton-tier-color: #cd7f32; }
+.dp-proton-borked { --proton-tier-color: #f87171; }
 
 /* ─── Price & availability ───────────────────────────────────────────────── */
 

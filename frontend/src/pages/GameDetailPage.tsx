@@ -17,6 +17,7 @@ import { TrailerModal } from '../components/TrailerModal'
 import { scoreColor, scoreColorRgb, sourceScoreColor } from '../utils/scoreColors'
 import { steamAppIdFromGame } from '../utils/steam'
 import { safeExternalUrl } from '../utils/url'
+import { PROTON_TIER_LABELS, isProtonTier } from '../utils/proton'
 import type { Game, PriceSnapshot, SourceScore } from '../types/game'
 import { DlcSection } from './detail/DlcSection'
 import { Gallery } from './detail/Gallery'
@@ -138,10 +139,8 @@ function formatHours(minutes: number): string {
 }
 
 function protonLabel(game: Game): string | null {
-  if (!game.proton_tier && game.proton_score == null) return null
-  const tier = game.proton_tier ? game.proton_tier[0].toUpperCase() + game.proton_tier.slice(1) : 'ProtonDB'
-  const score = game.proton_score != null ? ` ${Math.round(game.proton_score)}/100` : ''
-  return `${tier}${score}`
+  const tier = game.proton_tier
+  return tier && isProtonTier(tier) ? PROTON_TIER_LABELS[tier] : null
 }
 
 function shouldFetchPrices(prices: PriceSnapshot[] | undefined): boolean {

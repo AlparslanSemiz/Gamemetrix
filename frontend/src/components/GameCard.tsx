@@ -88,10 +88,7 @@ function ProtonBadge({
   compact?: boolean
 }) {
   const reportUrl = protonReportUrl(game)
-  const scoreText = typeof game.proton_score === 'number'
-    ? ` · ${Math.round(game.proton_score)}/100 community score`
-    : ''
-  const title = `ProtonDB: ${PROTON_TIER_DESCRIPTIONS[tier]}${scoreText}`
+  const title = `ProtonDB: ${PROTON_TIER_DESCRIPTIONS[tier]}`
   const className = `proton-badge proton-badge-${tier}${compact ? ' proton-badge-compact' : ''}`
   const label = compact ? PROTON_TIER_LABELS[tier] : `Linux ${PROTON_TIER_LABELS[tier]}`
   const content = (
