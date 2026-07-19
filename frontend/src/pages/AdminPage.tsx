@@ -14,13 +14,21 @@ import {
   AdminApiError,
   getAdminApiHealth,
   getAdminDashboard,
+  getDataFillStatus,
   loginAdmin,
+  runDataFill,
   type AdminApiHealth,
   type AdminDashboard,
+  type DataFillStatus,
 } from '../services/admin'
+import { RefreshAllPanel } from '../components/RefreshAllPanel'
+import { ScoreWeightSettings } from '../components/ScoreWeightSettings'
 import './AdminPage.css'
 
 const ADMIN_TOKEN_KEY = 'gamemetrix.adminToken.v1'
+const ADMIN_TOKEN_STORAGE = window.sessionStorage
+const ADMIN_USERNAME_MAX_LENGTH = 64
+const ADMIN_PASSWORD_MAX_LENGTH = 128
 const TRAFFIC_DAY_OPTIONS = [7, 14, 30] as const
 // Past this range, per-bar labels no longer fit — the chart switches to tooltips only.
 const DENSE_TRAFFIC_THRESHOLD = 10
@@ -44,14 +52,16 @@ function healthClass(status: AdminApiHealth[string]): string {
 }
 
 export function AdminPage() {
-  const [token, setToken] = useState(() => window.localStorage.getItem(ADMIN_TOKEN_KEY) ?? '')
+  const [token, setToken] = useState(() => ADMIN_TOKEN_STORAGE.getItem(ADMIN_TOKEN_KEY) ?? '')
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [dashboard, setDashboard] = useState<AdminDashboard | null>(null)
   const [health, setHealth] = useState<AdminApiHealth>({})
+  const [dataFill, setDataFill] = useState<DataFillStatus | null>(null)
   const [trafficDays, setTrafficDays] = useState<number>(TRAFFIC_DAY_OPTIONS[0])
   const [isLoading, setIsLoading] = useState(false)
   const [isSigningIn, setIsSigningIn] = useState(false)
+  const [isStartingDataFill, setIsStartingDataFill] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const loadDashboard = useCallback(async () => {
@@ -59,18 +69,21 @@ export function AdminPage() {
     setIsLoading(true)
     setError(null)
     try {
-      const [dashboardResponse, healthResponse] = await Promise.all([
+      const [dashboardResponse, healthResponse, dataFillResponse] = await Promise.all([
         getAdminDashboard(token, trafficDays),
         getAdminApiHealth(token),
+        getDataFillStatus(token),
       ])
       setDashboard(dashboardResponse)
       setHealth(healthResponse)
+      setDataFill(dataFillResponse)
     } catch (err) {
       if (err instanceof AdminApiError && err.status === 401) {
-        window.localStorage.removeItem(ADMIN_TOKEN_KEY)
+        ADMIN_TOKEN_STORAGE.removeItem(ADMIN_TOKEN_KEY)
         setToken('')
         setDashboard(null)
         setHealth({})
+        setDataFill(null)
         setError('Session expired. Please sign in again.')
         return
       }
@@ -92,13 +105,30 @@ export function AdminPage() {
     return Math.max(1, ...visits)
   }, [dashboard])
 
+  const dataGaps = useMemo(() => {
+    const catalog = dataFill?.catalog
+    return [
+      ['Missing ratings', catalog?.missing_ratings ?? 0],
+      ['Missing metadata', catalog?.missing_metadata ?? 0],
+      ['Missing HLTB', catalog?.missing_hltb ?? 0],
+      ['Missing prices', catalog?.missing_prices ?? 0],
+      ['Missing external IDs', catalog?.missing_external_ids ?? 0],
+    ] as const
+  }, [dataFill])
+
+  const rateLimitRows = useMemo(() => {
+    return Object.entries(dataFill?.rate_limits ?? {})
+      .filter(([source]) => ['RAWG', 'IGDB', 'Steam', 'SteamSpy', 'CheapShark', 'FreeToGame', 'ITAD', 'OpenCritic'].includes(source))
+      .sort(([a], [b]) => a.localeCompare(b))
+  }, [dataFill])
+
   async function handleLogin(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setIsSigningIn(true)
     setError(null)
     try {
       const response = await loginAdmin(username.trim(), password)
-      window.localStorage.setItem(ADMIN_TOKEN_KEY, response.access_token)
+      ADMIN_TOKEN_STORAGE.setItem(ADMIN_TOKEN_KEY, response.access_token)
       setToken(response.access_token)
       setPassword('')
     } catch (err) {
@@ -109,10 +139,25 @@ export function AdminPage() {
   }
 
   function handleLogout() {
-    window.localStorage.removeItem(ADMIN_TOKEN_KEY)
+    ADMIN_TOKEN_STORAGE.removeItem(ADMIN_TOKEN_KEY)
     setToken('')
     setDashboard(null)
     setHealth({})
+    setDataFill(null)
+  }
+
+  async function handleStartDataFill() {
+    if (!token) return
+    setIsStartingDataFill(true)
+    setError(null)
+    try {
+      await runDataFill(token, { targetTotal: 10000 })
+      setDataFill(await getDataFillStatus(token))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Data fill could not be started.')
+    } finally {
+      setIsStartingDataFill(false)
+    }
   }
 
   if (!token) {
@@ -128,6 +173,8 @@ export function AdminPage() {
               <span>Username</span>
               <input
                 autoComplete="username"
+                required
+                maxLength={ADMIN_USERNAME_MAX_LENGTH}
                 value={username}
                 onChange={(event) => setUsername(event.target.value)}
               />
@@ -137,6 +184,8 @@ export function AdminPage() {
               <input
                 autoComplete="current-password"
                 type="password"
+                required
+                maxLength={ADMIN_PASSWORD_MAX_LENGTH}
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
               />
@@ -264,6 +313,62 @@ export function AdminPage() {
               </div>
             ))}
           </div>
+        </article>
+
+        <article className="admin-panel admin-panel-wide">
+          <div className="admin-panel-head">
+            <h2>Data Fill</h2>
+            <button type="button" onClick={handleStartDataFill} disabled={isStartingDataFill || dataFill?.running}>
+              <RefreshCw size={15} aria-hidden="true" />
+              <span>{isStartingDataFill ? 'Starting' : dataFill?.running ? 'Running' : 'Run fill'}</span>
+            </button>
+          </div>
+          <div className="admin-data-fill-grid">
+            <div className="admin-row-list">
+              <div className="admin-row">
+                <span>Total games</span>
+                <strong>{formatNumber(dataFill?.catalog.total_games ?? 0)}</strong>
+              </div>
+              {dataGaps.map(([label, value]) => (
+                <div className="admin-row" key={label}>
+                  <span>{label}</span>
+                  <strong>{formatNumber(value)}</strong>
+                </div>
+              ))}
+            </div>
+            <div className="admin-budget-list">
+              {rateLimitRows.map(([source, budget]) => {
+                const pct = budget.limit > 0 ? (budget.remaining / budget.limit) * 100 : 0
+                return (
+                  <div className="admin-budget-row" key={source}>
+                    <span>{source}</span>
+                    <div className="admin-budget-track">
+                      <i style={{ width: `${Math.max(4, pct)}%` }} />
+                    </div>
+                    <strong>{budget.remaining}/{budget.limit}</strong>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+          <div className="admin-inline-stats">
+            <span>Last run: {dataFill?.last_run ? dataFill.last_run.status : 'none'}</span>
+            {dataFill?.last_run?.finished_at ? <span>{formatDateTime(dataFill.last_run.finished_at)}</span> : null}
+          </div>
+        </article>
+
+        <article className="admin-panel admin-panel-wide">
+          <div className="admin-panel-head">
+            <h2>Score Weights</h2>
+          </div>
+          <ScoreWeightSettings token={token} onSaved={() => { void loadDashboard() }} />
+        </article>
+
+        <article className="admin-panel">
+          <div className="admin-panel-head">
+            <h2>Score Data</h2>
+          </div>
+          <RefreshAllPanel token={token} />
         </article>
 
         <article className="admin-panel">

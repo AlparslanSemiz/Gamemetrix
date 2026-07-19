@@ -27,6 +27,7 @@ from .routers.games import router as games_router
 from .routers.imports import router as imports_router
 from .routers.ratings import router as ratings_router
 from .services.background import daily_refresh_loop, metadata_backfill_loop
+from .services.data_fill import data_fill_loop
 from .services.deduplication import consolidate_duplicate_games
 
 
@@ -34,26 +35,18 @@ log = logging.getLogger(__name__)
 settings = get_settings()
 
 
-# ── SQLite column migrations ───────────────────────────────────────────────────
+# ── Lightweight PostgreSQL migrations ─────────────────────────────────────────
 
 
 def _add_column_if_missing(conn: Connection, table: str, column: str, col_type: str) -> None:
-    try:
-        conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}"))
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        log.debug("Column %s.%s already exists (skipping)", table, column)
+    conn.execute(text(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {column} {col_type}"))
+    conn.commit()
 
 
 def _add_index_if_missing(conn: Connection, index_name: str, table: str, columns: str, unique: bool = False) -> None:
-    try:
-        unique_kw = "UNIQUE " if unique else ""
-        conn.execute(text(f"CREATE {unique_kw}INDEX {index_name} ON {table} ({columns})"))
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        log.debug("Index %s already exists (skipping)", index_name)
+    unique_kw = "UNIQUE " if unique else ""
+    conn.execute(text(f"CREATE {unique_kw}INDEX IF NOT EXISTS {index_name} ON {table} ({columns})"))
+    conn.commit()
 
 
 def _run_migrations(conn: Connection) -> None:
@@ -79,18 +72,16 @@ def _run_migrations(conn: Connection) -> None:
         ("games", "award_count", "INTEGER DEFAULT 0"),
         ("games", "award_nominations", "INTEGER DEFAULT 0"),
         ("games", "goty_year", "INTEGER"),
-        ("games", "awards", "JSON DEFAULT '[]'"),
+        ("games", "awards", "JSON DEFAULT '[]'::json"),
         ("games", "summary_short", "TEXT"),
-        ("games", "screenshots", "JSON DEFAULT '[]'"),
-        ("games", "system_requirements", "JSON DEFAULT '[]'"),
-        ("games", "dlcs", "JSON DEFAULT '[]'"),
-        ("games", "similar_games", "JSON DEFAULT '[]'"),
+        ("games", "screenshots", "JSON DEFAULT '[]'::json"),
+        ("games", "system_requirements", "JSON DEFAULT '[]'::json"),
+        ("games", "dlcs", "JSON DEFAULT '[]'::json"),
+        ("games", "similar_games", "JSON DEFAULT '[]'::json"),
         ("games", "early_access_date", "DATE"),
         ("games", "official_release_date", "DATE"),
         ("games", "rank_score", "FLOAT NOT NULL DEFAULT 0.0"),
-        ("games", "is_rankable", "BOOLEAN NOT NULL DEFAULT 0"),
-        ("games", "proton_tier", "VARCHAR(16)"),
-        ("games", "proton_score", "FLOAT"),
+        ("games", "is_rankable", "BOOLEAN NOT NULL DEFAULT false"),
     ]
     for table, column, col_type in migrations:
         _add_column_if_missing(conn, table, column, col_type)
@@ -220,17 +211,22 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     limiter.share_budget("Metacritic", "RAWG")
     limiter.set_limit("Steam", cfg.STEAM_DAILY_LIMIT)
     limiter.set_limit("SteamSpy", cfg.STEAMSPY_DAILY_LIMIT)
+    limiter.set_limit("CheapShark", cfg.CHEAPSHARK_DAILY_LIMIT)
+    limiter.set_limit("FreeToGame", cfg.FREETOGAME_DAILY_LIMIT)
+    limiter.set_limit("ITAD", cfg.ITAD_DAILY_LIMIT)
 
     startup_task = asyncio.create_task(_background_startup())
     refresh_task = asyncio.create_task(daily_refresh_loop())
     metadata_task = asyncio.create_task(metadata_backfill_loop())
+    data_fill_task = asyncio.create_task(data_fill_loop())
     try:
         yield
     finally:
         startup_task.cancel()
         refresh_task.cancel()
         metadata_task.cancel()
-        for task in (startup_task, refresh_task, metadata_task):
+        data_fill_task.cancel()
+        for task in (startup_task, refresh_task, metadata_task, data_fill_task):
             try:
                 await task
             except asyncio.CancelledError:

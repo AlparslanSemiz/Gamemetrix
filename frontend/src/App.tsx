@@ -1,39 +1,26 @@
 /* eslint-disable react-hooks/set-state-in-effect */
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import {
-  Award,
-  BarChart2,
-  Bell,
   CheckCircle2,
   ArrowDown,
   ArrowUp,
   Compass,
-  Eye,
-  Flag,
-  Gamepad2,
-  Gem,
   Gift,
   Grid2X2,
-  Heart,
   Info,
   List,
-  LogIn,
-  Medal,
   Search,
   Settings,
+  ShieldCheck,
   SlidersHorizontal,
-  Star,
   Tag,
-  Trophy,
 } from 'lucide-react'
-import { BrowserRouter, Route, Routes } from 'react-router-dom'
+import { BrowserRouter, Route, Routes, useNavigate } from 'react-router-dom'
 import './App.css'
 import { FilterBar } from './components/FilterBar'
 import { GameCard } from './components/GameCard'
 import { PageViewTracker } from './components/PageViewTracker'
 import { RatingExplainer } from './components/RatingExplainer'
-import { RefreshAllPanel } from './components/RefreshAllPanel'
-import { ScoreWeightSettings } from './components/ScoreWeightSettings'
 import { TrailerModal } from './components/TrailerModal'
 import { AdminPage } from './pages/AdminPage'
 import { GameDetailPage } from './pages/GameDetailPage'
@@ -49,7 +36,7 @@ import { useCollections } from './state/useCollections'
 import type { Facets, Game, GameFilters, GameSort, ProviderStatus } from './types/game'
 
 type MainPage = 'catalog' | 'watchlist' | 'playing' | 'seen' | 'completed' | 'liked' | 'favorites' | 'suggestions'
-type UtilityPage = 'login' | 'settings' | 'alerts' | 'about'
+type UtilityPage = 'settings' | 'about'
 type ActivePage = MainPage | UtilityPage
 
 const CURRENT_YEAR = new Date().getFullYear()
@@ -81,7 +68,6 @@ interface CuratedPreset {
   label: string
   icon: typeof Search
   filters: Partial<GameFilters>
-  comingSoon?: boolean
 }
 
 interface SidebarGroup {
@@ -91,62 +77,19 @@ interface SidebarGroup {
 
 const SIDEBAR_GROUPS: SidebarGroup[] = [
   {
-    label: 'Top Lists',
-    items: [
-      {
-        id: 'best-of-year',
-        label: 'Best of the Year',
-        icon: Trophy,
-        filters: { sort: 'rank_score', direction: 'desc' },
-      },
-      {
-        id: 'all-time-top',
-        label: 'All-Time Top',
-        icon: Star,
-        filters: { requireCritic: true, minLiveSources: 2, sort: 'rank_score', direction: 'desc' },
-      },
-      {
-        id: 'critics-pick',
-        label: "Critics' Picks",
-        icon: Medal,
-        filters: { requireCritic: true, minLiveSources: 1, sort: 'rank_score', direction: 'desc' },
-      },
-      {
-        id: 'goty-winners',
-        label: 'GOTY Winners',
-        icon: Award,
-        filters: { hasAward: true, sort: 'rank_score', direction: 'desc' },
-      },
-      {
-        id: 'hidden-gems',
-        label: 'Hidden Gems',
-        icon: Gem,
-        filters: { minScore: 75, maxRatings: 1500, requireCritic: true, sort: 'rank_score', direction: 'desc' },
-      },
-      {
-        id: 'most-reviewed',
-        label: 'Most Reviewed',
-        icon: BarChart2,
-        filters: { sort: 'review_count', direction: 'desc', minLiveSources: 1 },
-      },
-    ],
-  },
-  {
     label: 'Deals',
     items: [
       {
         id: 'best-deals',
         label: 'Best Deals',
         icon: Tag,
-        filters: { minScore: 80, minLiveSources: 1, sort: 'rank_score', direction: 'desc' },
-        comingSoon: true,
+        filters: { dealMode: 'best', minScore: 75, minLiveSources: 1, sort: 'rank_score', direction: 'desc' },
       },
       {
         id: 'free-games',
         label: 'Free Games',
         icon: Gift,
-        filters: { sort: 'rank_score', direction: 'desc' },
-        comingSoon: true,
+        filters: { dealMode: 'free', sort: 'rank_score', direction: 'desc' },
       },
     ],
   },
@@ -180,6 +123,7 @@ const DEFAULT_FILTERS: GameFilters = {
   minLiveSources: 0,
   requireCritic: false,
   hasAward: false,
+  dealMode: 'all',
   sort: 'rank_score',
   direction: 'desc',
 }
@@ -332,18 +276,12 @@ function writeCatalogSnapshot(snapshot: CatalogSnapshot | null) {
 const mainNavItems: Array<{ id: MainPage; label: string; icon: typeof Search }> = [
   { id: 'catalog', label: 'Search', icon: Search },
   { id: 'watchlist', label: 'Wishlist', icon: CheckCircle2 },
-  { id: 'playing', label: 'Playing', icon: Gamepad2 },
-  { id: 'seen', label: 'Played', icon: Eye },
-  { id: 'completed', label: 'Completed', icon: Flag },
-  { id: 'liked', label: 'Liked', icon: Heart },
-  { id: 'favorites', label: 'Favorites', icon: Star },
   { id: 'suggestions', label: 'For You', icon: Compass },
 ]
 
-const utilityNavItems: Array<{ id: UtilityPage; label: string; icon: typeof Search; comingSoon?: boolean }> = [
-  { id: 'login', label: 'Login', icon: LogIn, comingSoon: true },
+const utilityNavItems: Array<{ id: UtilityPage | 'admin'; label: string; icon: typeof Search }> = [
+  { id: 'admin', label: 'Admin', icon: ShieldCheck },
   { id: 'settings', label: 'Settings', icon: Settings },
-  { id: 'alerts', label: 'Alerts', icon: Bell, comingSoon: true },
   { id: 'about', label: 'About', icon: Info },
 ]
 
@@ -351,8 +289,8 @@ const mobileNavItems: Array<{ id: ActivePage; label: string; icon: typeof Search
   { id: 'catalog', label: 'Search', icon: Search },
   { id: 'watchlist', label: 'Wishlist', icon: CheckCircle2 },
   { id: 'suggestions', label: 'For You', icon: Compass },
-  { id: 'favorites', label: 'Saved', icon: Star },
   { id: 'settings', label: 'Settings', icon: Settings },
+  { id: 'about', label: 'About', icon: Info },
 ]
 
 const collectionLabels: Record<CollectionKey, string> = {
@@ -392,6 +330,7 @@ function formatRoundedThousands(value: number): string {
 }
 
 function AppContent() {
+  const navigate = useNavigate()
   const [restoredSnapshot] = useState<CatalogSnapshot | null>(readCatalogSnapshot)
   const restoredWithGames = Boolean(restoredSnapshot?.games.length)
   const [activePage, setActivePage] = useState<ActivePage>(restoredSnapshot?.activePage ?? 'catalog')
@@ -416,7 +355,6 @@ function AppContent() {
   const [offset, setOffset] = useState(restoredSnapshot?.offset ?? 0)
   const [hasMore, setHasMore] = useState(restoredSnapshot?.hasMore ?? true)
   const [isLoadingMore, setIsLoadingMore] = useState(false)
-  const [comingSoonNotice, setComingSoonNotice] = useState<string | null>(null)
   const loaderRef = useRef<HTMLDivElement>(null)
   const mastheadRef = useRef<HTMLElement>(null)
   const lastScrollYRef = useRef(restoredSnapshot?.scrollY ?? 0)
@@ -444,12 +382,6 @@ function AppContent() {
   useEffect(() => {
     filtersRef.current = filters
   }, [filters])
-
-  useEffect(() => {
-    if (!comingSoonNotice) return undefined
-    const timer = window.setTimeout(() => setComingSoonNotice(null), 1800)
-    return () => window.clearTimeout(timer)
-  }, [comingSoonNotice])
 
   useEffect(() => {
     latestCatalogRef.current = {
@@ -918,10 +850,6 @@ function AppContent() {
   }
 
   const applyPreset = (preset: CuratedPreset) => {
-    if (preset.comingSoon) {
-      setComingSoonNotice(`${preset.label} coming soon`)
-      return
-    }
     setActivePage('catalog')
     setActivePreset(preset.id)
     if (preset.id === 'best-of-year') {
@@ -971,15 +899,13 @@ function AppContent() {
                   return (
                     <button
                       type="button"
-                      className={`${activePreset === preset.id ? 'is-active' : ''}${preset.comingSoon ? ' is-coming-soon' : ''}`}
+                      className={activePreset === preset.id ? 'is-active' : ''}
                       key={preset.id}
-                      title={preset.comingSoon ? `${preset.label} - Coming soon` : preset.label}
-                      aria-disabled={preset.comingSoon ? 'true' : undefined}
+                      title={preset.label}
                       onClick={() => applyPreset(preset)}
                     >
                       <Icon size={18} aria-hidden="true" />
                       <span>{preset.label}</span>
-                      {preset.comingSoon ? <small>Soon</small> : null}
                     </button>
                   )
                 })}
@@ -988,16 +914,15 @@ function AppContent() {
           ))}
         </div>
         <div className="rail-group">
-          {utilityNavItems.map(({ icon: Icon, id, label, comingSoon }) => (
+          {utilityNavItems.map(({ icon: Icon, id, label }) => (
             <button
               type="button"
-              className={`${activePage === id ? 'is-active' : ''}${comingSoon ? ' is-coming-soon' : ''}`}
+              className={activePage === id ? 'is-active' : ''}
               key={id}
-              title={comingSoon ? `${label} - Coming soon` : label}
-              aria-disabled={comingSoon ? 'true' : undefined}
+              title={label}
               onClick={() => {
-                if (comingSoon) {
-                  setComingSoonNotice(`${label} coming soon`)
+                if (id === 'admin') {
+                  navigate('/admin')
                   return
                 }
                 setActivePage(id)
@@ -1005,15 +930,9 @@ function AppContent() {
             >
               <Icon size={22} aria-hidden="true" />
               <span>{label}</span>
-              {comingSoon ? <small>Soon</small> : null}
             </button>
           ))}
         </div>
-        {comingSoonNotice ? (
-          <div className="coming-soon-toast" role="status">
-            {comingSoonNotice}
-          </div>
-        ) : null}
       </aside>
 
       <nav className="mobile-tabbar" aria-label="Mobile navigation">
@@ -1070,21 +989,53 @@ function AppContent() {
           <section className="utility-panel">
             <h1>{pageTitle}</h1>
             {activePage === 'settings' ? (
-              <>
-                <h2 className="settings-subheading">Score Weights</h2>
-                <ScoreWeightSettings onSaved={() => { setPendingApply((n) => n + 1) }} />
-                <h2 className="settings-subheading">Score Data</h2>
-                <RefreshAllPanel />
-              </>
+              <div className="settings-grid">
+                <section className="settings-card">
+                  <h2>Catalog Layout</h2>
+                  <div className="settings-segmented" role="group" aria-label="Catalog layout">
+                    <button
+                      type="button"
+                      className={viewMode === 'list' ? 'is-active' : ''}
+                      onClick={() => setViewMode('list')}
+                    >
+                      <List size={16} aria-hidden="true" />
+                      <span>List</span>
+                    </button>
+                    <button
+                      type="button"
+                      className={viewMode === 'grid' ? 'is-active' : ''}
+                      onClick={() => setViewMode('grid')}
+                    >
+                      <Grid2X2 size={16} aria-hidden="true" />
+                      <span>Grid</span>
+                    </button>
+                  </div>
+                </section>
+                <section className="settings-card">
+                  <h2>Filter Panel</h2>
+                  <div className="settings-segmented" role="group" aria-label="Filter panel">
+                    <button
+                      type="button"
+                      className={filtersOpen ? 'is-active' : ''}
+                      onClick={() => setFiltersOpen(true)}
+                    >
+                      <SlidersHorizontal size={16} aria-hidden="true" />
+                      <span>Open</span>
+                    </button>
+                    <button
+                      type="button"
+                      className={!filtersOpen ? 'is-active' : ''}
+                      onClick={() => setFiltersOpen(false)}
+                    >
+                      <List size={16} aria-hidden="true" />
+                      <span>Compact</span>
+                    </button>
+                  </div>
+                </section>
+              </div>
             ) : activePage === 'about' ? (
               <RatingExplainer />
-            ) : (
-              <p>
-                {activePage === 'login'
-                  ? 'Login will connect personal collections across devices. Collections are saved locally for now.'
-                  : 'Alerts will notify you about new releases, score changes, and watchlist threshold crossings.'}
-              </p>
-            )}
+            ) : null}
           </section>
         ) : (
           <section className="catalog" id="catalog">
@@ -1123,18 +1074,25 @@ function AppContent() {
                         : activePreset === 'all-time-top'
                           ? 'All-time highest-rated games with critic coverage across multiple primary sources.'
                           : activePreset === 'best-deals'
-                            ? 'High-quality games at low prices — score ≥ 80, critic-backed.'
-                            : activePreset !== null
-                              ? 'Curated from the GameMetrix catalog — sorted by reliability-weighted score.'
-                              : activePage === 'suggestions'
-                                ? 'Top-rated games you haven\'t played, liked, or saved yet — find your next play.'
-                                : `Your local ${pageTitle.toLowerCase()} list.`}
+                            ? 'Discounted, high-signal games with tracked store prices.'
+                            : activePreset === 'free-games'
+                              ? 'Games currently tracked as free through store or FreeToGame data.'
+                              : activePreset !== null
+                                ? 'Curated from the GameMetrix catalog — sorted by reliability-weighted score.'
+                                : activePage === 'suggestions'
+                                  ? 'Top-rated games you haven\'t played, liked, or saved yet — find your next play.'
+                                  : `Your local ${pageTitle.toLowerCase()} list.`}
                 </p>
               </div>
             )}
 
-            {filters.developer || filters.publisher || filters.genre || filters.platform ? (
+            {filters.developer || filters.publisher || filters.genre || filters.platform || filters.dealMode !== 'all' ? (
               <div className="active-filter-row" aria-label="Active filters">
+                {filters.dealMode !== 'all' ? (
+                  <button type="button" onClick={() => { setFilters((current) => ({ ...current, dealMode: 'all' })); setActivePreset(null) }}>
+                    Deal: {filters.dealMode === 'best' ? 'Best Deals' : 'Free Games'} ×
+                  </button>
+                ) : null}
                 {filters.developer ? (
                   <button type="button" onClick={() => clearFilter('developer')}>
                     Developer: {filters.developer} ×

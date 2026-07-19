@@ -43,10 +43,7 @@ class Settings:
         self.CHEAPSHARK_USER_AGENT: str = os.getenv(
             "CHEAPSHARK_USER_AGENT", "GameMetrix/0.1"
         )
-        self.DATABASE_URL: str = os.getenv(
-            "DATABASE_URL",
-            "sqlite:///./gamemetrix.dev.db",
-        )
+        self.DATABASE_URL: str = os.getenv("DATABASE_URL", "").strip()
         self.CORS_ALLOW_ORIGINS: list[str] = _csv(
             os.getenv(
                 "CORS_ALLOW_ORIGINS",
@@ -90,6 +87,9 @@ class Settings:
         self.RAWG_DAILY_LIMIT: int = int(os.getenv("RAWG_DAILY_LIMIT", "600"))
         self.STEAM_DAILY_LIMIT: int = int(os.getenv("STEAM_DAILY_LIMIT", "300"))
         self.STEAMSPY_DAILY_LIMIT: int = int(os.getenv("STEAMSPY_DAILY_LIMIT", "300"))
+        self.CHEAPSHARK_DAILY_LIMIT: int = int(os.getenv("CHEAPSHARK_DAILY_LIMIT", "200"))
+        self.FREETOGAME_DAILY_LIMIT: int = int(os.getenv("FREETOGAME_DAILY_LIMIT", "200"))
+        self.ITAD_DAILY_LIMIT: int = int(os.getenv("ITAD_DAILY_LIMIT", "200"))
         # ── Per-source score weights (relative; default 1.0 = equal) ─────────
         # Higher values increase that source's share of the GameMetrix score.
         # Example: SCORE_WEIGHT_METACRITIC=2 gives Metacritic double influence.
@@ -124,6 +124,16 @@ class Settings:
         self.STARTUP_METADATA_BACKFILL_LIMIT: int = int(
             os.getenv("STARTUP_METADATA_BACKFILL_LIMIT", "12")
         )
+        # ── Data fill orchestration ─────────────────────────────────────────
+        self.DATA_FILL_ENABLED: bool = os.getenv("DATA_FILL_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"}
+        self.DATA_FILL_TARGET_TOTAL: int = int(os.getenv("DATA_FILL_TARGET_TOTAL", "10000"))
+        self.DATA_FILL_INTERVAL_HOURS: float = float(os.getenv("DATA_FILL_INTERVAL_HOURS", "24"))
+        self.DATA_FILL_STARTUP_DELAY_SECONDS: int = int(os.getenv("DATA_FILL_STARTUP_DELAY_SECONDS", "120"))
+        self.DATA_FILL_METADATA_BATCH_SIZE: int = int(os.getenv("DATA_FILL_METADATA_BATCH_SIZE", "48"))
+        self.DATA_FILL_RATING_BATCH_SIZE: int = int(os.getenv("DATA_FILL_RATING_BATCH_SIZE", "48"))
+        self.DATA_FILL_PRICE_BATCH_SIZE: int = int(os.getenv("DATA_FILL_PRICE_BATCH_SIZE", "48"))
+        self.DATA_FILL_HLTB_TARGET: int = int(os.getenv("DATA_FILL_HLTB_TARGET", "5000"))
+        self.DATA_FILL_INTER_GAME_DELAY: float = float(os.getenv("DATA_FILL_INTER_GAME_DELAY", "0.35"))
         # ── Heavy admin jobs (imports, refresh-all) — peak-hour block ────────
         # Both 0 (default) disables the block entirely. To pause heavy jobs
         # 18:00-23:00 local time, set HEAVY_JOB_BLOCK_START_HOUR=18 and

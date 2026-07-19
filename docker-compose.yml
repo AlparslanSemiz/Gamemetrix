@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # --- 1. VERİ TABANI (PostgreSQL) ---
   db:
@@ -36,7 +34,7 @@ services:
     env_file:
       - ./backend/.env # .env dosyasını buraya aldığın için yolunu böyle belirttik
     environment:
-      DATABASE_URL: postgresql+psycopg://admin:password123@db:5432/gamemetrix
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:?Set POSTGRES_USER before running docker compose}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD before running docker compose}@db:5432/${POSTGRES_DB:-gamemetrix}
     expose:
       - "8000"
     depends_on:

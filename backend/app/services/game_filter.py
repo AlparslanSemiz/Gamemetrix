@@ -7,6 +7,7 @@ Each function does exactly one thing.
 Public API:
   normalized_title(value)         -> str
   canonical_title(value)          -> str
+  escape_like(value)              -> str
   dedupe_near_duplicates(games)   -> list[Game]
   filter_by_genre                 -> list[Game]
   filter_by_developer             -> list[Game]
@@ -28,6 +29,18 @@ from .deduplication import (
     normalized_title,
     total_review_count,
 )
+
+
+LIKE_ESCAPE_CHAR = "\\"
+
+
+def escape_like(value: str) -> str:
+    """Escape LIKE wildcards so user input matches literally (use with ilike(..., escape=LIKE_ESCAPE_CHAR))."""
+    return (
+        value.replace(LIKE_ESCAPE_CHAR, LIKE_ESCAPE_CHAR * 2)
+        .replace("%", f"{LIKE_ESCAPE_CHAR}%")
+        .replace("_", f"{LIKE_ESCAPE_CHAR}_")
+    )
 
 
 def _total_review_count(game: Game) -> int:

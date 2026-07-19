@@ -191,6 +191,7 @@
   padding: 1.1rem 1.25rem;
   margin-bottom: 0.85rem;
   box-shadow: 0 18px 50px rgba(0, 0, 0, 0.28);
+  -webkit-backdrop-filter: blur(18px);
   backdrop-filter: blur(18px);
 }
 .dp-score-main {
@@ -476,12 +477,13 @@
 
 .dp-proton-tier {
   --proton-tier-color: #a6a6a6;
+  --proton-tier-rgb: 166, 166, 166;
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  border: 1px solid var(--proton-tier-color);
+  border: 1px solid rgba(var(--proton-tier-rgb), 0.76);
   border-radius: 999px;
-  background: color-mix(in srgb, var(--proton-tier-color) 12%, transparent);
+  background: rgba(var(--proton-tier-rgb), 0.12);
   color: var(--proton-tier-color);
   font-size: 0.72rem;
   font-weight: 900;
@@ -491,15 +493,15 @@
 }
 
 .dp-proton-tier:hover {
-  background: color-mix(in srgb, var(--proton-tier-color) 18%, transparent);
-  color: color-mix(in srgb, var(--proton-tier-color) 84%, white);
+  background: rgba(var(--proton-tier-rgb), 0.18);
+  color: var(--proton-tier-color);
 }
 
-.dp-proton-platinum { --proton-tier-color: #b4c7dc; }
-.dp-proton-gold { --proton-tier-color: #cfb53b; }
-.dp-proton-silver { --proton-tier-color: #a6a6a6; }
-.dp-proton-bronze { --proton-tier-color: #cd7f32; }
-.dp-proton-borked { --proton-tier-color: #f87171; }
+.dp-proton-platinum { --proton-tier-color: #b4c7dc; --proton-tier-rgb: 180, 199, 220; }
+.dp-proton-gold { --proton-tier-color: #cfb53b; --proton-tier-rgb: 207, 181, 59; }
+.dp-proton-silver { --proton-tier-color: #a6a6a6; --proton-tier-rgb: 166, 166, 166; }
+.dp-proton-bronze { --proton-tier-color: #cd7f32; --proton-tier-rgb: 205, 127, 50; }
+.dp-proton-borked { --proton-tier-color: #f87171; --proton-tier-rgb: 248, 113, 113; }
 
 /* ─── Price & availability ───────────────────────────────────────────────── */
 
@@ -707,25 +709,26 @@
 }
 
 .dp-proton-badge {
+  --proton-rgb: 166, 166, 166;
   display: inline-grid;
   place-items: center;
   min-width: 78px;
-  border: 1px solid var(--proton-color, #a6a6a6);
+  border: 1px solid rgba(var(--proton-rgb), 0.76);
   border-radius: 999px;
   padding: 4px 12px;
   color: var(--proton-color, #a6a6a6);
-  background: color-mix(in srgb, var(--proton-color, #a6a6a6) 12%, transparent);
+  background: rgba(var(--proton-rgb), 0.12);
   font-size: 0.74rem;
   font-weight: 900;
   letter-spacing: 0.4px;
   text-transform: uppercase;
 }
 
-.dp-proton-platinum { --proton-color: #b4c7dc; }
-.dp-proton-gold { --proton-color: #cfb53b; }
-.dp-proton-silver { --proton-color: #a6a6a6; }
-.dp-proton-bronze { --proton-color: #cd7f32; }
-.dp-proton-borked { --proton-color: #f87171; }
+.dp-proton-platinum { --proton-color: #b4c7dc; --proton-rgb: 180, 199, 220; }
+.dp-proton-gold { --proton-color: #cfb53b; --proton-rgb: 207, 181, 59; }
+.dp-proton-silver { --proton-color: #a6a6a6; --proton-rgb: 166, 166, 166; }
+.dp-proton-bronze { --proton-color: #cd7f32; --proton-rgb: 205, 127, 50; }
+.dp-proton-borked { --proton-color: #f87171; --proton-rgb: 248, 113, 113; }
 
 .dp-proton-detail {
   display: grid;
@@ -1086,6 +1089,7 @@
   background: rgba(5, 8, 13, 0.42);
   box-shadow: 0 24px 70px rgba(0, 0, 0, 0.32);
   padding: 10px;
+  -webkit-backdrop-filter: blur(16px);
   backdrop-filter: blur(16px);
 }
 
@@ -1144,6 +1148,7 @@
   pointer-events: none;
   transform: translate(-50%, -8px);
   transition: opacity 0.16s ease, transform 0.16s ease;
+  -webkit-backdrop-filter: blur(18px);
   backdrop-filter: blur(18px);
 }
 
@@ -1311,6 +1316,7 @@
   border-radius: 6px;
   box-shadow: 0 32px 80px rgba(0, 0, 0, 0.95);
   display: block;
+  -webkit-user-select: none;
   user-select: none;
 }
 .dp-lightbox-close {

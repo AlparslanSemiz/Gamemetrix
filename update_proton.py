@@ -1,75 +1,62 @@
-import os
-import requests
+"""Download the latest ProtonDB report archive for later Postgres import."""
 
-# Konfigürasyon
+from __future__ import annotations
+
+import os
+import json
+from pathlib import Path
+from urllib.request import Request, urlopen
+
 REPO_OWNER = "bdefore"
 REPO_NAME = "protondb-data"
 FOLDER_PATH = "reports"
-SAVE_DIR = "/home/ubuntu/gametrix/downloads" # Dosyanın kaydolacağı yer
-LAST_FILE_TRACKER = "/home/ubuntu/gametrix/last_downloaded.txt"
+SAVE_DIR = Path(os.getenv("PROTON_REPORT_DIR", "downloads"))
+LAST_FILE_TRACKER = SAVE_DIR / "last_downloaded.txt"
 
-# Klasörleri oluştur
-os.makedirs(SAVE_DIR, exist_ok=True)
 
-def get_latest_report():
-    # GitHub API'sinden klasör içeriğini çekiyoruz
+def get_latest_report() -> tuple[str, str] | None:
     url = f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}/contents/{FOLDER_PATH}"
-    response = requests.get(url)
-    if response.status_code != 200:
-        print("GitHub API'sine erişilemedi.")
-        return None
-    
-    files = response.json()
-    # Sadece .tar.gz uzantılı olanları filtrele
-    report_files = [f for f in files if f['name'].endswith('.tar.gz')]
-    
+    request = Request(url, headers={"User-Agent": "GameMetrix/0.1"})
+    with urlopen(request, timeout=30) as response:
+        payload = json.loads(response.read().decode("utf-8"))
+    report_files = [
+        item for item in payload
+        if isinstance(item, dict) and str(item.get("name", "")).endswith(".tar.gz")
+    ]
     if not report_files:
         return None
-    
-    # Dosya adından en güncel olanı bul (tarihe göre sıralı geldikleri için son eleman en yenisidir)
-    latest_file = report_files[-1]
-    return latest_file['name'], latest_file['download_url']
+    latest_file = sorted(report_files, key=lambda item: str(item["name"]))[-1]
+    return str(latest_file["name"]), str(latest_file["download_url"])
 
-def download_file(url, filename):
-    local_path = os.path.join(SAVE_DIR, filename)
-    print(f"İndiriliyor: {filename}...")
-    
-    # 1 GB RAM dostu streaming (parça parça) indirme yöntemi
-    with requests.get(url, stream=True) as r:
-        r.raise_for_status()
-        with open(local_path, 'wb') as f:
-            for chunk in r.iter_content(chunk_size=8192):
-                f.write(chunk)
-    print("İndirme tamamlandı!")
+
+def download_file(url: str, filename: str) -> Path:
+    SAVE_DIR.mkdir(parents=True, exist_ok=True)
+    local_path = SAVE_DIR / filename
+    request = Request(url, headers={"User-Agent": "GameMetrix/0.1"})
+    with urlopen(request, timeout=60) as response:
+        with local_path.open("wb") as handle:
+            while chunk := response.read(1024 * 1024):
+                if chunk:
+                    handle.write(chunk)
     return local_path
 
-def main():
+
+def main() -> None:
     result = get_latest_report()
     if not result:
-        print("Rapor bulunamadı.")
+        print("No ProtonDB report archive found.")
         return
-        
+
     filename, download_url = result
-    
-    # Daha önce indirdiğimiz dosya adını kontrol et
-    last_downloaded = ""
-    if os.path.exists(LAST_FILE_TRACKER):
-        with open(LAST_FILE_TRACKER, "r") as f:
-            last_downloaded = f.read().strip()
-            
+    last_downloaded = LAST_FILE_TRACKER.read_text().strip() if LAST_FILE_TRACKER.exists() else ""
     if filename == last_downloaded:
-        print("Zaten en güncel dosya indirilmiş. İşlem iptal edildi.")
+        print(f"Already downloaded latest ProtonDB report: {filename}")
         return
-        
-    # Yeni dosya var, indir
-    file_path = download_file(download_url, filename)
-    
-    # TODO: Burada indirilen dosyayı zipten çıkarıp SQLite veritabanına import eden fonksiyonunu tetikleyebilirsin.
-    # Örnek: import_to_sqlite(file_path)
-    
-    # İndirme başarılı olunca takip dosyasına adını yaz
-    with open(LAST_FILE_TRACKER, "w") as f:
-        f.write(filename)
+
+    local_path = download_file(download_url, filename)
+    LAST_FILE_TRACKER.write_text(filename)
+    print(f"Downloaded {filename} to {local_path}")
+
 
 if __name__ == "__main__":
     main()

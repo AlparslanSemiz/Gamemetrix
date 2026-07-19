@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from ..models import Game, infer_content_type
 from ..services.deduplication import find_existing_duplicate, merge_game_data
+from .rate_limiter import get_rate_limiter
 from .types import ExternalScore
 
 
@@ -143,6 +144,8 @@ async def import_steamspy_games(db: Session, target: int = 2000) -> dict[str, in
 
     async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT, headers=headers) as client:
         while imported < target:
+            if not await get_rate_limiter().acquire("SteamSpy"):
+                break
             response = await client.get(
                 STEAMSPY_URL,
                 params={"request": "all", "page": page},

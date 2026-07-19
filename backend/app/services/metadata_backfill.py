@@ -530,7 +530,14 @@ async def metadata_backfill_batch(
     limit: int = 24,
     *,
     inter_game_delay: float = 0.5,
+    use_lock: bool = True,
 ) -> dict[str, object]:
+    if not use_lock:
+        return await _metadata_backfill_batch_unlocked(
+            limit=limit,
+            inter_game_delay=inter_game_delay,
+        )
+
     if METADATA_BACKFILL_LOCK.locked():
         return {
             "status": "already_running",
@@ -543,51 +550,62 @@ async def metadata_backfill_batch(
         }
 
     async with METADATA_BACKFILL_LOCK:
-        with SessionLocal() as db:
-            candidates = [game.id for game in metadata_backfill_candidates(db, limit=limit)]
-
-        enriched = 0
-        changed = 0
-        skipped = 0
-        failed = 0
-        budget_skipped: dict[str, int] = {}
-
-        for game_id in candidates:
-            if inter_game_delay > 0:
-                await asyncio.sleep(inter_game_delay)
-            with SessionLocal() as db:
-                game = db.get(Game, game_id)
-                if game is None or not game_needs_metadata_backfill(game):
-                    skipped += 1
-                    continue
-                try:
-                    result = await refresh_game_metadata(db, game)
-                except Exception:
-                    failed += 1
-                    log.debug("metadata_backfill_batch failed for game_id=%d", game_id, exc_info=True)
-                    continue
-                if not result["attempted"]:
-                    skipped += 1
-                else:
-                    enriched += 1
-                if result["changed"]:
-                    changed += 1
-                for source in result["budget_skipped"]:
-                    budget_skipped[source] = budget_skipped.get(source, 0) + 1
-
-        log.info(
-            "metadata_backfill_batch done: %d enriched, %d changed, %d skipped, %d failed",
-            enriched,
-            changed,
-            skipped,
-            failed,
+        return await _metadata_backfill_batch_unlocked(
+            limit=limit,
+            inter_game_delay=inter_game_delay,
         )
-        return {
-            "status": "ok",
-            "considered": len(candidates),
-            "enriched": enriched,
-            "changed": changed,
-            "skipped": skipped,
-            "budget_skipped": budget_skipped,
-            "failed": failed,
-        }
+
+
+async def _metadata_backfill_batch_unlocked(
+    *,
+    limit: int,
+    inter_game_delay: float,
+) -> dict[str, object]:
+    with SessionLocal() as db:
+        candidates = [game.id for game in metadata_backfill_candidates(db, limit=limit)]
+
+    enriched = 0
+    changed = 0
+    skipped = 0
+    failed = 0
+    budget_skipped: dict[str, int] = {}
+
+    for game_id in candidates:
+        if inter_game_delay > 0:
+            await asyncio.sleep(inter_game_delay)
+        with SessionLocal() as db:
+            game = db.get(Game, game_id)
+            if game is None or not game_needs_metadata_backfill(game):
+                skipped += 1
+                continue
+            try:
+                result = await refresh_game_metadata(db, game)
+            except Exception:
+                failed += 1
+                log.debug("metadata_backfill_batch failed for game_id=%d", game_id, exc_info=True)
+                continue
+            if not result["attempted"]:
+                skipped += 1
+            else:
+                enriched += 1
+            if result["changed"]:
+                changed += 1
+            for source in result["budget_skipped"]:
+                budget_skipped[source] = budget_skipped.get(source, 0) + 1
+
+    log.info(
+        "metadata_backfill_batch done: %d enriched, %d changed, %d skipped, %d failed",
+        enriched,
+        changed,
+        skipped,
+        failed,
+    )
+    return {
+        "status": "ok",
+        "considered": len(candidates),
+        "enriched": enriched,
+        "changed": changed,
+        "skipped": skipped,
+        "budget_skipped": budget_skipped,
+        "failed": failed,
+    }

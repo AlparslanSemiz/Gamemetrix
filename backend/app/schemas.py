@@ -109,7 +109,7 @@ class GameRead(BaseModel):
 
 
 class GameListItem(BaseModel):
-    """Lightweight game row for the list endpoint — excludes price_snapshots (avoids N+1)."""
+    """Lightweight game row for the list endpoint; prices are loaded only for deal views."""
     model_config = ConfigDict(from_attributes=True)
 
     id: int
@@ -164,6 +164,7 @@ class GameListItem(BaseModel):
     system_requirements: list[dict] = []
     dlcs: list[dict] = []
     similar_games: list[dict] = []
+    price_snapshots: list[PriceSnapshotRead] = []
 
 
 class GameListResponse(BaseModel):

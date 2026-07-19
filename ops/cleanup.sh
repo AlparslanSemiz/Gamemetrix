@@ -4,7 +4,7 @@
 # Safe-by-default policy:
 #   - Things that are purely reconstructable (docker build cache, dangling
 #     images/containers, page cache, journal logs) are deleted automatically.
-#   - Things that are data (old .db backup snapshots) are only REPORTED by
+#   - Things that are data (old legacy DB backup snapshots) are only REPORTED by
 #     default; deletion requires an explicit opt-in env var, because an
 #     unattended cron job should never be the thing that silently destroys
 #     your last good backup.
@@ -30,7 +30,7 @@ APP_LOG_GLOBS=(
 LOG_TRUNCATE_THRESHOLD_BYTES=$((20 * 1024 * 1024)) # 20MB
 LOG_TAIL_KEEP_BYTES=$((1 * 1024 * 1024))           # keep the last 1MB on rotation
 
-# Old SQLite backup snapshots (backend/gamemetrix.dev.db.<timestamp>.bak) —
+# Old legacy DB backup snapshots —
 # reported only, unless explicitly enabled.
 BACKUP_MAX_AGE_DAYS=14
 AUTO_DELETE_OLD_BACKUPS="${AUTO_DELETE_OLD_BACKUPS:-false}"
@@ -88,9 +88,9 @@ if [ -w /proc/sys/vm/drop_caches ]; then
   echo 1 > /proc/sys/vm/drop_caches 2>/dev/null || log "drop_caches needs root — skipped"
 fi
 
-# ── 5. Old SQLite dev-DB backup snapshots — report, don't auto-delete ───────
+# ── 5. Old legacy DB backup snapshots — report, don't auto-delete ───────────
 shopt -s nullglob
-old_backups=("$PROJECT_DIR"/backend/gamemetrix.dev.db.*.bak)
+old_backups=("$PROJECT_DIR"/backend/*.db.*.bak)
 shopt -u nullglob
 for bak in "${old_backups[@]:-}"; do
   [ -f "$bak" ] || continue

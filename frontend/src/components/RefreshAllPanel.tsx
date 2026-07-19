@@ -1,22 +1,22 @@
 import { useEffect, useState } from 'react'
 import { getRateLimits, refreshAllScores } from '../services/games'
 
-export function RefreshAllPanel() {
+export function RefreshAllPanel({ token }: { token: string }) {
   const [status, setStatus] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [rateLimits, setRateLimits] = useState<Record<string, { remaining: number; limit: number }> | null>(null)
 
   useEffect(() => {
-    void getRateLimits().then(setRateLimits).catch(() => {})
-  }, [])
+    void getRateLimits(token).then(setRateLimits).catch(() => {})
+  }, [token])
 
   const trigger = async (force: boolean) => {
     setBusy(true)
     setStatus(null)
     try {
-      const { message } = await refreshAllScores(force, 3)
+      const { message } = await refreshAllScores(force, 3, token)
       setStatus(message)
-      void getRateLimits().then(setRateLimits).catch(() => {})
+      void getRateLimits(token).then(setRateLimits).catch(() => {})
     } catch {
       setStatus('Failed to start refresh.')
     } finally {
@@ -29,10 +29,10 @@ export function RefreshAllPanel() {
       <p>Scores are fetched automatically every 6 hours. Use the buttons below for manual control.</p>
       <div className="refresh-actions">
         <button type="button" className="apply-button" disabled={busy} onClick={() => trigger(false)}>
-          {busy ? 'Starting…' : '⚡ Refresh stale games'}
+          {busy ? 'Starting...' : 'Refresh stale games'}
         </button>
         <button type="button" className="apply-button refresh-danger" disabled={busy} onClick={() => trigger(true)}>
-          {busy ? 'Starting…' : '🔄 Force refresh ALL'}
+          {busy ? 'Starting...' : 'Force refresh all'}
         </button>
       </div>
       {status && <p className="refresh-status">{status}</p>}

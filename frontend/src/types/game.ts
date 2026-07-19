@@ -165,6 +165,7 @@ export interface GameFilters {
   minLiveSources: number
   requireCritic: boolean
   hasAward: boolean
+  dealMode: 'all' | 'best' | 'free'
   sort: GameSort
   direction: SortDirection
 }

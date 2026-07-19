@@ -13,13 +13,14 @@ $env:POSTGRES_PASSWORD="<choose-a-local-password>"
 docker compose up -d db
 ```
 
-For PostgreSQL, set `backend\.env` with a matching database URL:
+Set `backend\.env` with a matching PostgreSQL database URL:
 
 ```text
 DATABASE_URL=postgresql+psycopg://gamemetrix:<choose-a-local-password>@localhost:5432/gamemetrix
 ```
 
-Without `DATABASE_URL`, the backend uses the local SQLite dev database.
+`DATABASE_URL` is required. The backend intentionally supports one runtime
+database: PostgreSQL.
 
 ## Run Backend
 

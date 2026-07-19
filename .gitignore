@@ -9,6 +9,10 @@ frontend/dist/
 frontend/.vite.*.log
 
 backend/.uvicorn.*.log
+*.db
+*.db-shm
+*.db-wal
+*.db.*.bak
 backend/*.db
 backend/*.db-shm
 backend/*.db-wal

@@ -2,9 +2,9 @@
 Admin / internal debug endpoints.
 
 These endpoints are for developer/ops use only.
-They are NOT part of the public product API and should not be linked from the frontend.
-No authentication is implemented yet — keep this router internal (not documented in OpenAPI
-by default; production deployments should block /admin/* at the network/proxy layer).
+They are NOT part of the public product API; the admin UI may call them only after JWT login.
+Every endpoint requires an admin JWT (router-level require_admin_user dependency);
+production deployments should additionally restrict /admin/* at the network/proxy layer.
 
 Endpoints:
   GET  /admin/api-health                     — masked health status for all sources
@@ -12,6 +12,8 @@ Endpoints:
   GET  /admin/external-ids/{game_id}         — external IDs for a game
   GET  /admin/rating-snapshots/{game_id}     — rating history for a game
   GET  /admin/source-snapshots/{game_id}      — raw source fetch snapshots for a game
+  GET  /admin/data-fill/status               — automated data fill status
+  POST /admin/data-fill/run                  — queue automated data fill run
   POST /admin/import/prices/itad             — fetch + store ITAD prices for a game
   POST /admin/import/prices/cheapshark       — fetch + store CheapShark prices for a game
   POST /admin/match/external-ids             — match game to external sources
@@ -24,13 +26,14 @@ from collections import defaultdict
 from datetime import UTC, datetime, timedelta
 from enum import Enum
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Path, Query
 from sqlalchemy import desc, func, select
 from sqlalchemy.orm import Session
 
 from ..config import get_settings
 from ..database import get_db
 from ..models import ExternalId, Game, PriceSnapshot, RatingSnapshot, SourceSnapshot, VisitEvent, infer_content_type_with_parent
+from ..services.data_fill import data_fill_status, execute_data_fill_run, queue_data_fill_run
 from ..services.deduplication import consolidate_duplicate_games
 from ..integrations.cheapshark_service import cheapshark_service
 from ..integrations.igdb_service import igdb_service
@@ -214,6 +217,30 @@ def dashboard(
             "recent_visits": recent_visits,
         },
     }
+
+
+# ── Data fill orchestration ─────────────────────────────────────────────────
+
+
+@router.get("/data-fill/status")
+def get_data_fill_status() -> dict[str, object]:
+    return data_fill_status()
+
+
+@router.post("/data-fill/run")
+async def run_data_fill(
+    background_tasks: BackgroundTasks,
+    force: bool = Query(default=False),
+    target_total: int = Query(default=10000, ge=1, le=100000),
+) -> dict[str, object]:
+    run = queue_data_fill_run(force=force, target_total=target_total)
+    background_tasks.add_task(
+        execute_data_fill_run,
+        int(run["id"]),
+        force=force,
+        target_total=target_total,
+    )
+    return {"status": "queued", "run": run}
 
 
 # ── Per-source smoke test ─────────────────────────────────────────────────────

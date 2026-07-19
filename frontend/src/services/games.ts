@@ -12,6 +12,10 @@ import { API_BASE_URL } from './api'
 
 const CURRENT_YEAR = new Date().getFullYear()
 
+function authHeaders(token?: string): HeadersInit | undefined {
+  return token ? { Authorization: `Bearer ${token}` } : undefined
+}
+
 export async function getGames(
   filters: GameFilters,
   limit = 24,
@@ -37,6 +41,7 @@ export async function getGames(
   if (filters.minLiveSources > 0) params.set('min_live_sources', String(filters.minLiveSources))
   if (filters.requireCritic) params.set('require_critic', 'true')
   if (filters.hasAward) params.set('has_award', 'true')
+  if (filters.dealMode !== 'all') params.set('deal', filters.dealMode)
   params.set('sort', filters.sort)
   params.set('direction', filters.direction)
   params.set('limit', String(limit))
@@ -77,41 +82,9 @@ export async function getIntegrationStatus(): Promise<ProviderStatus[]> {
   return response.json()
 }
 
-export async function refreshGameScores(slug: string): Promise<Game> {
-  const response = await fetch(`${API_BASE_URL}/api/games/${slug}/refresh-scores`, {
-    method: 'POST',
-  })
-  if (!response.ok) throw new Error('Failed to refresh scores')
-  return response.json()
-}
-
 export async function getGameTrailer(slug: string): Promise<TrailerResponse> {
   const response = await fetch(`${API_BASE_URL}/api/games/${slug}/trailer`)
   if (!response.ok) throw new Error('Failed to fetch trailer')
-  return response.json()
-}
-
-export async function fetchGameScreenshots(slug: string): Promise<Game> {
-  const response = await fetch(`${API_BASE_URL}/api/games/${slug}/fetch-screenshots`, {
-    method: 'POST',
-  })
-  if (!response.ok) throw new Error('Failed to fetch screenshots')
-  return response.json()
-}
-
-export async function fetchGameSystemRequirements(slug: string): Promise<Game> {
-  const response = await fetch(`${API_BASE_URL}/api/games/${slug}/fetch-system-requirements`, {
-    method: 'POST',
-  })
-  if (!response.ok) throw new Error('Failed to fetch system requirements')
-  return response.json()
-}
-
-export async function fetchGamePrices(slug: string): Promise<Game> {
-  const response = await fetch(`${API_BASE_URL}/api/games/${slug}/fetch-prices`, {
-    method: 'POST',
-  })
-  if (!response.ok) throw new Error('Failed to fetch prices')
   return response.json()
 }
 
@@ -123,34 +96,45 @@ export async function getScoreWeights(): Promise<ScoreWeightsResponse> {
 
 export async function updateScoreWeights(
   weights: Record<string, number>,
+  token?: string,
 ): Promise<ScoreWeightsResponse> {
   const response = await fetch(`${API_BASE_URL}/api/score-weights`, {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
     body: JSON.stringify({ weights }),
   })
   if (!response.ok) throw new Error('Failed to update score weights')
   return response.json()
 }
 
-export async function getRateLimits(): Promise<Record<string, { remaining: number; limit: number }>> {
-  const response = await fetch(`${API_BASE_URL}/api/rate-limits`)
+export async function getRateLimits(token?: string): Promise<Record<string, { remaining: number; limit: number }>> {
+  const response = await fetch(`${API_BASE_URL}/api/rate-limits`, {
+    headers: authHeaders(token),
+  })
   if (!response.ok) throw new Error('Failed to fetch rate limits')
   return response.json()
 }
 
-export async function refreshAllScores(force = false, concurrency = 3): Promise<{ status: string; message: string }> {
+export async function refreshAllScores(
+  force = false,
+  concurrency = 3,
+  token?: string,
+): Promise<{ status: string; message: string }> {
   const response = await fetch(
     `${API_BASE_URL}/api/ratings/refresh-all?force=${force}&concurrency=${concurrency}`,
-    { method: 'POST' },
+    { method: 'POST', headers: authHeaders(token) },
   )
   if (!response.ok) throw new Error('Failed to start refresh')
   return response.json()
 }
 
-export async function recalculateScores(): Promise<{ recalculated: number }> {
+export async function recalculateScores(token?: string): Promise<{ recalculated: number }> {
   const response = await fetch(`${API_BASE_URL}/api/score-weights/recalculate`, {
     method: 'POST',
+    headers: authHeaders(token),
   })
   if (!response.ok) throw new Error('Failed to recalculate scores')
   return response.json()

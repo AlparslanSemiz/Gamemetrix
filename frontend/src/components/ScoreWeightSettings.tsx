@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
 import { getScoreWeights, recalculateScores, updateScoreWeights } from '../services/games'
 
-export function ScoreWeightSettings({ onSaved }: { onSaved: () => void }) {
+export function ScoreWeightSettings({ token, onSaved }: { token: string; onSaved: () => void }) {
   const [weights, setWeights] = useState<Record<string, number>>({})
-  const [message, setMessage] = useState<string>('Loading score weights…')
+  const [message, setMessage] = useState<string>('Loading score weights...')
 
   useEffect(() => {
     void getScoreWeights()
@@ -15,10 +15,10 @@ export function ScoreWeightSettings({ onSaved }: { onSaved: () => void }) {
   }, [])
 
   const saveWeights = async () => {
-    setMessage('Saving weights and recalculating scores…')
+    setMessage('Saving weights and recalculating scores...')
     try {
-      await updateScoreWeights(weights)
-      const result = await recalculateScores()
+      await updateScoreWeights(weights, token)
+      const result = await recalculateScores(token)
       setMessage(`Saved. Recalculated ${result.recalculated} games.`)
       onSaved()
     } catch {

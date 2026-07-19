@@ -1,7 +1,7 @@
 from datetime import date, datetime
 import re
 
-from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Integer, JSON, String, Text
+from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Integer, JSON, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .database import Base
@@ -117,8 +117,6 @@ class Game(Base):
     system_requirements: Mapped[list[dict]] = mapped_column(JSON, nullable=False, default=list)
     dlcs: Mapped[list[dict]] = mapped_column(JSON, nullable=False, default=list)
     similar_games: Mapped[list[dict]] = mapped_column(JSON, nullable=False, default=list)
-    proton_tier: Mapped[str | None] = mapped_column(String(16), nullable=True)
-    proton_score: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     price_snapshots: Mapped[list["PriceSnapshot"]] = relationship("PriceSnapshot", back_populates="game", cascade="all, delete-orphan", lazy="select")
 
@@ -351,6 +349,37 @@ class PriceSnapshot(Base):
     itad_id: Mapped[str | None] = mapped_column(String(200), nullable=True, index=True)
 
     game: Mapped["Game"] = relationship("Game", back_populates="price_snapshots")
+
+
+class ApiRequestBudget(Base):
+    """Persistent daily request counter for one upstream API source."""
+
+    __tablename__ = "api_request_budgets"
+    __table_args__ = (
+        UniqueConstraint("source", "bucket_date", name="uq_api_request_budgets_source_date"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    source: Mapped[str] = mapped_column(String(60), nullable=False, index=True)
+    bucket_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    request_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    daily_limit: Mapped[int] = mapped_column(Integer, nullable=False, default=100)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class DataFillRun(Base):
+    """Audit row for full catalog/data fill runs."""
+
+    __tablename__ = "data_fill_runs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="queued", index=True)
+    force: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    target_total: Mapped[int] = mapped_column(Integer, nullable=False, default=10000)
+    result: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 _DLC_TITLE_RE = re.compile(

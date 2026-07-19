@@ -103,6 +103,7 @@ export function FilterBar({ facets, filters, onChange, onApply }: FilterBarProps
       minLiveSources: 0,
       requireCritic: false,
       hasAward: false,
+      dealMode: 'all',
       sort: 'rank_score',
       direction: 'desc',
     })

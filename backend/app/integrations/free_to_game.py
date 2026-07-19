@@ -1,11 +1,12 @@
-from datetime import date
+from datetime import UTC, date, datetime
 
 import httpx
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..models import Game, infer_content_type
+from ..models import Game, PriceSnapshot, infer_content_type
 from ..services.deduplication import find_existing_duplicate, merge_game_data
+from .rate_limiter import get_rate_limiter
 
 
 FREE_TO_GAME_URL = "https://www.freetogame.com/api/games"
@@ -94,6 +95,9 @@ def _to_game(raw_game: dict[str, str | int]) -> Game:
 
 
 async def import_free_to_game_games(db: Session, target: int = 500) -> dict[str, int]:
+    if not await get_rate_limiter().acquire("FreeToGame"):
+        return {"imported": 0, "skipped": 0}
+
     async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT) as client:
         response = await client.get(FREE_TO_GAME_URL)
         response.raise_for_status()
@@ -107,17 +111,59 @@ async def import_free_to_game_games(db: Session, target: int = 500) -> dict[str,
         if existing:
             merge_game_data(existing, game)
             db.add(existing)
+            db.flush()
+            _upsert_free_price(db, existing, raw_game)
             skipped += 1
             continue
         existing = find_existing_duplicate(db, game)
         if existing:
             merge_game_data(existing, game)
             db.add(existing)
+            db.flush()
+            _upsert_free_price(db, existing, raw_game)
             skipped += 1
             continue
 
         db.add(game)
+        db.flush()
+        _upsert_free_price(db, game, raw_game)
         imported += 1
 
     db.commit()
     return {"imported": imported, "skipped": skipped}
+
+
+def _upsert_free_price(db: Session, game: Game, raw_game: dict[str, str | int]) -> None:
+    existing = db.scalar(
+        select(PriceSnapshot).where(
+            PriceSnapshot.game_id == game.id,
+            PriceSnapshot.source == "FreeToGame",
+        )
+    )
+    now = datetime.now(UTC)
+    url = str(raw_game.get("game_url") or raw_game.get("freetogame_profile_url") or "")
+    if existing:
+        existing.is_free = True
+        existing.sale_price = 0
+        existing.list_price = 0
+        existing.url = url or existing.url
+        existing.fetched_at = now
+        return
+    db.add(PriceSnapshot(
+        game_id=game.id,
+        source="FreeToGame",
+        external_price_id=str(raw_game.get("id") or ""),
+        store="FreeToGame",
+        platform="PC",
+        region="Global",
+        currency="USD",
+        list_price=0,
+        sale_price=0,
+        discount_percent=100,
+        is_free=True,
+        is_subscription_included=False,
+        url=url or None,
+        raw_payload=dict(raw_game),
+        fetched_at=now,
+        created_at=now,
+    ))

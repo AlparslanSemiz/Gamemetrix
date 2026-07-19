@@ -18,8 +18,8 @@ from typing import Annotated, Literal
 
 import httpx
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Path, Query, Request
-from sqlalchemy import Select, asc, desc, func, select, text
-from sqlalchemy.orm import Session, noload
+from sqlalchemy import Select, asc, desc, exists, func, or_, select, text
+from sqlalchemy.orm import Session, noload, selectinload
 
 from ..config import get_settings
 from ..database import SessionLocal, get_db
@@ -35,16 +35,15 @@ from ..schemas import (
 )
 from ..integrations.steam import (
     extract_steam_app_id,
-    fetch_steam_price,
     fetch_steam_screenshots,
     fetch_steam_system_requirements,
 )
 from ..integrations.sync import refresh_game_sources
-from ..integrations.cheapshark_service import cheapshark_service
-from ..integrations.itad_service import itad_service
 from ..integrations.youtube import find_trailer_video_id
 from ..services.game_filter import (
+    LIKE_ESCAPE_CHAR,
     dedupe_near_duplicates,
+    escape_like,
     filter_by_developer,
     filter_by_genre,
     filter_by_max_ratings,
@@ -59,6 +58,7 @@ from ..services.game_filter import (
 from ..services.deduplication import find_existing_duplicate, merge_game_data
 from ..services.game_similarity import find_series_games, find_similar_games, series_key_for_title
 from ..services.metadata_backfill import game_needs_metadata_backfill, refresh_game_metadata
+from ..services.price_backfill import fetch_and_store_prices
 from ..services.rawg_import import apply_rawg_to_game, game_from_rawg_search
 from ..rate_limit import limiter
 from ..security import require_admin_user
@@ -68,6 +68,7 @@ log = logging.getLogger(__name__)
 
 _RAWG_SEARCH_TIMEOUT = 15
 ContentTypeFilter = Literal["all", "game", "dlc", "demo", "mod", "software", "soundtrack", "utility"]
+DealFilter = Literal["all", "best", "free"]
 SlugPath = Annotated[str, Path(min_length=1, max_length=180)]
 
 
@@ -81,7 +82,7 @@ async def search_game(
 ) -> Game:
     existing = db.scalar(
         select(Game)
-        .where(Game.title.ilike(f"%{q}%"))
+        .where(Game.title.ilike(f"%{escape_like(q)}%", escape=LIKE_ESCAPE_CHAR))
         .order_by(Game.metacritic_score.is_(None), desc(Game.metacritic_score))
         .limit(1)
     )
@@ -150,27 +151,29 @@ def list_games(
     min_live_sources: int | None = Query(default=None, ge=0, le=10),
     require_critic: bool = False,
     has_award: bool = False,
+    deal: DealFilter = Query(default="all"),
     sort: GameSort = "rank_score",
     direction: SortDirection = "desc",
     limit: int = Query(default=120, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
 ) -> GameListResponse:
-    base_q = _build_db_query(content_type, q, year_min, year_max, min_score, max_score, sort, direction)
+    base_q = _build_db_query(content_type, q, year_min, year_max, min_score, max_score, deal, sort, direction)
 
     needs_memory_filter = any([genre, developer, publisher, platform, min_ratings, max_ratings, has_award, min_live_sources, require_critic])
     needs_memory_sort = sort in _IN_MEMORY_SORTS
+    price_options = selectinload(Game.price_snapshots) if deal != "all" else noload(Game.price_snapshots)
 
     if not needs_memory_filter and not needs_memory_sort:
         # Fast path: DB handles sort + pagination. Only the requested page is loaded.
         # COUNT uses a direct WHERE-clause query (no subquery) for index efficiency.
-        count_q = _build_count_query(content_type, q, year_min, year_max, min_score, max_score)
+        count_q = _build_count_query(content_type, q, year_min, year_max, min_score, max_score, deal)
         total = db.scalar(count_q) or 0
-        page_q = base_q.options(noload(Game.price_snapshots)).offset(offset).limit(limit)
+        page_q = base_q.options(price_options).offset(offset).limit(limit)
         games = list(db.scalars(page_q).all())
         return GameListResponse(games=games, total=total)
 
     # Slow path: in-memory filters or JSON-based sort require loading all matches.
-    all_q = base_q.options(noload(Game.price_snapshots))
+    all_q = base_q.options(price_options)
     games = list(db.scalars(all_q).all())
     games = _apply_in_memory_filters(
         games, genre, developer, publisher, platform,
@@ -189,13 +192,14 @@ def _build_count_query(
     year_max: int | None,
     min_score: float | None,
     max_score: float | None,
+    deal: str,
 ) -> Select[tuple[int]]:
     """Direct COUNT — no subquery, uses indexes on content_type/rank_score."""
     query = select(func.count(Game.id))
     if content_type != "all":
         query = query.where(Game.content_type == content_type)
     if q:
-        query = query.where(Game.title.ilike(f"%{q}%"))
+        query = query.where(Game.title.ilike(f"%{escape_like(q)}%", escape=LIKE_ESCAPE_CHAR))
     if year_min is not None:
         query = query.where(Game.release_year >= year_min)
     if year_max is not None:
@@ -204,6 +208,7 @@ def _build_count_query(
         query = query.where(Game.metrix_score >= min_score)
     if max_score is not None:
         query = query.where(Game.metrix_score <= max_score)
+    query = _apply_deal_filter(query, deal)
     return query
 
 
@@ -214,6 +219,7 @@ def _build_db_query(
     year_max: int | None,
     min_score: float | None,
     max_score: float | None,
+    deal: str,
     sort: str,
     direction: str,
 ) -> Select[tuple[Game]]:
@@ -221,7 +227,7 @@ def _build_db_query(
     if content_type != "all":
         query = query.where(Game.content_type == content_type)
     if q:
-        query = query.where(Game.title.ilike(f"%{q}%"))
+        query = query.where(Game.title.ilike(f"%{escape_like(q)}%", escape=LIKE_ESCAPE_CHAR))
     if year_min is not None:
         query = query.where(Game.release_year >= year_min)
     if year_max is not None:
@@ -230,7 +236,36 @@ def _build_db_query(
         query = query.where(Game.metrix_score >= min_score)
     if max_score is not None:
         query = query.where(Game.metrix_score <= max_score)
+    query = _apply_deal_filter(query, deal)
     return _apply_db_sort(query, sort, direction)
+
+
+def _apply_deal_filter(query: Select, deal: str) -> Select:
+    if deal == "free":
+        free_price = exists(
+            select(PriceSnapshot.id).where(
+                PriceSnapshot.game_id == Game.id,
+                PriceSnapshot.is_free.is_(True),
+            )
+        )
+        return query.where(free_price)
+    if deal == "best":
+        discounted_price = exists(
+            select(PriceSnapshot.id).where(
+                PriceSnapshot.game_id == Game.id,
+                or_(
+                    PriceSnapshot.is_free.is_(True),
+                    PriceSnapshot.discount_percent >= 50,
+                    (
+                        PriceSnapshot.sale_price.is_not(None)
+                        & PriceSnapshot.list_price.is_not(None)
+                        & (PriceSnapshot.sale_price < PriceSnapshot.list_price)
+                    ),
+                ),
+            )
+        )
+        return query.where(discounted_price)
+    return query
 
 
 def _apply_db_sort(query: Select[tuple[Game]], sort: str, direction: str) -> Select[tuple[Game]]:
@@ -446,162 +481,9 @@ async def fetch_game_prices(
     if game is None:
         raise HTTPException(status_code=404, detail="Game not found")
 
-    await _fetch_and_store_prices(db, game)
+    await fetch_and_store_prices(db, game)
     db.refresh(game)
     return game
-
-
-async def _fetch_and_store_prices(db: Session, game: Game) -> int:
-    now = datetime.datetime.now(datetime.UTC)
-    fresh_cutoff = now - datetime.timedelta(hours=12)
-    app_id = extract_steam_app_id(game.cover_url, game.image_url, game.slug)
-
-    def _snapshot_is_recent(snapshot: PriceSnapshot) -> bool:
-        fetched_at = snapshot.fetched_at
-        if fetched_at is None:
-            return False
-        if fetched_at.tzinfo is None:
-            fetched_at = fetched_at.replace(tzinfo=datetime.UTC)
-        return fetched_at >= fresh_cutoff
-
-    def _snapshot_needs_repair(snapshot: PriceSnapshot) -> bool:
-        raw = snapshot.raw_payload or {}
-        if snapshot.store.startswith("Store "):
-            return True
-        if snapshot.source == "CheapShark" and app_id is not None:
-            steam_app_id = raw.get("steam_app_id")
-            if steam_app_id is None:
-                return True
-            return str(steam_app_id) != str(app_id)
-        return False
-
-    if (
-        game.price_snapshots
-        and (app_id is None or any(snapshot.source == "Steam" and snapshot.store == "Steam" for snapshot in game.price_snapshots))
-        and not any(_snapshot_needs_repair(snapshot) for snapshot in game.price_snapshots)
-        and any(_snapshot_is_recent(snapshot) for snapshot in game.price_snapshots)
-    ):
-        return 0
-
-    rows: list[PriceSnapshot] = []
-
-    if app_id is not None:
-        steam_price = await fetch_steam_price(app_id)
-        if steam_price:
-            rows.append(PriceSnapshot(
-                game_id=game.id,
-                source="Steam",
-                external_price_id=str(app_id),
-                store="Steam",
-                platform="PC",
-                region="US",
-                currency=steam_price["currency"],
-                list_price=steam_price["list_price"],
-                sale_price=steam_price["sale_price"],
-                discount_percent=steam_price["discount_percent"],
-                is_free=steam_price["is_free"],
-                url=steam_price["url"],
-                raw_payload=steam_price["raw"],
-                fetched_at=now,
-                created_at=now,
-            ))
-
-    if itad_service.is_configured():
-        price_data = await itad_service.fetch_price_data(game.title, steam_appid=app_id)
-        if price_data:
-            rows.append(PriceSnapshot(
-                game_id=game.id,
-                source="ITAD",
-                store=price_data.store or "Best tracked PC store",
-                platform="PC",
-                region="EU",
-                currency=price_data.currency,
-                list_price=price_data.list_price,
-                sale_price=price_data.sale_price,
-                discount_percent=price_data.discount_percent,
-                historical_low=price_data.historical_low,
-                historical_low_date=price_data.historical_low_date,
-                is_free=price_data.is_free,
-                is_subscription_included=price_data.is_subscription_included,
-                subscription_service=price_data.subscription_service,
-                itad_id=price_data.itad_id,
-                fetched_at=now,
-                created_at=now,
-            ))
-
-    cs_game_id = await cheapshark_service.lookup_game_id(game.title, steam_appid=app_id)
-    deals = await cheapshark_service.get_game_deals(cs_game_id) if cs_game_id else []
-    if not deals:
-        deals = [
-            deal for deal in await cheapshark_service.search_deals(game.title, limit=20)
-            if _cheapshark_deal_matches_game(deal, game, app_id)
-        ]
-    if deals:
-        seen_stores: set[str] = {row.store.lower() for row in rows}
-        sorted_deals = sorted(deals, key=lambda d: float(d.get("salePrice", 9999)))
-        for deal in sorted_deals:
-            normalized = cheapshark_service.normalize_deal(deal)
-            store = str(normalized.raw.get("store_name") or "PC store")
-            store_key = store.lower()
-            if store_key in seen_stores:
-                continue
-            seen_stores.add(store_key)
-            deal_id = normalized.raw.get("cs_deal_id")
-            rows.append(PriceSnapshot(
-                game_id=game.id,
-                source="CheapShark",
-                external_price_id=str(deal_id) if deal_id else None,
-                store=store,
-                platform="PC",
-                region="US",
-                currency=normalized.currency,
-                list_price=normalized.list_price,
-                sale_price=normalized.sale_price,
-                discount_percent=int(normalized.raw.get("savings_pct", 0) or 0),
-                url=f"https://www.cheapshark.com/redirect?dealID={deal_id}" if deal_id else None,
-                raw_payload=normalized.raw,
-                fetched_at=now,
-                created_at=now,
-            ))
-            if len(seen_stores) >= 12:
-                break
-
-    if rows:
-        game.price_snapshots.clear()
-        db.flush()
-        db.add_all(rows)
-        db.commit()
-    return len(rows)
-
-
-_PRICE_ADDON_TERMS = (
-    "upgrade",
-    "dlc",
-    "soundtrack",
-    "bundle",
-    "pack",
-    "season pass",
-    "expansion",
-)
-
-
-def _price_title_key(value: str) -> str:
-    return " ".join(
-        "".join(ch.lower() if ch.isalnum() else " " for ch in value).split()
-    )
-
-
-def _cheapshark_deal_matches_game(raw: dict, game: Game, app_id: int | None) -> bool:
-    title = str(raw.get("title") or "")
-    normalized_title = _price_title_key(title)
-    expected = _price_title_key(game.title)
-    if not normalized_title:
-        return False
-    if app_id is not None and raw.get("steamAppID") and str(raw.get("steamAppID")) != str(app_id):
-        return False
-    if any(term in normalized_title for term in _PRICE_ADDON_TERMS) and normalized_title != expected:
-        return False
-    return normalized_title == expected or expected in normalized_title or normalized_title in expected
 
 
 @router.get("/api/games/{slug}/trailer", response_model=TrailerResponse)

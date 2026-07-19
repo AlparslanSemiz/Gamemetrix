@@ -42,6 +42,31 @@ export interface AdminDashboard {
   }
 }
 
+export interface DataFillRun {
+  id: number
+  status: string
+  force: boolean
+  target_total: number
+  result: Record<string, unknown>
+  error?: string | null
+  started_at: string
+  finished_at?: string | null
+}
+
+export interface DataFillStatus {
+  running: boolean
+  catalog: {
+    total_games: number
+    missing_ratings: number
+    missing_metadata: number
+    missing_hltb: number
+    missing_prices: number
+    missing_external_ids: number
+  }
+  rate_limits: Record<string, { remaining: number; limit: number }>
+  last_run?: DataFillRun | null
+}
+
 export class AdminApiError extends Error {
   readonly status: number
 
@@ -92,6 +117,30 @@ export async function getAdminDashboard(token: string, days = 7): Promise<AdminD
 
 export async function getAdminApiHealth(token: string): Promise<AdminApiHealth> {
   const response = await fetch(`${API_BASE_URL}/admin/api-health`, {
+    headers: adminHeaders(token),
+  })
+  if (!response.ok) throw await parseError(response)
+  return response.json()
+}
+
+export async function getDataFillStatus(token: string): Promise<DataFillStatus> {
+  const response = await fetch(`${API_BASE_URL}/admin/data-fill/status`, {
+    headers: adminHeaders(token),
+  })
+  if (!response.ok) throw await parseError(response)
+  return response.json()
+}
+
+export async function runDataFill(
+  token: string,
+  options: { force?: boolean; targetTotal?: number } = {},
+): Promise<{ status: string; run: DataFillRun }> {
+  const params = new URLSearchParams()
+  if (options.force) params.set('force', 'true')
+  if (options.targetTotal) params.set('target_total', String(options.targetTotal))
+  const query = params.toString()
+  const response = await fetch(`${API_BASE_URL}/admin/data-fill/run${query ? `?${query}` : ''}`, {
+    method: 'POST',
     headers: adminHeaders(token),
   })
   if (!response.ok) throw await parseError(response)

@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from ..models import Game, infer_content_type
 from ..services.deduplication import find_existing_duplicate, merge_game_data
+from .rate_limiter import get_rate_limiter
 from .sync import calculate_metrix_score
 
 
@@ -138,6 +139,8 @@ async def import_cheapshark_deals(
 
     async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT, headers=headers) as client:
         while imported < target:
+            if not await get_rate_limiter().acquire("CheapShark"):
+                break
             response = await client.get(
                 CHEAPSHARK_DEALS_URL,
                 params={

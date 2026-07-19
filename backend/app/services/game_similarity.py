@@ -648,6 +648,14 @@ def find_series_games(db: Session, source: Game, limit: int = 8) -> list[Game]:
     return matches[:limit]
 
 
+def _genre_match_sql() -> str:
+    """EXISTS clause matching a value inside the games.genres JSON array."""
+    return (
+        "EXISTS (SELECT 1 FROM jsonb_array_elements_text(games.genres::jsonb)"
+        " AS value WHERE value = :genre)"
+    )
+
+
 def find_similar_games(db: Session, source: Game, display_limit: int = 10) -> list[Game]:
     """
     Pull candidates in a small, fixed number of DB queries and rank them in-process.
@@ -655,6 +663,7 @@ def find_similar_games(db: Session, source: Game, display_limit: int = 10) -> li
     niche/low-rank titles still see genre-accurate matches, not just "best overall".
     """
     by_slug: dict[str, Game] = {}
+    genre_match_sql = _genre_match_sql()
 
     def _collect(stmt):
         for game in db.scalars(stmt):
@@ -674,7 +683,7 @@ def find_similar_games(db: Session, source: Game, display_limit: int = 10) -> li
             select(Game)
             .options(noload(Game.price_snapshots))
             .where(Game.content_type == "game")
-            .where(text("EXISTS (SELECT 1 FROM json_each(games.genres) WHERE json_each.value = :genre)"))
+            .where(text(genre_match_sql))
             .params(genre=genre)
             .order_by(Game.rank_score.desc())
             .limit(SIMILAR_GENRE_POOL)

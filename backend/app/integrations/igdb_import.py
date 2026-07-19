@@ -9,6 +9,7 @@ from ..config import get_settings
 from ..models import ExternalId, Game, infer_content_type
 from ..services.deduplication import find_existing_duplicate, merge_game_data
 from ..services.rawg_import import platform_family
+from .rate_limiter import get_rate_limiter
 from .igdb import _get_access_token
 from .sync import calculate_metrix_score, compute_rank_fields
 
@@ -218,6 +219,8 @@ async def import_igdb_nintendo_games(db: Session, target: int = 500, page_size: 
                     "sort total_rating_count desc; "
                     f"limit {min(page_size, target - imported)}; offset {offset};"
                 )
+                if not await get_rate_limiter().acquire("IGDB"):
+                    break
                 response = await client.post(IGDB_GAMES_URL, headers=headers, content=body)
                 if response.status_code in (401, 403):
                     raise RuntimeError("IGDB credentials were rejected. Add valid Twitch/IGDB credentials to backend/.env and restart.")

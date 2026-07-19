@@ -3,13 +3,9 @@ import { type CSSProperties, useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ExternalLink } from 'lucide-react'
 import {
-  fetchGamePrices,
-  fetchGameScreenshots,
-  fetchGameSystemRequirements,
   getGameBySlug,
   getGameTrailer,
   getSimilarGames,
-  refreshGameScores,
 } from '../services/games'
 import { ScoreRing } from '../components/ScoreRing'
 import { PlatformIcons } from '../components/PlatformIcons'
@@ -18,7 +14,7 @@ import { scoreColor, scoreColorRgb, sourceScoreColor } from '../utils/scoreColor
 import { steamAppIdFromGame } from '../utils/steam'
 import { safeExternalUrl } from '../utils/url'
 import { PROTON_TIER_LABELS, isProtonTier } from '../utils/proton'
-import type { Game, PriceSnapshot, SourceScore } from '../types/game'
+import type { Game, SourceScore } from '../types/game'
 import { DlcSection } from './detail/DlcSection'
 import { Gallery } from './detail/Gallery'
 import { PricePanel } from './detail/PricePanel'
@@ -34,28 +30,6 @@ const PRIMARY_4 = ['Metacritic', 'OpenCritic', 'Steam', 'IGDB'] as const
 // Extra sources shown in the secondary tab
 const EXTRA_SOURCES = ['RAWG', 'SteamSpy', 'CheapShark', 'FreeToGame'] as const
 const RATING_SOURCES = ['Metacritic', 'OpenCritic', 'Steam', 'IGDB', 'RAWG'] as const
-const SCORE_REFRESH_MAX_AGE_MS = 12 * 60 * 60 * 1000
-const PRICE_REFRESH_MAX_AGE_MS = 12 * 60 * 60 * 1000
-// Mirrors the backend's _BAD_SYSTEM_REQUIREMENT_MARKERS heuristic
-const BAD_SYSTEM_REQUIREMENT_MARKERS = ['windows xp', '1.2ghz', '256mb', '250 mb']
-
-function isOlderThan(value: string | null | undefined, maxAgeMs: number) {
-  if (!value) return true
-  const timestamp = new Date(value).getTime()
-  return Number.isNaN(timestamp) || Date.now() - timestamp > maxAgeMs
-}
-
-function mergeGameSnapshot(current: Game, incoming: Game): Game {
-  return {
-    ...current,
-    ...incoming,
-    screenshots: incoming.screenshots.length > 0 ? incoming.screenshots : current.screenshots,
-    system_requirements: incoming.system_requirements.length > 0 ? incoming.system_requirements : current.system_requirements,
-    dlcs: incoming.dlcs.length > 0 ? incoming.dlcs : current.dlcs,
-    similar_games: incoming.similar_games.length > 0 ? incoming.similar_games : current.similar_games,
-    price_snapshots: (incoming.price_snapshots?.length ?? 0) > 0 ? incoming.price_snapshots : current.price_snapshots,
-  }
-}
 
 function sourceExternalUrl(source: string, game: Game): string | null {
   const q = encodeURIComponent(game.title)
@@ -143,25 +117,6 @@ function protonLabel(game: Game): string | null {
   return tier && isProtonTier(tier) ? PROTON_TIER_LABELS[tier] : null
 }
 
-function shouldFetchPrices(prices: PriceSnapshot[] | undefined): boolean {
-  const snapshots = prices ?? []
-  if (snapshots.length === 0) return true
-  if (snapshots.some((price) => price.store.startsWith('Store '))) return true
-  if (!snapshots.some((price) => price.is_free || price.sale_price !== null || price.list_price !== null)) return true
-  return snapshots.every((price) => isOlderThan(price.fetched_at, PRICE_REFRESH_MAX_AGE_MS))
-}
-
-function shouldFetchSystemRequirements(game: Game): boolean {
-  if (!steamAppIdFromGame(game)) return false
-  const requirements = game.system_requirements ?? []
-  if (requirements.length === 0) return true
-  const text = requirements
-    .map((req) => `${req.platform} ${req.minimum} ${req.recommended}`)
-    .join(' ')
-    .toLowerCase()
-  return BAD_SYSTEM_REQUIREMENT_MARKERS.some((marker) => text.includes(marker))
-}
-
 function buildAboutParagraphs(game: Game): string[] {
   const paragraphs = [game.summary].filter(Boolean)
   const release = game.release_year > 1970 ? `released in ${game.release_year}` : 'released at an unknown date'
@@ -189,7 +144,6 @@ export function GameDetailPage() {
   const [similarCatalogGames, setSimilarCatalogGames] = useState<Game[]>([])
   const [similarLoading, setSimilarLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [isFetchingScreenshots, setIsFetchingScreenshots] = useState(false)
   const [ratingsTab, setRatingsTab] = useState<'primary' | 'extra'>('primary')
   const [trailerOpen, setTrailerOpen] = useState(false)
   const [trailerVideoId, setTrailerVideoId] = useState<string | null>(null)
@@ -213,20 +167,6 @@ export function GameDetailPage() {
   useEffect(() => {
     if (!slug) return
     let active = true
-    const timers: number[] = []
-    const schedule = (callback: () => void, delay: number) => {
-      const timer = window.setTimeout(() => {
-        if (active) callback()
-      }, delay)
-      timers.push(timer)
-    }
-    const updateGame = (incoming: Game) => {
-      if (!active) return
-      setGame((current) => {
-        if (!current || current.slug !== incoming.slug) return incoming
-        return mergeGameSnapshot(current, incoming)
-      })
-    }
 
     setGame(null)
     setSimilarCatalogGames([])
@@ -235,41 +175,12 @@ export function GameDetailPage() {
       .then((loaded) => {
         if (!active) return
         setGame(loaded)
-        if (isOlderThan(loaded.ratings_refreshed_at, SCORE_REFRESH_MAX_AGE_MS)) {
-          schedule(() => {
-            refreshGameScores(loaded.slug)
-              .then(updateGame)
-              .catch(() => { /* refresh failed silently — stale data still shown */ })
-          }, 350)
-        }
-        if (loaded.screenshots.length === 0) {
-          schedule(() => {
-            fetchGameScreenshots(loaded.slug)
-              .then(updateGame)
-              .catch(() => { /* no Steam ID — gallery shows cover only */ })
-          }, 700)
-        }
-        if (shouldFetchSystemRequirements(loaded)) {
-          schedule(() => {
-            fetchGameSystemRequirements(loaded.slug)
-              .then(updateGame)
-              .catch(() => { /* no Steam requirements — keep existing metadata */ })
-          }, 900)
-        }
-        if (shouldFetchPrices(loaded.price_snapshots)) {
-          schedule(() => {
-            fetchGamePrices(loaded.slug)
-              .then(updateGame)
-              .catch(() => { /* pricing is optional */ })
-          }, 1100)
-        }
       })
       .catch(() => {
         if (active) setError('Game not found.')
       })
     return () => {
       active = false
-      timers.forEach((timer) => window.clearTimeout(timer))
     }
   }, [slug])
 
@@ -289,14 +200,6 @@ export function GameDetailPage() {
       })
     return () => { active = false }
   }, [slug])
-
-  const handleFetchScreenshots = async () => {
-    if (!game) return
-    setIsFetchingScreenshots(true)
-    try { setGame(await fetchGameScreenshots(game.slug)) }
-    catch { /* no Steam ID or network error */ }
-    finally { setIsFetchingScreenshots(false) }
-  }
 
   const handleTrailer = async () => {
     if (!game) return
@@ -448,16 +351,6 @@ export function GameDetailPage() {
                   Official site
                 </a>
               ) : null}
-              {game.screenshots.length === 0 && (
-                <button
-                  type="button"
-                  className={`dp-btn${isFetchingScreenshots ? ' dp-btn-loading' : ''}`}
-                  onClick={handleFetchScreenshots}
-                  disabled={isFetchingScreenshots}
-                >
-                  🖼 {isFetchingScreenshots ? 'Fetching…' : 'Get Screenshots'}
-                </button>
-              )}
             </div>
 
             {/* Score block */}
