@@ -21,6 +21,7 @@ from ..integrations.sync import game_needs_rating_refresh, refresh_game_sources
 from ..models import DataFillRun, ExternalId, Game, PriceSnapshot
 from .metadata_backfill import metadata_backfill_batch
 from .price_backfill import price_backfill_batch
+from .primary_score_backfill import primary_score_backfill_batch, primary_score_coverage_status
 
 log = logging.getLogger(__name__)
 
@@ -79,17 +80,21 @@ def data_fill_status() -> dict[str, object]:
             select(func.count(Game.id)).where(Game.content_type == "game", ~has_price)
         ) or 0
         last_run = db.scalar(select(DataFillRun).order_by(desc(DataFillRun.started_at)).limit(1))
+    primary_scores = primary_score_coverage_status()
 
     return {
         "running": HEAVY_JOB_LOCK.locked(),
         "catalog": {
             "total_games": total_games,
             "missing_ratings": missing_ratings,
+            "missing_primary_scores": primary_scores["missing_score_slots"],
+            "primary_complete_games": primary_scores["complete_games"],
             "missing_metadata": missing_metadata,
             "missing_hltb": missing_hltb,
             "missing_prices": missing_prices,
             "missing_external_ids": _count_missing_external_ids(),
         },
+        "primary_scores": primary_scores,
         "rate_limits": get_rate_limiter().status(),
         "last_run": _serialize_run(last_run),
     }
@@ -120,6 +125,7 @@ async def execute_data_fill_run(run_id: int, *, force: bool, target_total: int) 
         result: dict[str, object] = {
             "catalog": {},
             "ratings": {},
+            "primary_scores": {},
             "metadata": {},
             "hltb": {},
             "prices": {},
@@ -128,6 +134,7 @@ async def execute_data_fill_run(run_id: int, *, force: bool, target_total: int) 
         try:
             result["external_ids"] = {"before_missing": _count_missing_external_ids()}
             result["catalog"] = await _fill_catalog(target_total)
+            result["primary_scores"] = await _fill_primary_scores(force=force)
             result["ratings"] = await _fill_ratings(force=force)
             result["metadata"] = await _fill_metadata()
             result["hltb"] = await _fill_hltb()
@@ -249,6 +256,21 @@ async def _fill_ratings(*, force: bool) -> dict[str, int]:
             except Exception:
                 failed += 1
     return {"refreshed": refreshed, "skipped": skipped, "failed": failed}
+
+
+async def _fill_primary_scores(*, force: bool) -> dict[str, object]:
+    cfg = get_settings()
+    if not _remaining_any(("Metacritic", "OpenCritic", "IGDB", "Steam")):
+        return {
+            "status": "budget_exhausted",
+            "coverage": primary_score_coverage_status(),
+        }
+    result = await primary_score_backfill_batch(
+        limit=cfg.DATA_FILL_PRIMARY_SCORE_BATCH_SIZE,
+        force=force,
+        inter_game_delay=cfg.DATA_FILL_INTER_GAME_DELAY,
+    )
+    return {"status": "ok", **result}
 
 
 async def _fill_metadata() -> dict[str, object]:

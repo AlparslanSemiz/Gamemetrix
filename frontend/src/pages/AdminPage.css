@@ -218,6 +218,13 @@
   color: inherit;
 }
 
+.admin-panel-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
 .admin-day-picker {
   display: inline-flex;
   gap: 4px;

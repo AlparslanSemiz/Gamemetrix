@@ -53,16 +53,33 @@ export interface DataFillRun {
   finished_at?: string | null
 }
 
+export interface PrimaryScoreCoverage {
+  sources: Record<string, {
+    live: number
+    missing: number
+    configured: boolean
+  }>
+  total_games: number
+  complete_games: number
+  incomplete_games: number
+  live_score_slots: number
+  missing_score_slots: number
+  target_score_slots: number
+}
+
 export interface DataFillStatus {
   running: boolean
   catalog: {
     total_games: number
     missing_ratings: number
+    missing_primary_scores: number
+    primary_complete_games: number
     missing_metadata: number
     missing_hltb: number
     missing_prices: number
     missing_external_ids: number
   }
+  primary_scores: PrimaryScoreCoverage
   rate_limits: Record<string, { remaining: number; limit: number }>
   last_run?: DataFillRun | null
 }
@@ -140,6 +157,22 @@ export async function runDataFill(
   if (options.targetTotal) params.set('target_total', String(options.targetTotal))
   const query = params.toString()
   const response = await fetch(`${API_BASE_URL}/admin/data-fill/run${query ? `?${query}` : ''}`, {
+    method: 'POST',
+    headers: adminHeaders(token),
+  })
+  if (!response.ok) throw await parseError(response)
+  return response.json()
+}
+
+export async function runPrimaryScores(
+  token: string,
+  options: { force?: boolean; limit?: number } = {},
+): Promise<{ status: string; coverage: PrimaryScoreCoverage }> {
+  const params = new URLSearchParams()
+  if (options.force) params.set('force', 'true')
+  if (options.limit) params.set('limit', String(options.limit))
+  const query = params.toString()
+  const response = await fetch(`${API_BASE_URL}/admin/primary-scores/run${query ? `?${query}` : ''}`, {
     method: 'POST',
     headers: adminHeaders(token),
   })

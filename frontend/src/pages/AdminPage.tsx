@@ -17,6 +17,7 @@ import {
   getDataFillStatus,
   loginAdmin,
   runDataFill,
+  runPrimaryScores,
   type AdminApiHealth,
   type AdminDashboard,
   type DataFillStatus,
@@ -62,6 +63,7 @@ export function AdminPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [isSigningIn, setIsSigningIn] = useState(false)
   const [isStartingDataFill, setIsStartingDataFill] = useState(false)
+  const [isStartingPrimaryScores, setIsStartingPrimaryScores] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const loadDashboard = useCallback(async () => {
@@ -109,6 +111,7 @@ export function AdminPage() {
     const catalog = dataFill?.catalog
     return [
       ['Missing ratings', catalog?.missing_ratings ?? 0],
+      ['Missing 4-source score slots', catalog?.missing_primary_scores ?? 0],
       ['Missing metadata', catalog?.missing_metadata ?? 0],
       ['Missing HLTB', catalog?.missing_hltb ?? 0],
       ['Missing prices', catalog?.missing_prices ?? 0],
@@ -118,7 +121,12 @@ export function AdminPage() {
 
   const rateLimitRows = useMemo(() => {
     return Object.entries(dataFill?.rate_limits ?? {})
-      .filter(([source]) => ['RAWG', 'IGDB', 'Steam', 'SteamSpy', 'CheapShark', 'FreeToGame', 'ITAD', 'OpenCritic'].includes(source))
+      .filter(([source]) => ['Metacritic', 'RAWG', 'IGDB', 'Steam', 'SteamSpy', 'CheapShark', 'FreeToGame', 'ITAD', 'OpenCritic'].includes(source))
+      .sort(([a], [b]) => a.localeCompare(b))
+  }, [dataFill])
+
+  const primaryScoreRows = useMemo(() => {
+    return Object.entries(dataFill?.primary_scores.sources ?? {})
       .sort(([a], [b]) => a.localeCompare(b))
   }, [dataFill])
 
@@ -157,6 +165,20 @@ export function AdminPage() {
       setError(err instanceof Error ? err.message : 'Data fill could not be started.')
     } finally {
       setIsStartingDataFill(false)
+    }
+  }
+
+  async function handleStartPrimaryScores() {
+    if (!token) return
+    setIsStartingPrimaryScores(true)
+    setError(null)
+    try {
+      await runPrimaryScores(token, { limit: 10000 })
+      setDataFill(await getDataFillStatus(token))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Primary scores could not be started.')
+    } finally {
+      setIsStartingPrimaryScores(false)
     }
   }
 
@@ -318,16 +340,30 @@ export function AdminPage() {
         <article className="admin-panel admin-panel-wide">
           <div className="admin-panel-head">
             <h2>Data Fill</h2>
-            <button type="button" onClick={handleStartDataFill} disabled={isStartingDataFill || dataFill?.running}>
-              <RefreshCw size={15} aria-hidden="true" />
-              <span>{isStartingDataFill ? 'Starting' : dataFill?.running ? 'Running' : 'Run fill'}</span>
-            </button>
+            <div className="admin-panel-actions">
+              <button type="button" onClick={handleStartPrimaryScores} disabled={isStartingPrimaryScores || dataFill?.running}>
+                <RefreshCw size={15} aria-hidden="true" />
+                <span>{isStartingPrimaryScores ? 'Starting' : dataFill?.running ? 'Running' : 'Fill 4 scores'}</span>
+              </button>
+              <button type="button" onClick={handleStartDataFill} disabled={isStartingDataFill || dataFill?.running}>
+                <RefreshCw size={15} aria-hidden="true" />
+                <span>{isStartingDataFill ? 'Starting' : dataFill?.running ? 'Running' : 'Run fill'}</span>
+              </button>
+            </div>
           </div>
           <div className="admin-data-fill-grid">
             <div className="admin-row-list">
               <div className="admin-row">
                 <span>Total games</span>
                 <strong>{formatNumber(dataFill?.catalog.total_games ?? 0)}</strong>
+              </div>
+              <div className="admin-row">
+                <span>4-source complete</span>
+                <strong>
+                  {formatNumber(dataFill?.primary_scores.complete_games ?? 0)}
+                  /
+                  {formatNumber(dataFill?.primary_scores.total_games ?? 0)}
+                </strong>
               </div>
               {dataGaps.map(([label, value]) => (
                 <div className="admin-row" key={label}>
@@ -337,6 +373,16 @@ export function AdminPage() {
               ))}
             </div>
             <div className="admin-budget-list">
+              {primaryScoreRows.map(([source, coverage]) => (
+                <div className="admin-row" key={`coverage-${source}`}>
+                  <span>{source} live</span>
+                  <strong>
+                    {formatNumber(coverage.live)}
+                    /
+                    {formatNumber(dataFill?.primary_scores.total_games ?? 0)}
+                  </strong>
+                </div>
+              ))}
               {rateLimitRows.map(([source, budget]) => {
                 const pct = budget.limit > 0 ? (budget.remaining / budget.limit) * 100 : 0
                 return (

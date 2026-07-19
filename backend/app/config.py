@@ -129,6 +129,7 @@ class Settings:
         self.DATA_FILL_TARGET_TOTAL: int = int(os.getenv("DATA_FILL_TARGET_TOTAL", "10000"))
         self.DATA_FILL_INTERVAL_HOURS: float = float(os.getenv("DATA_FILL_INTERVAL_HOURS", "24"))
         self.DATA_FILL_STARTUP_DELAY_SECONDS: int = int(os.getenv("DATA_FILL_STARTUP_DELAY_SECONDS", "120"))
+        self.DATA_FILL_PRIMARY_SCORE_BATCH_SIZE: int = int(os.getenv("DATA_FILL_PRIMARY_SCORE_BATCH_SIZE", "10000"))
         self.DATA_FILL_METADATA_BATCH_SIZE: int = int(os.getenv("DATA_FILL_METADATA_BATCH_SIZE", "48"))
         self.DATA_FILL_RATING_BATCH_SIZE: int = int(os.getenv("DATA_FILL_RATING_BATCH_SIZE", "48"))
         self.DATA_FILL_PRICE_BATCH_SIZE: int = int(os.getenv("DATA_FILL_PRICE_BATCH_SIZE", "48"))

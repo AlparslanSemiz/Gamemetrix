@@ -98,7 +98,7 @@ async def refresh_all_games(
                     if not force and not game_needs_rating_refresh(game, now):
                         return False
                     try:
-                        await refresh_game_sources(db, game)
+                        await refresh_game_sources(db, game, force=force)
                         return True
                     except Exception:
                         log.debug("refresh_all_games: failed for game_id=%d", game_id, exc_info=True)

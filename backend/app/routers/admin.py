@@ -14,6 +14,8 @@ Endpoints:
   GET  /admin/source-snapshots/{game_id}      — raw source fetch snapshots for a game
   GET  /admin/data-fill/status               — automated data fill status
   POST /admin/data-fill/run                  — queue automated data fill run
+  GET  /admin/primary-scores/status          — 4 primary score coverage
+  POST /admin/primary-scores/run             — complete OpenCritic/Metacritic/IGDB/Steam scores
   POST /admin/import/prices/itad             — fetch + store ITAD prices for a game
   POST /admin/import/prices/cheapshark       — fetch + store CheapShark prices for a game
   POST /admin/match/external-ids             — match game to external sources
@@ -32,9 +34,11 @@ from sqlalchemy.orm import Session
 
 from ..config import get_settings
 from ..database import get_db
+from ..heavy_jobs import HEAVY_JOB_LOCK
 from ..models import ExternalId, Game, PriceSnapshot, RatingSnapshot, SourceSnapshot, VisitEvent, infer_content_type_with_parent
 from ..services.data_fill import data_fill_status, execute_data_fill_run, queue_data_fill_run
 from ..services.deduplication import consolidate_duplicate_games
+from ..services.primary_score_backfill import primary_score_backfill_batch, primary_score_coverage_status
 from ..integrations.cheapshark_service import cheapshark_service
 from ..integrations.igdb_service import igdb_service
 from ..integrations.itad_service import itad_service
@@ -241,6 +245,35 @@ async def run_data_fill(
         target_total=target_total,
     )
     return {"status": "queued", "run": run}
+
+
+@router.get("/primary-scores/status")
+def get_primary_scores_status() -> dict[str, object]:
+    return primary_score_coverage_status()
+
+
+async def _execute_primary_scores_run(*, force: bool, limit: int) -> None:
+    if HEAVY_JOB_LOCK.locked():
+        return
+    cfg = get_settings()
+    async with HEAVY_JOB_LOCK:
+        await primary_score_backfill_batch(
+            limit=limit,
+            force=force,
+            inter_game_delay=cfg.DATA_FILL_INTER_GAME_DELAY,
+        )
+
+
+@router.post("/primary-scores/run")
+async def run_primary_scores(
+    background_tasks: BackgroundTasks,
+    force: bool = Query(default=False),
+    limit: int = Query(default=10000, ge=1, le=100000),
+) -> dict[str, object]:
+    if HEAVY_JOB_LOCK.locked():
+        raise HTTPException(status_code=409, detail="Another heavy job is already running.")
+    background_tasks.add_task(_execute_primary_scores_run, force=force, limit=limit)
+    return {"status": "started", "coverage": primary_score_coverage_status()}
 
 
 # ── Per-source smoke test ─────────────────────────────────────────────────────

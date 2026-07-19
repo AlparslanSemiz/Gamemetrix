@@ -13,7 +13,7 @@ Internal helpers (prefixed _):
 
 import asyncio
 import logging
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Sequence
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
@@ -257,6 +257,8 @@ def _cached_score(
     source_scores: list[dict[str, object]],
     source_name: str,
     ttl: timedelta | None = None,
+    *,
+    live_only: bool = False,
 ) -> ExternalScore | None:
     effective_ttl = ttl if ttl is not None else CACHE_TTL
     for s in source_scores:
@@ -265,6 +267,10 @@ def _cached_score(
         refreshed_at = s.get("refreshed_at")
         if not isinstance(refreshed_at, str):
             continue
+        status = str(s.get("status", "live"))
+        score = float(s.get("score", 0) or 0)
+        if live_only and (status != "live" or score <= 0):
+            continue
         try:
             refreshed_time = datetime.fromisoformat(refreshed_at)
         except ValueError:
@@ -272,9 +278,9 @@ def _cached_score(
         if datetime.now(UTC) - refreshed_time <= effective_ttl:
             return ExternalScore(
                 source=source_name,
-                score=float(s.get("score", 0)),
+                score=score,
                 scale=int(s.get("scale", 100)),
-                status=str(s.get("status", "live")),  # type: ignore[arg-type]
+                status=status,  # type: ignore[arg-type]
                 detail=str(s.get("detail", "Cached score")),
                 review_count=int(s.get("review_count", 0)),
             )
@@ -290,8 +296,12 @@ def game_needs_rating_refresh(game: Game, now: datetime | None = None) -> bool:
         refreshed_at = refreshed_at.replace(tzinfo=UTC)
     if now - refreshed_at >= CACHE_TTL:
         return True
-    known = {str(s.get("source")) for s in game.source_scores}
-    return any(src not in known for src in game.applicable_primary_sources)
+    live = {
+        str(s.get("source"))
+        for s in game.source_scores
+        if s.get("status") == "live" and float(s.get("score", 0) or 0) > 0
+    }
+    return any(src not in live for src in game.applicable_primary_sources)
 
 
 # ── Fetch orchestration ────────────────────────────────────────────────────────
@@ -301,10 +311,21 @@ async def _resolve_score(
     source: str,
     cached: ExternalScore | None,
     fetch: Callable[[], Awaitable[ExternalScore]],
+    *,
+    budget_source: str | None = None,
 ) -> ExternalScore:
     if cached:
         return cached
-    if not await get_rate_limiter().acquire(source):
+    if budget_source is None:
+        budget_source = source
+    if budget_source is not None and not _source_configured(source):
+        return ExternalScore(
+            source=source,
+            score=0,
+            status="unavailable",
+            detail=f"{source} is not configured.",
+        )
+    if budget_source is not None and not await get_rate_limiter().acquire(budget_source):
         return ExternalScore(
             source=source,
             score=0,
@@ -322,38 +343,72 @@ async def _resolve_score(
         )
 
 
-def _build_fetch_tasks(game: Game) -> list[Awaitable[ExternalScore]]:
-    tasks: list[Awaitable[ExternalScore]] = [
-        _resolve_score(
+def _source_configured(source: str) -> bool:
+    cfg = get_settings()
+    if source in {"Metacritic", "RAWG"}:
+        return cfg.rawg_configured()
+    if source == "OpenCritic":
+        return cfg.opencritic_configured()
+    if source == "IGDB":
+        return cfg.igdb_configured()
+    return True
+
+
+def _build_fetch_tasks(
+    game: Game,
+    *,
+    sources: Sequence[str] | None = None,
+    force: bool = False,
+    include_support: bool = True,
+    include_rawg_fallback: bool = True,
+) -> list[Awaitable[ExternalScore]]:
+    requested = set(sources) if sources is not None else None
+    live_only_cache = requested is not None
+
+    def wants(source: str) -> bool:
+        return requested is None or source in requested
+
+    def cached(source: str, ttl: timedelta | None = None) -> ExternalScore | None:
+        if force:
+            return None
+        return _cached_score(game.source_scores, source, ttl, live_only=live_only_cache)
+
+    tasks: list[Awaitable[ExternalScore]] = []
+    if wants("Metacritic"):
+        tasks.append(_resolve_score(
             "Metacritic",
-            _cached_score(game.source_scores, "Metacritic", RAWG_CACHE_TTL),
+            cached("Metacritic", RAWG_CACHE_TTL),
             lambda: get_rawg_metacritic_score(game.title, cached_value=game.metacritic_score),
-        ),
-        _resolve_score(
+            budget_source=None if game.metacritic_score is not None else "Metacritic",
+        ))
+    if wants("OpenCritic"):
+        tasks.append(_resolve_score(
             "OpenCritic",
-            _cached_score(game.source_scores, "OpenCritic"),
+            cached("OpenCritic"),
             lambda: get_opencritic_score(game.title),
-        ),
-        _resolve_score(
+        ))
+    if wants("IGDB"):
+        tasks.append(_resolve_score(
             "IGDB",
-            _cached_score(game.source_scores, "IGDB"),
+            cached("IGDB"),
             lambda: get_igdb_score(game.title),
-        ),
-    ]
-    if game.is_pc_applicable:
-        app_id = extract_steam_app_id(game.slug, game.cover_url)
+        ))
+
+    steam_requested = wants("Steam") and (game.is_pc_applicable or requested is not None)
+    if steam_requested:
+        app_id = extract_steam_app_id(game.slug, game.cover_url, game.image_url)
         tasks.append(
             _resolve_score(
                 "Steam",
-                _cached_score(game.source_scores, "Steam"),
+                cached("Steam"),
                 lambda: get_steam_score(game.slug, game.title, steam_app_id=app_id),
             )
         )
-        if app_id is not None:
+        if include_support and app_id is not None and wants("SteamSpy"):
             tasks.append(
                 _resolve_score(
                     "SteamSpy",
-                    _cached_score(game.source_scores, "SteamSpy"),
+                    cached("SteamSpy"),
                     lambda: get_steamspy_score(app_id),
                 )
             )
@@ -364,11 +419,11 @@ def _build_fetch_tasks(game: Game) -> list[Awaitable[ExternalScore]]:
         and float(s.get("score", 0) or 0) > 0
         and str(s.get("source")) in game.applicable_primary_sources
     }
-    if len(live_primary) < len(game.applicable_primary_sources):
+    if include_rawg_fallback and wants("RAWG") and len(live_primary) < len(game.applicable_primary_sources):
         tasks.append(
             _resolve_score(
                 "RAWG",
-                _cached_score(game.source_scores, "RAWG", RAWG_CACHE_TTL),
+                cached("RAWG", RAWG_CACHE_TTL),
                 lambda: get_rawg_rating_score(game.title),
             )
         )
@@ -632,11 +687,27 @@ def backfill_current_source_records(db: Session, game: Game) -> int:
     return len(scores)
 
 
-async def refresh_game_sources(db: Session, game: Game) -> Game:
-    fresh_scores = await asyncio.gather(*_build_fetch_tasks(game))
+async def refresh_game_sources(
+    db: Session,
+    game: Game,
+    *,
+    sources: Sequence[str] | None = None,
+    force: bool = False,
+    include_support: bool = True,
+    include_rawg_fallback: bool = True,
+    refresh_metadata: bool = True,
+) -> Game:
+    fresh_scores = await asyncio.gather(*_build_fetch_tasks(
+        game,
+        sources=sources,
+        force=force,
+        include_support=include_support,
+        include_rawg_fallback=include_rawg_fallback,
+    ))
 
-    from ..services.metadata import enrich_game_summary, fix_game_year
-    await asyncio.gather(fix_game_year(game), enrich_game_summary(game))
+    if refresh_metadata:
+        from ..services.metadata import enrich_game_summary, fix_game_year
+        await asyncio.gather(fix_game_year(game), enrich_game_summary(game))
 
     game.source_scores = _merge_source_scores(game.source_scores, list(fresh_scores))
     game.metrix_score = calculate_metrix_score(game.source_scores)
