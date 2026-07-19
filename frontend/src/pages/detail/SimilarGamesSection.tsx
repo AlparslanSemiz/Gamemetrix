@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { PlatformIcons } from '../../components/PlatformIcons'
 import type { Game } from '../../types/game'
 import { scoreColor } from '../../utils/scoreColors'
+import { safeExternalUrl } from '../../utils/url'
 import { normalizeSignal } from './format'
 
 export const SIMILAR_DISPLAY_LIMIT = 10
@@ -68,31 +69,43 @@ export function SimilarGamesSection({
             </div>
           </Link>
         ))}
-        {rawgDisplayItems.map((item) => (
-          <a
-            key={`${item.title}-${item.id ?? item.slug ?? ''}`}
-            href={item.url ?? '#'}
-            target={item.url ? '_blank' : undefined}
-            rel={item.url ? 'noreferrer' : undefined}
-            className="dp-similar-card"
-          >
-            <div className="dp-similar-cover">
-              {item.cover_url ? <img src={item.cover_url} alt="" loading="lazy" /> : null}
-              {item.metacritic_score ? (
-                <span
-                  className="dp-similar-score"
-                  style={{ '--score-color': scoreColor(Math.round(item.metacritic_score)) } as CSSProperties}
-                >
-                  {Math.round(item.metacritic_score)}
-                </span>
-              ) : null}
+        {rawgDisplayItems.map((item) => {
+          const itemUrl = safeExternalUrl(item.url)
+          const content = (
+            <>
+              <div className="dp-similar-cover">
+                {item.cover_url ? <img src={item.cover_url} alt="" loading="lazy" /> : null}
+                {item.metacritic_score ? (
+                  <span
+                    className="dp-similar-score"
+                    style={{ '--score-color': scoreColor(Math.round(item.metacritic_score)) } as CSSProperties}
+                  >
+                    {Math.round(item.metacritic_score)}
+                  </span>
+                ) : null}
+              </div>
+              <div className="dp-similar-body">
+                <strong>{item.title}</strong>
+                <span>{item.release_year && item.release_year > 1970 ? item.release_year : 'TBA'}</span>
+              </div>
+            </>
+          )
+          return itemUrl ? (
+            <a
+              key={`${item.title}-${item.id ?? item.slug ?? ''}`}
+              href={itemUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="dp-similar-card"
+            >
+              {content}
+            </a>
+          ) : (
+            <div key={`${item.title}-${item.id ?? item.slug ?? ''}`} className="dp-similar-card">
+              {content}
             </div>
-            <div className="dp-similar-body">
-              <strong>{item.title}</strong>
-              <span>{item.release_year && item.release_year > 1970 ? item.release_year : 'TBA'}</span>
-            </div>
-          </a>
-        ))}
+          )
+        })}
       </div>
     </section>
   )

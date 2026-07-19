@@ -16,6 +16,7 @@ import { PlatformIcons } from '../components/PlatformIcons'
 import { TrailerModal } from '../components/TrailerModal'
 import { scoreColor, scoreColorRgb, sourceScoreColor } from '../utils/scoreColors'
 import { steamAppIdFromGame } from '../utils/steam'
+import { safeExternalUrl } from '../utils/url'
 import type { Game, PriceSnapshot, SourceScore } from '../types/game'
 import { DlcSection } from './detail/DlcSection'
 import { Gallery } from './detail/Gallery'
@@ -368,7 +369,7 @@ export function GameDetailPage() {
     : 'Unknown'
   const earlyAccessLabel = formatDate(game.early_access_date)
   const officialReleaseLabel = formatDate(game.official_release_date ?? game.release_date)
-  const websiteUrl = game.website_url?.trim() || null
+  const websiteUrl = safeExternalUrl(game.website_url)
   const aboutParagraphs = buildAboutParagraphs(game)
   const priceSnapshots = game.price_snapshots ?? []
   const detailStyle = {

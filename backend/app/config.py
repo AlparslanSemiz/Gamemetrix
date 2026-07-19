@@ -45,7 +45,7 @@ class Settings:
         )
         self.DATABASE_URL: str = os.getenv(
             "DATABASE_URL",
-            "postgresql+psycopg://admin:password123@localhost:5432/gamemetrix",
+            "sqlite:///./gamemetrix.dev.db",
         )
         self.CORS_ALLOW_ORIGINS: list[str] = _csv(
             os.getenv(

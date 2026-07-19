@@ -7,9 +7,9 @@ services:
     container_name: gamemetrix-db
     restart: always
     environment:
-      POSTGRES_USER: admin
-      POSTGRES_PASSWORD: password123
-      POSTGRES_DB: gamemetrix
+      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER before running docker compose}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD before running docker compose}
+      POSTGRES_DB: ${POSTGRES_DB:-gamemetrix}
     ports:
       - "5432:5432"
     volumes:

@@ -12,7 +12,7 @@ from datetime import UTC, date, datetime
 import httpx
 
 from ..config import get_settings
-from .igdb import _get_access_token  # reuse existing token cache
+from .igdb import _get_access_token, escape_igdb_search_text  # reuse existing token cache
 from .types import NormalizedGame, SourceHealth
 
 log = logging.getLogger(__name__)
@@ -81,7 +81,7 @@ class IGDBService:
             "involved_companies.company.name,involved_companies.developer,"
             "involved_companies.publisher,summary,external_games.uid,"
             "external_games.category,url; "
-            f'search "{title}"; '
+            f'search "{escape_igdb_search_text(title)}"; '
             "where version_parent = null; "
             "limit 3;"
         )

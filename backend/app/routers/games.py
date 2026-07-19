@@ -2,7 +2,7 @@
 Public game endpoints.
 
 Routes:
-  GET  /api/search                          — RAWG-backed title search
+  GET  /api/search                          — admin RAWG-backed title search/import
   GET  /api/games                           — paginated, filtered game list
   GET  /api/games/{slug}                    — single game detail
   POST /api/games/{slug}/refresh-scores     — trigger manual score refresh
@@ -14,9 +14,10 @@ Routes:
 
 import datetime
 import logging
+from typing import Annotated, Literal
 
 import httpx
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Path, Query, Request
 from sqlalchemy import Select, asc, desc, func, select, text
 from sqlalchemy.orm import Session, noload
 
@@ -67,14 +68,17 @@ router = APIRouter(tags=["games"])
 log = logging.getLogger(__name__)
 
 _RAWG_SEARCH_TIMEOUT = 15
+ContentTypeFilter = Literal["all", "game", "dlc", "demo", "mod", "software", "soundtrack", "utility"]
+SlugPath = Annotated[str, Path(min_length=1, max_length=180)]
 
 
 @router.get("/api/search", response_model=GameRead)
 @limiter.limit(get_settings().PUBLIC_READ_RATE_LIMIT)
 async def search_game(
     request: Request,
-    q: str = Query(..., min_length=2),
+    q: str = Query(..., min_length=2, max_length=120),
     db: Session = Depends(get_db),
+    _admin=Depends(require_admin_user),
 ) -> Game:
     existing = db.scalar(
         select(Game)
@@ -132,14 +136,14 @@ _IN_MEMORY_SORTS = {"metacritic_score", "opencritic_score", "steam_score", "revi
 def list_games(
     request: Request,
     db: Session = Depends(get_db),
-    q: str | None = Query(default=None, min_length=2),
-    genre: str | None = None,
+    q: str | None = Query(default=None, min_length=2, max_length=120),
+    genre: str | None = Query(default=None, max_length=80),
     year_min: int | None = Query(default=None, ge=1970, le=2100),
     year_max: int | None = Query(default=None, ge=1970, le=2100),
-    platform: str | None = None,
-    content_type: str = Query(default="game"),
-    developer: str | None = None,
-    publisher: str | None = None,
+    platform: str | None = Query(default=None, max_length=80),
+    content_type: ContentTypeFilter = Query(default="game"),
+    developer: str | None = Query(default=None, max_length=200),
+    publisher: str | None = Query(default=None, max_length=200),
     min_score: float | None = Query(default=None, ge=0, le=100),
     max_score: float | None = Query(default=None, ge=0, le=100),
     min_ratings: int | None = Query(default=None, ge=0),
@@ -287,7 +291,7 @@ def _apply_in_memory_filters(
 @limiter.limit(get_settings().PUBLIC_READ_RATE_LIMIT)
 async def get_game(
     request: Request,
-    slug: str,
+    slug: SlugPath,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
 ) -> Game:
@@ -389,7 +393,7 @@ def _system_requirements_need_repair(requirements: list[dict] | None) -> bool:
 @limiter.limit(get_settings().PUBLIC_READ_RATE_LIMIT)
 def get_similar_games(
     request: Request,
-    slug: str,
+    slug: SlugPath,
     limit: int = Query(default=10, ge=1, le=24),
     db: Session = Depends(get_db),
 ) -> GameListResponse:
@@ -402,7 +406,7 @@ def get_similar_games(
 
 @router.post("/api/games/{slug}/refresh-scores", response_model=GameRead)
 async def refresh_game_scores(
-    slug: str,
+    slug: SlugPath,
     db: Session = Depends(get_db),
     _admin=Depends(require_admin_user),
 ) -> Game:
@@ -414,7 +418,7 @@ async def refresh_game_scores(
 
 @router.post("/api/games/{slug}/fetch-screenshots", response_model=GameRead)
 async def fetch_game_screenshots(
-    slug: str,
+    slug: SlugPath,
     db: Session = Depends(get_db),
     _admin=Depends(require_admin_user),
 ) -> Game:
@@ -437,7 +441,7 @@ async def fetch_game_screenshots(
 
 @router.post("/api/games/{slug}/fetch-system-requirements", response_model=GameRead)
 async def fetch_game_system_requirements(
-    slug: str,
+    slug: SlugPath,
     db: Session = Depends(get_db),
     _admin=Depends(require_admin_user),
 ) -> Game:
@@ -460,7 +464,7 @@ async def fetch_game_system_requirements(
 
 @router.post("/api/games/{slug}/fetch-prices", response_model=GameRead)
 async def fetch_game_prices(
-    slug: str,
+    slug: SlugPath,
     db: Session = Depends(get_db),
     _admin=Depends(require_admin_user),
 ) -> Game:
@@ -630,7 +634,7 @@ def _cheapshark_deal_matches_game(raw: dict, game: Game, app_id: int | None) -> 
 @limiter.limit(get_settings().PUBLIC_READ_RATE_LIMIT)
 async def get_trailer(
     request: Request,
-    slug: str,
+    slug: SlugPath,
     db: Session = Depends(get_db),
 ) -> dict[str, str | None]:
     game = db.scalar(select(Game).where(Game.slug == slug))

@@ -8,14 +8,18 @@ frontend that filters games by search, genre, year, score, and sort order.
 ## Run PostgreSQL
 
 ```powershell
+$env:POSTGRES_USER="gamemetrix"
+$env:POSTGRES_PASSWORD="<choose-a-local-password>"
 docker compose up -d db
 ```
 
-The default backend database URL is:
+For PostgreSQL, set `backend\.env` with a matching database URL:
 
 ```text
-postgresql+psycopg://admin:password123@localhost:5432/gamemetrix
+DATABASE_URL=postgresql+psycopg://gamemetrix:<choose-a-local-password>@localhost:5432/gamemetrix
 ```
+
+Without `DATABASE_URL`, the backend uses the local SQLite dev database.
 
 ## Run Backend
 

@@ -1,6 +1,7 @@
 import type { CSSProperties } from 'react'
 import type { Game } from '../../types/game'
 import { scoreColor, scoreColorRgb } from '../../utils/scoreColors'
+import { safeExternalUrl } from '../../utils/url'
 
 function escapeRegExp(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
@@ -23,6 +24,7 @@ export function DlcSection({ game }: { game: Game }) {
       </div>
       <div className="dp-dlc-grid">
         {game.dlcs.slice(0, 12).map((item) => {
+          const itemUrl = safeExternalUrl(item.url)
           const score = item.metacritic_score ?? (item.rating ? Math.round(item.rating * 20) : null)
           const title = displayDlcTitle(game.title, item.title)
           const accentScore = Math.round(score ?? game.rank_score)
@@ -50,10 +52,10 @@ export function DlcSection({ game }: { game: Game }) {
               </div>
             </>
           )
-          return item.url ? (
+          return itemUrl ? (
             <a
               key={`${item.title}-${item.id ?? item.slug ?? ''}`}
-              href={item.url}
+              href={itemUrl}
               target="_blank"
               rel="noreferrer"
               className="dp-dlc-card"

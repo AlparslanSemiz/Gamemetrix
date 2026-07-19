@@ -12,8 +12,9 @@ Routes:
 """
 
 import asyncio
+import math
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
@@ -58,6 +59,10 @@ def update_score_weights(
     _admin=Depends(require_admin_user),
 ) -> dict[str, dict[str, float]]:
     for source, value in payload.weights.items():
+        if source not in SOURCE_WEIGHTS:
+            raise HTTPException(status_code=422, detail=f"Unknown score source: {source}")
+        if not math.isfinite(value):
+            raise HTTPException(status_code=422, detail=f"Invalid score weight for {source}")
         SOURCE_WEIGHTS[source] = max(0.0, min(float(value), 1.0))
     return {"weights": SOURCE_WEIGHTS}
 

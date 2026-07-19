@@ -1,5 +1,6 @@
 import type { Game, PriceSnapshot } from '../../types/game'
 import { steamAppIdFromGame } from '../../utils/steam'
+import { safeExternalUrl } from '../../utils/url'
 import { formatDate, formatMoney } from './format'
 
 function sortedPrices(prices: PriceSnapshot[]): PriceSnapshot[] {
@@ -72,7 +73,7 @@ function buildStoreOffers(prices: PriceSnapshot[], game: Game): StoreOffer[] {
       priceLabel: label,
       listLabel: price.list_price !== null && price.list_price !== undefined ? formatMoney(price.list_price, price.currency) : undefined,
       meta: [price.source, price.region, 'Base game'].filter(Boolean).join(' · '),
-      url: price.url ?? storeSearchUrl(price.store, game),
+      url: safeExternalUrl(price.url) ?? storeSearchUrl(price.store, game),
       discount: price.discount_percent,
       amount,
     }

@@ -43,6 +43,10 @@ def _unavailable(detail: str) -> ExternalScore:
     return ExternalScore(source="IGDB", score=0, status="unavailable", detail=detail)
 
 
+def escape_igdb_search_text(value: str) -> str:
+    return value.replace("\\", "\\\\").replace('"', '\\"')
+
+
 def _pick_score(game: dict) -> float | None:
     # IGDB is our user-community signal: prefer user rating over aggregated critic rating.
     return game.get("rating") or game.get("total_rating") or game.get("aggregated_rating")
@@ -68,7 +72,7 @@ async def get_igdb_score(title: str) -> ExternalScore:
         "total_rating,total_rating_count,first_release_date,genres.name,platforms.name,"
         "involved_companies.company.name,involved_companies.developer,involved_companies.publisher,"
         "cover.url,screenshots.url,summary; "
-        f'search "{title}"; '
+        f'search "{escape_igdb_search_text(title)}"; '
         "where version_parent = null; "
         "limit 1;"
     )

@@ -24,7 +24,7 @@ from collections import defaultdict
 from datetime import UTC, datetime, timedelta
 from enum import Enum
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from sqlalchemy import desc, func, select
 from sqlalchemy.orm import Session
 
@@ -287,7 +287,7 @@ async def source_test(
 
 
 @router.get("/external-ids/{game_id}")
-def get_external_ids(game_id: int, db: Session = Depends(get_db)) -> dict:
+def get_external_ids(game_id: int = Path(..., ge=1), db: Session = Depends(get_db)) -> dict:
     game = db.scalar(select(Game).where(Game.id == game_id))
     if not game:
         raise HTTPException(status_code=404, detail="Game not found")
@@ -312,7 +312,7 @@ def get_external_ids(game_id: int, db: Session = Depends(get_db)) -> dict:
 
 @router.post("/match/external-ids")
 async def match_external_ids(
-    game_id: int = Query(..., description="GameMetrix game ID"),
+    game_id: int = Query(..., ge=1, description="GameMetrix game ID"),
     db: Session = Depends(get_db),
 ) -> dict:
     """
@@ -400,7 +400,7 @@ def _upsert_external_id(
 
 
 @router.get("/rating-snapshots/{game_id}")
-def get_rating_snapshots(game_id: int, db: Session = Depends(get_db)) -> dict:
+def get_rating_snapshots(game_id: int = Path(..., ge=1), db: Session = Depends(get_db)) -> dict:
     game = db.scalar(select(Game).where(Game.id == game_id))
     if not game:
         raise HTTPException(status_code=404, detail="Game not found")
@@ -432,7 +432,7 @@ def get_rating_snapshots(game_id: int, db: Session = Depends(get_db)) -> dict:
 
 
 @router.get("/source-snapshots/{game_id}")
-def get_source_snapshots(game_id: int, db: Session = Depends(get_db)) -> dict:
+def get_source_snapshots(game_id: int = Path(..., ge=1), db: Session = Depends(get_db)) -> dict:
     game = db.scalar(select(Game).where(Game.id == game_id))
     if not game:
         raise HTTPException(status_code=404, detail="Game not found")
@@ -493,8 +493,8 @@ def admin_consolidate(db: Session = Depends(get_db)) -> dict:
 
 @router.post("/import/prices/itad")
 async def import_prices_itad(
-    game_id: int = Query(..., description="GameMetrix game ID"),
-    country: str = Query(default="EU", description="Region code (EU, US, ...)"),
+    game_id: int = Query(..., ge=1, description="GameMetrix game ID"),
+    country: str = Query(default="EU", min_length=2, max_length=3, pattern=r"^[A-Za-z]{2,3}$", description="Region code (EU, US, ...)"),
     db: Session = Depends(get_db),
 ) -> dict:
     """Fetch current ITAD prices for a game and store in price_snapshots."""
@@ -546,7 +546,7 @@ async def import_prices_itad(
 
 @router.post("/import/prices/cheapshark")
 async def import_prices_cheapshark(
-    game_id: int = Query(..., description="GameMetrix game ID"),
+    game_id: int = Query(..., ge=1, description="GameMetrix game ID"),
     db: Session = Depends(get_db),
 ) -> dict:
     """Fetch cheapest CheapShark deal for a game and store in price_snapshots."""
