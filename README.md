@@ -22,6 +22,17 @@ DATABASE_URL=postgresql+psycopg://gamemetrix:<choose-a-local-password>@localhost
 `DATABASE_URL` is required. The backend intentionally supports one runtime
 database: PostgreSQL.
 
+Copy the non-secret settings from `backend/.env.example` and fill the provider
+credentials you use. API Health reports rejected, expired, and misrouted
+providers without returning credential values.
+
+Visitor counts are available in the admin dashboard. To retain exact IPs for
+new visits, set `ANALYTICS_STORE_RAW_IP=true`; raw IPs are removed after
+`ANALYTICS_RAW_IP_RETENTION_DAYS` while their hashes remain usable for unique
+counts. Behind the bundled nginx proxy, also set
+`ANALYTICS_TRUST_PROXY_HEADERS=true`. Do not enable trusted proxy headers when
+the backend is directly reachable from the internet.
+
 ## Run Backend
 
 ```powershell

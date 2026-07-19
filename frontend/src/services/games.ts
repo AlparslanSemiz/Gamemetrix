@@ -52,8 +52,8 @@ export async function getGames(
   return response.json()
 }
 
-export async function getGameBySlug(slug: string): Promise<Game> {
-  const response = await fetch(`${API_BASE_URL}/api/games/${slug}`)
+export async function getGameBySlug(slug: string, refreshMetadata = true): Promise<Game> {
+  const response = await fetch(`${API_BASE_URL}/api/games/${slug}?refresh=${refreshMetadata}`)
   if (!response.ok) throw new Error('Game not found')
   return response.json()
 }

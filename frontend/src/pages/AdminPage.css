@@ -191,6 +191,10 @@
   grid-column: span 2;
 }
 
+.admin-panel-full {
+  grid-column: 1 / -1;
+}
+
 .admin-panel-head {
   display: flex;
   min-height: 26px;
@@ -404,6 +408,8 @@
   display: block;
   margin-top: 2px;
   font-size: 11px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
 }
 
 .admin-health-row em,
@@ -443,6 +449,41 @@
 
 .admin-visit-row strong {
   color: #f1f5f9;
+}
+
+.admin-ip-table {
+  display: grid;
+  gap: 8px;
+}
+
+.admin-ip-row {
+  display: grid;
+  grid-template-columns: minmax(150px, 1.2fr) 70px 90px 118px 118px;
+  gap: 12px;
+  align-items: center;
+  min-width: 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.055);
+  padding-top: 8px;
+  font-size: 12px;
+}
+
+.admin-ip-row strong {
+  min-width: 0;
+  overflow: hidden;
+  color: #f1f5f9;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-ip-row span,
+.admin-ip-row small {
+  color: #8c94a4;
+}
+
+.admin-ip-row em {
+  color: #a78bfa;
+  font-style: normal;
+  font-weight: 850;
 }
 
 .admin-empty {
@@ -632,6 +673,14 @@
 
   .admin-visit-row strong,
   .admin-visit-row small {
+    grid-column: 1 / -1;
+  }
+
+  .admin-ip-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .admin-ip-row small {
     grid-column: 1 / -1;
   }
 

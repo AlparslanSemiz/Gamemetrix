@@ -138,6 +138,13 @@ def dashboard(
     catalog_only_games = db.scalar(select(func.count(Game.id)).where(Game.content_type != "game")) or 0
     rating_snapshots = db.scalar(select(func.count(RatingSnapshot.id))) or 0
     source_snapshots = db.scalar(select(func.count(SourceSnapshot.id))) or 0
+    total_visits_all_time = db.scalar(select(func.count(VisitEvent.id))) or 0
+    total_unique_visitors = db.scalar(
+        select(func.count(func.distinct(VisitEvent.visitor_id_hash)))
+    ) or 0
+    total_unique_ips = db.scalar(
+        select(func.count(func.distinct(VisitEvent.ip_hash))).where(VisitEvent.ip_hash.is_not(None))
+    ) or 0
 
     total_visits = db.scalar(
         select(func.count(VisitEvent.id)).where(VisitEvent.created_at >= since)
@@ -150,6 +157,12 @@ def dashboard(
     ) or 0
     unique_today = db.scalar(
         select(func.count(func.distinct(VisitEvent.visitor_id_hash))).where(VisitEvent.created_at >= today_start)
+    ) or 0
+    unique_ips = db.scalar(
+        select(func.count(func.distinct(VisitEvent.ip_hash))).where(
+            VisitEvent.created_at >= since,
+            VisitEvent.ip_hash.is_not(None),
+        )
     ) or 0
 
     path_count = func.count(VisitEvent.id).label("visits")
@@ -188,6 +201,13 @@ def dashboard(
             "path": event.path,
             "created_at": event.created_at.isoformat(),
             "visitor": event.visitor_id_hash[:10],
+            "session": event.session_id_hash[:10] if event.session_id_hash else None,
+            "ip": event.ip_address,
+            "ip_fingerprint": event.ip_hash[:10] if event.ip_hash else None,
+            "country": event.country_code,
+            "language": event.language,
+            "timezone": event.timezone,
+            "user_agent": event.user_agent,
             "referrer": event.referrer,
             "screen": (
                 f"{event.screen_width}x{event.screen_height}"
@@ -202,6 +222,36 @@ def dashboard(
         ).all()
     ]
 
+    ip_visit_count = func.count(VisitEvent.id).label("visits")
+    ip_first_seen = func.min(VisitEvent.created_at).label("first_seen")
+    ip_last_seen = func.max(VisitEvent.created_at).label("last_seen")
+    recent_ips = [
+        {
+            "ip": raw_ip,
+            "fingerprint": ip_hash[:10],
+            "country": country,
+            "visits": visits,
+            "first_seen": first_seen.isoformat(),
+            "last_seen": last_seen.isoformat(),
+        }
+        for ip_hash, raw_ip, country, visits, first_seen, last_seen in db.execute(
+            select(
+                VisitEvent.ip_hash,
+                func.max(VisitEvent.ip_address),
+                func.max(VisitEvent.country_code),
+                ip_visit_count,
+                ip_first_seen,
+                ip_last_seen,
+            )
+            .where(VisitEvent.ip_hash.is_not(None))
+            .group_by(VisitEvent.ip_hash)
+            .order_by(desc(ip_last_seen))
+            .limit(100)
+        ).all()
+    ]
+
+    cfg = get_settings()
+
     return {
         "catalog": {
             "total_games": total_games,
@@ -212,13 +262,23 @@ def dashboard(
         },
         "traffic": {
             "days": days,
+            "total_visits_all_time": total_visits_all_time,
+            "total_unique_visitors": total_unique_visitors,
+            "total_unique_ips": total_unique_ips,
             "total_visits": total_visits,
             "unique_visitors": unique_visitors,
+            "unique_ips": unique_ips,
             "visits_today": visits_today,
             "unique_today": unique_today,
             "top_pages": top_pages,
             "daily": daily,
             "recent_visits": recent_visits,
+            "recent_ips": recent_ips,
+            "tracking": {
+                "raw_ip_enabled": cfg.ANALYTICS_STORE_RAW_IP,
+                "trusted_proxy_headers": cfg.ANALYTICS_TRUST_PROXY_HEADERS,
+                "raw_ip_retention_days": cfg.ANALYTICS_RAW_IP_RETENTION_DAYS,
+            },
         },
     }
 

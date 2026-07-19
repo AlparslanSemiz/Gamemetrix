@@ -251,19 +251,19 @@ export function AdminPage() {
           <strong>{formatNumber(dashboard?.catalog.total_games ?? 0)}</strong>
         </article>
         <article className="admin-metric">
+          <Users size={18} aria-hidden="true" />
+          <span>Visitors all time</span>
+          <strong>{formatNumber(dashboard?.traffic.total_unique_visitors ?? 0)}</strong>
+        </article>
+        <article className="admin-metric">
           <ShieldCheck size={18} aria-hidden="true" />
-          <span>Rankable</span>
-          <strong>{formatNumber(dashboard?.catalog.rankable_games ?? 0)}</strong>
+          <span>Unique IPs all time</span>
+          <strong>{formatNumber(dashboard?.traffic.total_unique_ips ?? 0)}</strong>
         </article>
         <article className="admin-metric">
           <Eye size={18} aria-hidden="true" />
           <span>Visits today</span>
           <strong>{formatNumber(dashboard?.traffic.visits_today ?? 0)}</strong>
-        </article>
-        <article className="admin-metric">
-          <Users size={18} aria-hidden="true" />
-          <span>Unique today</span>
-          <strong>{formatNumber(dashboard?.traffic.unique_today ?? 0)}</strong>
         </article>
       </section>
 
@@ -302,6 +302,8 @@ export function AdminPage() {
           <div className="admin-inline-stats">
             <span>{formatNumber(dashboard?.traffic.total_visits ?? 0)} visits</span>
             <span>{formatNumber(dashboard?.traffic.unique_visitors ?? 0)} visitors</span>
+            <span>{formatNumber(dashboard?.traffic.unique_ips ?? 0)} IPs</span>
+            <span>{formatNumber(dashboard?.traffic.unique_today ?? 0)} unique today</span>
           </div>
         </article>
 
@@ -329,7 +331,7 @@ export function AdminPage() {
                 <span className={`admin-dot ${healthClass(status)}`} />
                 <div>
                   <strong>{source}</strong>
-                  <small>{status.configured ? status.status : 'not configured'}</small>
+                  <small title={status.message}>{status.message ?? (status.configured ? status.status : 'not configured')}</small>
                 </div>
                 {status.latency_ms ? <em>{Math.round(status.latency_ms)}ms</em> : null}
               </div>
@@ -445,13 +447,35 @@ export function AdminPage() {
           </div>
           <div className="admin-visit-table">
             {dashboard?.traffic.recent_visits.length ? dashboard.traffic.recent_visits.map((visit) => (
-              <div className="admin-visit-row" key={`${visit.created_at}-${visit.visitor}-${visit.path}`}>
+              <div className="admin-visit-row" key={`${visit.created_at}-${visit.visitor}-${visit.path}`} title={visit.user_agent ?? visit.referrer ?? undefined}>
                 <span>{formatDateTime(visit.created_at)}</span>
                 <strong title={visit.path}>{visit.path}</strong>
-                <em>{visit.visitor}</em>
-                <small>{visit.screen ?? 'unknown'}</small>
+                <em>{visit.ip ?? `#${visit.ip_fingerprint ?? 'unknown'}`}</em>
+                <small>{visit.country ?? visit.timezone ?? visit.language ?? visit.screen ?? 'unknown'}</small>
               </div>
             )) : <p className="admin-empty">No visits recorded.</p>}
+          </div>
+        </article>
+
+        <article className="admin-panel admin-panel-full">
+          <div className="admin-panel-head">
+            <h2>Visitor IPs</h2>
+            <span>
+              {dashboard?.traffic.tracking.raw_ip_enabled
+                ? `${dashboard.traffic.tracking.raw_ip_retention_days}d raw retention`
+                : 'Raw IP storage disabled'}
+            </span>
+          </div>
+          <div className="admin-ip-table">
+            {dashboard?.traffic.recent_ips.length ? dashboard.traffic.recent_ips.map((entry) => (
+              <div className="admin-ip-row" key={entry.fingerprint}>
+                <strong>{entry.ip ?? `#${entry.fingerprint}`}</strong>
+                <span>{entry.country ?? 'unknown'}</span>
+                <em>{formatNumber(entry.visits)} visits</em>
+                <small>{formatDateTime(entry.first_seen)}</small>
+                <small>{formatDateTime(entry.last_seen)}</small>
+              </div>
+            )) : <p className="admin-empty">No visitor IPs recorded.</p>}
           </div>
         </article>
       </section>

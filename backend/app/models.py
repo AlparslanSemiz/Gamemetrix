@@ -304,14 +304,20 @@ class SourceSnapshot(Base):
 
 
 class VisitEvent(Base):
-    """Privacy-preserving page-view event for admin traffic analytics."""
+    """Page-view event with stable hashes and optional short-lived raw network data."""
 
     __tablename__ = "visit_events"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     visitor_id_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    session_id_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     ip_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    ip_address: Mapped[str | None] = mapped_column(String(45), nullable=True)
+    country_code: Mapped[str | None] = mapped_column(String(2), nullable=True)
     user_agent_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    user_agent: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    language: Mapped[str | None] = mapped_column(String(35), nullable=True)
+    timezone: Mapped[str | None] = mapped_column(String(64), nullable=True)
     path: Mapped[str] = mapped_column(String(500), nullable=False, index=True)
     referrer: Mapped[str | None] = mapped_column(String(500), nullable=True)
     title: Mapped[str | None] = mapped_column(String(200), nullable=True)

@@ -7,6 +7,9 @@ export interface PageViewEvent {
   title?: string
   screen_width?: number
   screen_height?: number
+  session_id?: string
+  language?: string
+  timezone?: string
 }
 
 export function trackPageView(event: PageViewEvent): void {

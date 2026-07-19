@@ -329,13 +329,17 @@ async def get_game(
     request: Request,
     slug: SlugPath,
     background_tasks: BackgroundTasks,
+    refresh_metadata: bool = Query(default=True, alias="refresh"),
     db: Session = Depends(get_db),
 ) -> Game:
     game = db.scalar(select(Game).where(Game.slug == slug))
     if game is None:
         raise HTTPException(status_code=404, detail="Game not found")
     app_id = extract_steam_app_id(game.cover_url, game.image_url, game.slug)
-    if game_needs_metadata_backfill(game) or (app_id and _system_requirements_need_repair(game.system_requirements)):
+    needs_refresh = game_needs_metadata_backfill(game) or (
+        app_id and _system_requirements_need_repair(game.system_requirements)
+    )
+    if refresh_metadata and needs_refresh:
         background_tasks.add_task(_refresh_game_detail_metadata, game.slug)
     return game
 

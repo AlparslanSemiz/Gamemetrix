@@ -3,7 +3,7 @@ IsThereAnyDeal (ITAD) service adapter.
 
 ITAD is the primary PC pricing source.
 API docs: https://docs.isthereanydeal.com/
-Key passed as Authorization Bearer header (not query param).
+Key passed with the current ITAD-API-Key header.
 Default region: EU / EUR.
 """
 
@@ -25,7 +25,7 @@ SMOKE_TEST_TITLES = ["Hades", "Portal 2", "Celeste", "Elden Ring", "Baldur's Gat
 
 
 def _auth_header() -> dict[str, str]:
-    return {"Authorization": f"Bearer {get_settings().ITAD_API_KEY}"}
+    return {"ITAD-API-Key": get_settings().ITAD_API_KEY}
 
 
 class ITADService:
@@ -41,10 +41,39 @@ class ITADService:
                 status="missing",
                 message="ITAD_API_KEY not configured",
             )
+        t0 = time.monotonic()
         try:
-            t0 = time.monotonic()
-            itad_id = await self.lookup_id(SMOKE_TEST_TITLE)
+            async with httpx.AsyncClient(timeout=10) as client:
+                response = await client.get(
+                    f"{ITAD_BASE}/games/lookup/v1",
+                    headers=_auth_header(),
+                    params={"title": SMOKE_TEST_TITLE},
+                )
             latency = int((time.monotonic() - t0) * 1000)
+            if response.status_code in {401, 403}:
+                return SourceHealth(
+                    source="itad",
+                    configured=True,
+                    working=False,
+                    status="failing",
+                    message=f"ITAD API key is invalid or expired (HTTP {response.status_code})",
+                    latency_ms=latency,
+                )
+            if not response.is_success:
+                return SourceHealth(
+                    source="itad",
+                    configured=True,
+                    working=False,
+                    status="failing",
+                    message=f"ITAD endpoint returned HTTP {response.status_code}",
+                    latency_ms=latency,
+                )
+            data = response.json()
+            itad_id = (
+                str(data["game"]["id"])
+                if data.get("found") and isinstance(data.get("game"), dict)
+                else None
+            )
             if itad_id:
                 return SourceHealth(
                     source="itad",
@@ -72,15 +101,15 @@ class ITADService:
             )
 
     async def lookup_id(self, title: str) -> str | None:
-        """POST /games/lookup/v1 — resolve title to ITAD game UUID."""
+        """GET /games/lookup/v1 — resolve title to ITAD game UUID."""
         if not self.is_configured():
             return None
         try:
             async with httpx.AsyncClient(timeout=10) as client:
-                resp = await client.post(
+                resp = await client.get(
                     f"{ITAD_BASE}/games/lookup/v1",
                     headers=_auth_header(),
-                    json={"title": title},
+                    params={"title": title},
                 )
                 resp.raise_for_status()
                 data = resp.json()
@@ -91,20 +120,20 @@ class ITADService:
         return None
 
     async def lookup_by_steam_appid(self, app_id: int) -> str | None:
-        """Use ITAD's shops endpoint to find by Steam app ID (shop=steam, shop_game_id=<appid>)."""
+        """Resolve an ITAD game UUID from a Steam app ID."""
         if not self.is_configured():
             return None
         try:
             async with httpx.AsyncClient(timeout=10) as client:
                 resp = await client.get(
-                    f"{ITAD_BASE}/games/overview/v2",
+                    f"{ITAD_BASE}/games/lookup/v1",
                     headers=_auth_header(),
-                    params={"shops": "61", "steam_appid": app_id},  # shop 61 = Steam
+                    params={"appid": app_id},
                 )
                 resp.raise_for_status()
                 data = resp.json()
-                if isinstance(data, list) and data:
-                    return str(data[0].get("id"))
+                if data.get("found") and isinstance(data.get("game"), dict):
+                    return str(data["game"]["id"])
         except Exception as exc:
             log.debug("ITAD steam appid lookup failed for %d: %s", app_id, exc)
         return None

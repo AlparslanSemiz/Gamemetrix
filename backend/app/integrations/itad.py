@@ -5,7 +5,7 @@ API docs: https://docs.isthereanydeal.com/
 Requires ITAD_API_KEY in .env (free registration at isthereanydeal.com/dev/app/).
 
 Endpoint summary:
-  POST /games/lookup/v1              title → itad_id (plain)
+  GET  /games/lookup/v1              title → itad_id (plain)
   GET  /games/prices/v3              itad_id(s) → current store prices
   GET  /games/historylow/v1          itad_id(s) → all-time historical low
   GET  /games/subscriptions/v1       itad_id(s) → included in which services
@@ -26,7 +26,7 @@ ITAD_API_KEY = os.getenv("ITAD_API_KEY", "")
 
 
 def _headers() -> dict[str, str]:
-    return {"Authorization": f"Bearer {ITAD_API_KEY}"}
+    return {"ITAD-API-Key": ITAD_API_KEY}
 
 
 async def lookup_itad_id(title: str) -> str | None:
@@ -35,10 +35,10 @@ async def lookup_itad_id(title: str) -> str | None:
         return None
     try:
         async with httpx.AsyncClient(timeout=10) as client:
-            resp = await client.post(
+            resp = await client.get(
                 f"{ITAD_API_BASE}/games/lookup/v1",
                 headers=_headers(),
-                json={"title": title},
+                params={"title": title},
             )
             resp.raise_for_status()
             data = resp.json()

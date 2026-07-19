@@ -20,3 +20,4 @@ backend/*.db.*.bak
 
 .env
 .env.*
+!backend/.env.example

@@ -3,6 +3,7 @@ import { useLocation } from 'react-router-dom'
 import { trackPageView } from '../services/analytics'
 
 const VISITOR_ID_KEY = 'gamemetrix.visitorId.v1'
+const SESSION_ID_KEY = 'gamemetrix.sessionId.v1'
 
 function createVisitorId(): string {
   if (crypto.randomUUID) return crypto.randomUUID()
@@ -17,6 +18,14 @@ function getVisitorId(): string {
   return next
 }
 
+function getSessionId(): string {
+  const existing = window.sessionStorage.getItem(SESSION_ID_KEY)
+  if (existing) return existing
+  const next = createVisitorId()
+  window.sessionStorage.setItem(SESSION_ID_KEY, next)
+  return next
+}
+
 export function PageViewTracker() {
   const location = useLocation()
 
@@ -27,10 +36,13 @@ export function PageViewTracker() {
       trackPageView({
         path: `${location.pathname}${location.search}`,
         visitor_id: getVisitorId(),
+        session_id: getSessionId(),
         referrer: document.referrer || undefined,
         title: document.title,
         screen_width: window.innerWidth,
         screen_height: window.innerHeight,
+        language: navigator.language || undefined,
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || undefined,
       })
     }, 150)
 

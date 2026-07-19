@@ -26,8 +26,12 @@ export interface AdminDashboard {
   }
   traffic: {
     days: number
+    total_visits_all_time: number
+    total_unique_visitors: number
+    total_unique_ips: number
     total_visits: number
     unique_visitors: number
+    unique_ips: number
     visits_today: number
     unique_today: number
     top_pages: Array<{ path: string; visits: number }>
@@ -36,9 +40,29 @@ export interface AdminDashboard {
       path: string
       created_at: string
       visitor: string
+      session?: string | null
+      ip?: string | null
+      ip_fingerprint?: string | null
+      country?: string | null
+      language?: string | null
+      timezone?: string | null
+      user_agent?: string | null
       referrer?: string | null
       screen?: string | null
     }>
+    recent_ips: Array<{
+      ip?: string | null
+      fingerprint: string
+      country?: string | null
+      visits: number
+      first_seen: string
+      last_seen: string
+    }>
+    tracking: {
+      raw_ip_enabled: boolean
+      trusted_proxy_headers: boolean
+      raw_ip_retention_days: number
+    }
   }
 }
 

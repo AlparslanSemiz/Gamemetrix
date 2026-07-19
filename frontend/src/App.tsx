@@ -1,6 +1,7 @@
 /* eslint-disable react-hooks/set-state-in-effect */
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import {
+  Bell,
   CheckCircle2,
   ArrowDown,
   ArrowUp,
@@ -9,14 +10,15 @@ import {
   Grid2X2,
   Info,
   List,
+  LogIn,
   Search,
   Settings,
-  ShieldCheck,
   SlidersHorizontal,
   Tag,
 } from 'lucide-react'
 import { BrowserRouter, Route, Routes, useNavigate } from 'react-router-dom'
 import './App.css'
+import { AlertsPanel } from './components/AlertsPanel'
 import { FilterBar } from './components/FilterBar'
 import { GameCard } from './components/GameCard'
 import { PageViewTracker } from './components/PageViewTracker'
@@ -36,7 +38,7 @@ import { useCollections } from './state/useCollections'
 import type { Facets, Game, GameFilters, GameSort, ProviderStatus } from './types/game'
 
 type MainPage = 'catalog' | 'watchlist' | 'playing' | 'seen' | 'completed' | 'liked' | 'favorites' | 'suggestions'
-type UtilityPage = 'settings' | 'about'
+type UtilityPage = 'alerts' | 'settings' | 'about'
 type ActivePage = MainPage | UtilityPage
 
 const CURRENT_YEAR = new Date().getFullYear()
@@ -279,9 +281,10 @@ const mainNavItems: Array<{ id: MainPage; label: string; icon: typeof Search }> 
   { id: 'suggestions', label: 'For You', icon: Compass },
 ]
 
-const utilityNavItems: Array<{ id: UtilityPage | 'admin'; label: string; icon: typeof Search }> = [
-  { id: 'admin', label: 'Admin', icon: ShieldCheck },
+const utilityNavItems: Array<{ id: UtilityPage | 'login'; label: string; icon: typeof Search }> = [
+  { id: 'login', label: 'Login', icon: LogIn },
   { id: 'settings', label: 'Settings', icon: Settings },
+  { id: 'alerts', label: 'Alerts', icon: Bell },
   { id: 'about', label: 'About', icon: Info },
 ]
 
@@ -289,8 +292,8 @@ const mobileNavItems: Array<{ id: ActivePage; label: string; icon: typeof Search
   { id: 'catalog', label: 'Search', icon: Search },
   { id: 'watchlist', label: 'Wishlist', icon: CheckCircle2 },
   { id: 'suggestions', label: 'For You', icon: Compass },
+  { id: 'alerts', label: 'Alerts', icon: Bell },
   { id: 'settings', label: 'Settings', icon: Settings },
-  { id: 'about', label: 'About', icon: Info },
 ]
 
 const collectionLabels: Record<CollectionKey, string> = {
@@ -921,7 +924,7 @@ function AppContent() {
               key={id}
               title={label}
               onClick={() => {
-                if (id === 'admin') {
+                if (id === 'login') {
                   navigate('/admin')
                   return
                 }
@@ -1033,6 +1036,8 @@ function AppContent() {
                   </div>
                 </section>
               </div>
+            ) : activePage === 'alerts' ? (
+              <AlertsPanel watchlistSlugs={collections.watchlist} />
             ) : activePage === 'about' ? (
               <RatingExplainer />
             ) : null}

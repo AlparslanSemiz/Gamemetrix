@@ -33,11 +33,35 @@ class RAWGService:
                 status="missing",
                 message="RAWG_API_KEY not configured",
             )
+        cfg = get_settings()
+        t0 = time.monotonic()
         try:
-            t0 = time.monotonic()
-            game = await self.search_game(SMOKE_TEST_TITLE)
+            async with httpx.AsyncClient(timeout=12) as client:
+                response = await client.get(
+                    f"{RAWG_BASE}/games",
+                    params={"key": cfg.RAWG_API_KEY, "search": SMOKE_TEST_TITLE, "page_size": 1},
+                )
             latency = int((time.monotonic() - t0) * 1000)
-            if game:
+            if response.status_code in {401, 403}:
+                return SourceHealth(
+                    source="rawg",
+                    configured=True,
+                    working=False,
+                    status="failing",
+                    message=f"RAWG API key rejected (HTTP {response.status_code})",
+                    latency_ms=latency,
+                )
+            if not response.is_success:
+                return SourceHealth(
+                    source="rawg",
+                    configured=True,
+                    working=False,
+                    status="failing",
+                    message=f"RAWG endpoint returned HTTP {response.status_code}",
+                    latency_ms=latency,
+                )
+            results = response.json().get("results", [])
+            if results:
                 return SourceHealth(
                     source="rawg",
                     configured=True,
@@ -75,7 +99,9 @@ class RAWGService:
                 )
                 resp.raise_for_status()
         except Exception as exc:
-            log.warning("RAWG search failed for %r: %s", title, exc)
+            # HTTPX exception strings include the request URL; RAWG puts its
+            # secret in the query string, so never log the exception value.
+            log.warning("RAWG search failed for %r (%s)", title, type(exc).__name__)
             return None
 
         results = resp.json().get("results", [])
@@ -95,7 +121,7 @@ class RAWGService:
                 )
                 resp.raise_for_status()
         except Exception as exc:
-            log.warning("RAWG get by id %d failed: %s", rawg_id, exc)
+            log.warning("RAWG get by id %d failed (%s)", rawg_id, type(exc).__name__)
             return None
 
         return self._normalize(resp.json())

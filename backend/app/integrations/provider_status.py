@@ -2,7 +2,7 @@ import os
 
 
 def get_provider_statuses() -> list[dict[str, str]]:
-    opencritic_ready = bool(os.getenv("OPENCRITIC_API_KEY") or os.getenv("RAPIDAPI_KEY"))
+    opencritic_ready = bool(os.getenv("RAPIDAPI_KEY"))
     rawg_ready = bool(os.getenv("RAWG_API_KEY"))
     metacritic_ready = rawg_ready or bool(
         os.getenv("METACRITIC_API_KEY") or os.getenv("METACRITIC_API_BASE")

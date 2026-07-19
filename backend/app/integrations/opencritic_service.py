@@ -16,7 +16,7 @@ from .types import NormalizedGame, SourceHealth
 
 log = logging.getLogger(__name__)
 
-OC_RAPIDAPI_BASE = "https://opencritic-api.p.rapidapi.com/api"
+OC_RAPIDAPI_BASE = "https://opencritic-api.p.rapidapi.com"
 OC_PUBLIC_BASE = "https://api.opencritic.com/api"
 SMOKE_TEST_TITLE = "Portal 2"
 
@@ -38,7 +38,12 @@ class OpenCriticService:
 
     def _base(self) -> str:
         cfg = get_settings()
-        return (cfg.OPENCRITIC_API_BASE or OC_RAPIDAPI_BASE).rstrip("/")
+        base = (cfg.OPENCRITIC_API_BASE or OC_RAPIDAPI_BASE).rstrip("/")
+        # RapidAPI routes are rooted at /game and /meta. Older examples used
+        # an extra /api segment, which now returns 404 for every request.
+        if "rapidapi" in base.lower() and base.lower().endswith("/api"):
+            return base[:-4]
+        return base
 
     async def health_check(self) -> SourceHealth:
         if not self.is_configured():
@@ -49,11 +54,34 @@ class OpenCriticService:
                 status="missing",
                 message="RAPIDAPI_KEY not configured",
             )
+        t0 = time.monotonic()
         try:
-            t0 = time.monotonic()
-            game = await self.search_game(SMOKE_TEST_TITLE)
+            async with httpx.AsyncClient(timeout=14, headers=self._headers()) as client:
+                response = await client.get(
+                    f"{self._base()}/game/search",
+                    params={"criteria": SMOKE_TEST_TITLE},
+                )
             latency = int((time.monotonic() - t0) * 1000)
-            if game:
+            if response.status_code in {401, 403}:
+                return SourceHealth(
+                    source="opencritic",
+                    configured=True,
+                    working=False,
+                    status="failing",
+                    message=f"RapidAPI key or OpenCritic subscription rejected (HTTP {response.status_code})",
+                    latency_ms=latency,
+                )
+            if not response.is_success:
+                return SourceHealth(
+                    source="opencritic",
+                    configured=True,
+                    working=False,
+                    status="failing",
+                    message=f"OpenCritic endpoint returned HTTP {response.status_code}",
+                    latency_ms=latency,
+                )
+            results = response.json()
+            if isinstance(results, list) and results:
                 return SourceHealth(
                     source="opencritic",
                     configured=True,
@@ -100,7 +128,7 @@ class OpenCriticService:
                 if not detail.is_success:
                     return None
         except Exception as exc:
-            log.warning("OC search failed for %r: %s", title, exc)
+            log.warning("OC search failed for %r (%s)", title, type(exc).__name__)
             return None
 
         return self._normalize(detail.json())

@@ -26,12 +26,21 @@ class Settings:
         self.PUBLIC_READ_RATE_LIMIT: str = os.getenv("PUBLIC_READ_RATE_LIMIT", "300/minute")
         self.AUTH_RATE_LIMIT: str = os.getenv("AUTH_RATE_LIMIT", "5/minute")
         self.RATE_LIMIT_STORAGE_URI: str = os.getenv("RATE_LIMIT_STORAGE_URI", "memory://")
+        self.ANALYTICS_STORE_RAW_IP: bool = os.getenv(
+            "ANALYTICS_STORE_RAW_IP", "false"
+        ).strip().lower() in {"1", "true", "yes", "on"}
+        self.ANALYTICS_TRUST_PROXY_HEADERS: bool = os.getenv(
+            "ANALYTICS_TRUST_PROXY_HEADERS", "false"
+        ).strip().lower() in {"1", "true", "yes", "on"}
+        self.ANALYTICS_RAW_IP_RETENTION_DAYS: int = max(
+            1, int(os.getenv("ANALYTICS_RAW_IP_RETENTION_DAYS", "30"))
+        )
         # ── API credentials ──────────────────────────────────────────────────
         self.IGDB_CLIENT_ID: str = os.getenv("IGDB_CLIENT_ID", "")
         self.IGDB_CLIENT_SECRET: str = os.getenv("IGDB_CLIENT_SECRET", "")
         self.RAWG_API_KEY: str = os.getenv("RAWG_API_KEY", "")
         self.OPENCRITIC_API_BASE: str = os.getenv(
-            "OPENCRITIC_API_BASE", "https://opencritic-api.p.rapidapi.com/api"
+            "OPENCRITIC_API_BASE", "https://opencritic-api.p.rapidapi.com"
         )
         self.RAPIDAPI_KEY: str = os.getenv("RAPIDAPI_KEY", "")
         self.RAPIDAPI_HOST: str = os.getenv(

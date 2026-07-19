@@ -5,7 +5,7 @@ from .types import ExternalScore
 
 
 _OC_DEFAULT_BASE = "https://api.opencritic.com/api"
-_OC_RAPIDAPI_BASE = "https://opencritic-api.p.rapidapi.com/api"
+_OC_RAPIDAPI_BASE = "https://opencritic-api.p.rapidapi.com"
 _RAPIDAPI_HOST = "opencritic-api.p.rapidapi.com"
 _HTTP_TIMEOUT = 14
 
@@ -49,12 +49,14 @@ def _build_detail(top_critic: float | None, percent: float | None, tier: str, nu
 
 async def get_opencritic_score(title: str) -> ExternalScore:
     cfg = get_settings()
-    # RAPIDAPI_KEY is required; fall back to OPENCRITIC_API_KEY if present.
+    # OpenCritic access is provided through the configured RapidAPI key.
     api_key = cfg.RAPIDAPI_KEY
     if not api_key:
         return _unavailable("Set RAPIDAPI_KEY to enable OpenCritic.")
 
     api_base = (cfg.OPENCRITIC_API_BASE or _OC_RAPIDAPI_BASE).rstrip("/")
+    if "rapidapi" in api_base.lower() and api_base.lower().endswith("/api"):
+        api_base = api_base[:-4]
     headers = _build_headers(api_key, api_base)
 
     async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT, headers=headers) as client:

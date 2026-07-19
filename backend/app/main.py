@@ -82,6 +82,12 @@ def _run_migrations(conn: Connection) -> None:
         ("games", "official_release_date", "DATE"),
         ("games", "rank_score", "FLOAT NOT NULL DEFAULT 0.0"),
         ("games", "is_rankable", "BOOLEAN NOT NULL DEFAULT false"),
+        ("visit_events", "session_id_hash", "VARCHAR(64)"),
+        ("visit_events", "ip_address", "VARCHAR(45)"),
+        ("visit_events", "country_code", "VARCHAR(2)"),
+        ("visit_events", "user_agent", "VARCHAR(500)"),
+        ("visit_events", "language", "VARCHAR(35)"),
+        ("visit_events", "timezone", "VARCHAR(64)"),
     ]
     for table, column, col_type in migrations:
         _add_column_if_missing(conn, table, column, col_type)
@@ -90,6 +96,7 @@ def _run_migrations(conn: Connection) -> None:
     _add_index_if_missing(conn, "ix_games_content_type", "games", "content_type")
     _add_index_if_missing(conn, "ix_games_content_type_rank_score", "games", "content_type, rank_score DESC")
     _add_index_if_missing(conn, "ix_games_hltb_id", "games", "hltb_id")
+    _add_index_if_missing(conn, "ix_visit_events_session_id_hash", "visit_events", "session_id_hash")
 
 
 # ── Startup seed / classify ────────────────────────────────────────────────────
