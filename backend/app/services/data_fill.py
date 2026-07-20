@@ -2,7 +2,7 @@
 
 import asyncio
 import logging
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import desc, exists, func, select
 from sqlalchemy.orm import noload
@@ -75,7 +75,11 @@ def data_fill_status() -> dict[str, object]:
                 Game.playtime_minutes <= 0,
             )
         ) or 0
-        has_price = exists(select(PriceSnapshot.id).where(PriceSnapshot.game_id == Game.id))
+        fresh_before = datetime.now(UTC) - timedelta(hours=24)
+        has_price = exists(select(PriceSnapshot.id).where(
+            PriceSnapshot.game_id == Game.id,
+            PriceSnapshot.fetched_at >= fresh_before,
+        ))
         missing_prices = db.scalar(
             select(func.count(Game.id)).where(Game.content_type == "game", ~has_price)
         ) or 0
@@ -139,6 +143,10 @@ async def execute_data_fill_run(run_id: int, *, force: bool, target_total: int) 
             result["metadata"] = await _fill_metadata()
             result["hltb"] = await _fill_hltb()
             result["prices"] = await _fill_prices()
+            with SessionLocal() as db:
+                from .seo import refresh_catalog_seo_states
+                result["seo"] = refresh_catalog_seo_states(db)
+                db.commit()
             after_missing = _count_missing_external_ids()
             external_ids = dict(result["external_ids"])
             external_ids["after_missing"] = after_missing
@@ -146,8 +154,13 @@ async def execute_data_fill_run(run_id: int, *, force: bool, target_total: int) 
             result["external_ids"] = external_ids
             _finish_run(run_id, status="complete", result=result)
         except Exception as exc:
-            log.exception("Data fill run failed")
-            _finish_run(run_id, status="failed", result=result, error=f"{type(exc).__name__}: {exc}")
+            log.error("Data fill run failed (%s)", type(exc).__name__)
+            _finish_run(
+                run_id,
+                status="failed",
+                result=result,
+                error=f"Data fill failed ({type(exc).__name__}). Check server logs.",
+            )
 
 
 def _mark_run_running(run_id: int) -> None:
@@ -239,8 +252,6 @@ async def _fill_ratings(*, force: bool) -> dict[str, int]:
             game_ids = [game.id for game in all_games if game_needs_rating_refresh(game, now)]
 
     for game_id in game_ids:
-        if refreshed >= cfg.DATA_FILL_RATING_BATCH_SIZE and not force:
-            break
         if not _remaining_any(RATING_BUDGET_SOURCES):
             break
         if cfg.DATA_FILL_INTER_GAME_DELAY > 0:
@@ -277,11 +288,32 @@ async def _fill_metadata() -> dict[str, object]:
     cfg = get_settings()
     if not _remaining_any(METADATA_BUDGET_SOURCES):
         return {"status": "budget_exhausted", "enriched": 0, "changed": 0}
-    return await metadata_backfill_batch(
-        limit=cfg.DATA_FILL_METADATA_BATCH_SIZE,
-        inter_game_delay=cfg.DATA_FILL_INTER_GAME_DELAY,
-        use_lock=False,
-    )
+    totals: dict[str, object] = {
+        "status": "ok",
+        "considered": 0,
+        "enriched": 0,
+        "changed": 0,
+        "skipped": 0,
+        "failed": 0,
+        "cycles": 0,
+    }
+    while _remaining_any(METADATA_BUDGET_SOURCES) and int(totals["cycles"]) < 100:
+        batch = await metadata_backfill_batch(
+            limit=cfg.DATA_FILL_METADATA_BATCH_SIZE,
+            inter_game_delay=cfg.DATA_FILL_INTER_GAME_DELAY,
+            use_lock=False,
+            refresh_seo=False,
+        )
+        totals["cycles"] = int(totals["cycles"]) + 1
+        for key in ("considered", "enriched", "changed", "skipped", "failed"):
+            totals[key] = int(totals[key]) + int(batch.get(key, 0))
+        if int(batch.get("considered", 0)) == 0 or (
+            int(batch.get("enriched", 0)) == 0 and int(batch.get("changed", 0)) == 0
+        ):
+            break
+    if not _remaining_any(METADATA_BUDGET_SOURCES):
+        totals["status"] = "budget_exhausted"
+    return totals
 
 
 async def _fill_hltb() -> dict[str, int]:
@@ -298,11 +330,28 @@ async def _fill_prices() -> dict[str, int | str]:
     cfg = get_settings()
     if not _remaining_any(PRICE_BUDGET_SOURCES):
         return {"status": "budget_exhausted", "considered": 0, "stored": 0, "skipped": 0, "failed": 0}
-    result = await price_backfill_batch(
-        limit=cfg.DATA_FILL_PRICE_BATCH_SIZE,
-        inter_game_delay=cfg.DATA_FILL_INTER_GAME_DELAY,
-    )
-    return {"status": "ok", **result}
+    totals: dict[str, int | str] = {
+        "status": "ok",
+        "considered": 0,
+        "stored": 0,
+        "skipped": 0,
+        "failed": 0,
+        "cycles": 0,
+    }
+    while _remaining_any(PRICE_BUDGET_SOURCES) and int(totals["cycles"]) < 100:
+        batch = await price_backfill_batch(
+            limit=cfg.DATA_FILL_PRICE_BATCH_SIZE,
+            inter_game_delay=cfg.DATA_FILL_INTER_GAME_DELAY,
+            refresh_seo=False,
+        )
+        totals["cycles"] = int(totals["cycles"]) + 1
+        for key in ("considered", "stored", "skipped", "failed"):
+            totals[key] = int(totals[key]) + int(batch.get(key, 0))
+        if int(batch.get("considered", 0)) == 0:
+            break
+    if not _remaining_any(PRICE_BUDGET_SOURCES):
+        totals["status"] = "budget_exhausted"
+    return totals
 
 
 async def data_fill_loop() -> None:
@@ -312,8 +361,10 @@ async def data_fill_loop() -> None:
 
     await asyncio.sleep(max(0, cfg.DATA_FILL_STARTUP_DELAY_SECONDS))
     while True:
-        if not HEAVY_JOB_LOCK.locked():
-            run = queue_data_fill_run(force=False, target_total=cfg.DATA_FILL_TARGET_TOTAL)
-            run_id = int(run["id"])
-            await execute_data_fill_run(run_id, force=False, target_total=cfg.DATA_FILL_TARGET_TOTAL)
+        if HEAVY_JOB_LOCK.locked():
+            await asyncio.sleep(5 * 60)
+            continue
+        run = queue_data_fill_run(force=False, target_total=cfg.DATA_FILL_TARGET_TOTAL)
+        run_id = int(run["id"])
+        await execute_data_fill_run(run_id, force=False, target_total=cfg.DATA_FILL_TARGET_TOTAL)
         await asyncio.sleep(max(3600, int(cfg.DATA_FILL_INTERVAL_HOURS * 3600)))

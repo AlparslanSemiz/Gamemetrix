@@ -1,6 +1,8 @@
+/* eslint-disable react-hooks/set-state-in-effect */
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import {
   CollectionsContext,
+  emptyCollections,
   loadCollections,
   type CollectionKey,
   type Collections,
@@ -8,11 +10,23 @@ import {
 } from './collections'
 
 export function CollectionsProvider({ children }: { children: ReactNode }) {
-  const [collections, setCollections] = useState<Collections>(loadCollections)
+  const [collections, setCollections] = useState<Collections>({ ...emptyCollections })
+  const [isHydrated, setIsHydrated] = useState(false)
 
   useEffect(() => {
-    localStorage.setItem('gamemetrix.collections', JSON.stringify(collections))
-  }, [collections])
+    setCollections(loadCollections())
+    setIsHydrated(true)
+  }, [])
+
+  useEffect(() => {
+    if (isHydrated && typeof window !== 'undefined') {
+      localStorage.setItem('gamemetrix.collections', JSON.stringify(collections))
+    }
+  }, [collections, isHydrated])
+
+  const replaceCollections = useCallback((next: Collections) => {
+    setCollections(next)
+  }, [])
 
   const toggleCollection = useCallback((collection: CollectionKey, slug: string) => {
     setCollections((current) => {
@@ -31,8 +45,8 @@ export function CollectionsProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const value = useMemo<CollectionsContextValue>(
-    () => ({ collections, toggleCollection }),
-    [collections, toggleCollection],
+    () => ({ collections, replaceCollections, toggleCollection }),
+    [collections, replaceCollections, toggleCollection],
   )
 
   return (

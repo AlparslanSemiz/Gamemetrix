@@ -10,9 +10,15 @@ from ..integrations.cheapshark_service import cheapshark_service
 from ..integrations.itad_service import itad_service
 from ..integrations.rate_limiter import get_rate_limiter
 from ..integrations.steam import extract_steam_app_id, fetch_steam_price
+from ..integrations.types import bounded_float
 from ..models import Game, PriceSnapshot
 
 PRICE_REFRESH_MAX_AGE = datetime.timedelta(hours=12)
+
+
+def _cheapshark_price_sort_key(deal: dict) -> float:
+    amount = bounded_float(deal.get("salePrice"), maximum=1_000_000.0)
+    return amount if amount is not None else float("inf")
 
 
 def _snapshot_is_recent(snapshot: PriceSnapshot, now: datetime.datetime | None = None) -> bool:
@@ -40,6 +46,12 @@ def _snapshot_needs_repair(snapshot: PriceSnapshot, app_id: int | None) -> bool:
 def price_snapshots_need_refresh(game: Game) -> bool:
     snapshots = game.price_snapshots or []
     if not snapshots:
+        if game.prices_refreshed_at is not None:
+            refreshed_at = game.prices_refreshed_at
+            if refreshed_at.tzinfo is None:
+                refreshed_at = refreshed_at.replace(tzinfo=datetime.UTC)
+            if refreshed_at >= datetime.datetime.now(datetime.UTC) - PRICE_REFRESH_MAX_AGE:
+                return False
         return True
     app_id = extract_steam_app_id(game.cover_url, game.image_url, game.slug)
     has_price = any(
@@ -58,8 +70,6 @@ def price_snapshots_need_refresh(game: Game) -> bool:
 async def fetch_and_store_prices(
     db: Session,
     game: Game,
-    *,
-    respect_budget: bool = True,
 ) -> int:
     now = datetime.datetime.now(datetime.UTC)
     app_id = extract_steam_app_id(game.cover_url, game.image_url, game.slug)
@@ -69,8 +79,10 @@ async def fetch_and_store_prices(
 
     rows: list[PriceSnapshot] = []
     limiter = get_rate_limiter()
+    attempted = False
 
-    if app_id is not None and (not respect_budget or await limiter.acquire("Steam")):
+    if app_id is not None and await limiter.acquire("Steam"):
+        attempted = True
         steam_price = await fetch_steam_price(app_id)
         if steam_price:
             rows.append(PriceSnapshot(
@@ -91,8 +103,10 @@ async def fetch_and_store_prices(
                 created_at=now,
             ))
 
-    if itad_service.is_configured() and (not respect_budget or await limiter.acquire("ITAD")):
+    if itad_service.is_configured():
+        remaining_before = limiter.remaining("ITAD")
         price_data = await itad_service.fetch_price_data(game.title, steam_appid=app_id)
+        attempted = attempted or limiter.remaining("ITAD") < remaining_before
         if price_data:
             rows.append(PriceSnapshot(
                 game_id=game.id,
@@ -114,21 +128,24 @@ async def fetch_and_store_prices(
                 created_at=now,
             ))
 
+    cheapshark_before = limiter.remaining("CheapShark")
     deals = []
-    if not respect_budget or await limiter.acquire("CheapShark"):
-        cs_game_id = await cheapshark_service.lookup_game_id(game.title, steam_appid=app_id)
-        if cs_game_id and (not respect_budget or await limiter.acquire("CheapShark")):
-            deals = await cheapshark_service.get_game_deals(cs_game_id)
-        if not deals and (not respect_budget or await limiter.acquire("CheapShark")):
-            deals = [
-                deal for deal in await cheapshark_service.search_deals(game.title, limit=20)
-                if _cheapshark_deal_matches_game(deal, game, app_id)
-            ]
+    cs_game_id = await cheapshark_service.lookup_game_id(game.title, steam_appid=app_id)
+    if cs_game_id:
+        deals = await cheapshark_service.get_game_deals(cs_game_id)
+    if not deals:
+        deals = [
+            deal for deal in await cheapshark_service.search_deals(game.title, limit=20)
+            if _cheapshark_deal_matches_game(deal, game, app_id)
+        ]
+    attempted = attempted or limiter.remaining("CheapShark") < cheapshark_before
     if deals:
         seen_stores: set[str] = {row.store.lower() for row in rows}
-        sorted_deals = sorted(deals, key=lambda d: float(d.get("salePrice", 9999)))
+        sorted_deals = sorted(deals, key=_cheapshark_price_sort_key)
         for deal in sorted_deals:
             normalized = cheapshark_service.normalize_deal(deal)
+            if normalized.sale_price is None and normalized.list_price is None:
+                continue
             store = str(normalized.raw.get("store_name") or "PC store")
             store_key = store.lower()
             if store_key in seen_stores:
@@ -158,7 +175,15 @@ async def fetch_and_store_prices(
         game.price_snapshots.clear()
         db.flush()
         db.add_all(rows)
-        db.commit()
+        db.flush()
+        db.refresh(game, attribute_names=["price_snapshots"])
+        from .seo import refresh_game_seo_state
+        refresh_game_seo_state(game, content_updated=True)
+    if not attempted:
+        return 0
+    game.prices_refreshed_at = now
+    db.add(game)
+    db.commit()
     return len(rows)
 
 
@@ -211,6 +236,7 @@ async def price_backfill_batch(
     limit: int = 48,
     *,
     inter_game_delay: float = 0.35,
+    refresh_seo: bool = True,
 ) -> dict[str, int]:
     from ..database import SessionLocal
 
@@ -228,7 +254,7 @@ async def price_backfill_batch(
                 skipped += 1
                 continue
             try:
-                rows = await fetch_and_store_prices(db, game, respect_budget=True)
+                rows = await fetch_and_store_prices(db, game)
             except Exception:
                 failed += 1
                 continue
@@ -236,6 +262,11 @@ async def price_backfill_batch(
                 stored += rows
             else:
                 skipped += 1
+    if stored and refresh_seo:
+        with SessionLocal() as db:
+            from .seo import refresh_catalog_seo_states
+            refresh_catalog_seo_states(db)
+            db.commit()
     return {
         "considered": considered,
         "stored": stored,

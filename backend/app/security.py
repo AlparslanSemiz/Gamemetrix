@@ -5,14 +5,15 @@ from typing import Any
 
 import bcrypt
 import jwt
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
 from jwt import InvalidTokenError
 
 from .config import get_settings
 
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/token")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/token", auto_error=False)
+_DUMMY_ADMIN_HASH = bcrypt.hashpw(b"GameMetrix timing-only admin sentinel", bcrypt.gensalt())
 
 
 @dataclass(frozen=True)
@@ -41,17 +42,13 @@ def _require_jwt_secret() -> str:
 
 def verify_admin_password(username: str, password: str) -> bool:
     cfg = get_settings()
-    if not cfg.ADMIN_USERNAME or not cfg.ADMIN_PASSWORD_HASH:
-        return False
-    if not compare_digest(username, cfg.ADMIN_USERNAME):
-        return False
     if len(password) > 1024:
         return False
+    username_matches = bool(cfg.ADMIN_USERNAME) and compare_digest(username, cfg.ADMIN_USERNAME)
+    candidate = cfg.ADMIN_PASSWORD_HASH.encode("utf-8") if username_matches and cfg.ADMIN_PASSWORD_HASH else _DUMMY_ADMIN_HASH
     try:
-        return bcrypt.checkpw(
-            password.encode("utf-8"),
-            cfg.ADMIN_PASSWORD_HASH.encode("utf-8"),
-        )
+        password_matches = bcrypt.checkpw(password.encode("utf-8"), candidate)
+        return username_matches and bool(cfg.ADMIN_PASSWORD_HASH) and password_matches
     except ValueError:
         return False
 
@@ -73,7 +70,17 @@ def create_access_token(user: AuthenticatedUser) -> str:
     return jwt.encode(payload, _require_jwt_secret(), algorithm=cfg.JWT_ALGORITHM)
 
 
-def get_current_user(token: str = Depends(oauth2_scheme)) -> AuthenticatedUser:
+def get_current_user(
+    request: Request,
+    token: str | None = Depends(oauth2_scheme),
+) -> AuthenticatedUser:
+    if not token:
+        if request.cookies.get("gm_session"):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Normal accounts cannot access admin endpoints.",
+            )
+        raise _auth_error()
     cfg = get_settings()
     decode_options: dict[str, Any] = {
         "require": ["exp", "iat", "nbf", "iss", "sub", "role"],

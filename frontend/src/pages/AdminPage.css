@@ -21,7 +21,7 @@
   color: #a78bfa;
   font-size: 11px;
   font-weight: 900;
-  letter-spacing: 0.08em;
+  letter-spacing: 0;
   text-transform: uppercase;
 }
 
@@ -489,6 +489,82 @@
 .admin-empty {
   margin: 0;
   font-size: 13px;
+}
+
+/* ─── Admin audit trail ───────────────────────────────────────────── */
+
+.admin-audit-table {
+  display: grid;
+  gap: 8px;
+  max-height: 460px;
+  overflow-y: auto;
+}
+
+.admin-audit-row {
+  display: grid;
+  grid-template-columns: 108px minmax(80px, 0.8fr) 64px minmax(140px, 2fr) 48px minmax(90px, 1fr);
+  gap: 12px;
+  align-items: center;
+  min-width: 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.055);
+  padding-top: 8px;
+  font-size: 12px;
+}
+
+.admin-audit-row span,
+.admin-audit-row small {
+  min-width: 0;
+  overflow: hidden;
+  color: #8c94a4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-audit-row strong {
+  min-width: 0;
+  overflow: hidden;
+  color: #f1f5f9;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-audit-row em {
+  color: #a78bfa;
+  font-style: normal;
+  font-weight: 850;
+}
+
+.admin-audit-status {
+  color: #4cc458;
+  font-weight: 850;
+  text-align: right;
+}
+
+.admin-audit-row.is-failure .admin-audit-status {
+  color: #f87171;
+}
+
+.admin-audit-row.is-failure strong {
+  color: #fca5a5;
+}
+
+.admin-audit-filter {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  background: transparent;
+  padding: 4px 10px;
+  color: #8c94a4;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.admin-audit-filter.is-active {
+  border-color: rgba(248, 113, 113, 0.5);
+  background: rgba(248, 113, 113, 0.1);
+  color: #fca5a5;
 }
 
 /* ─── Admin score tools ───────────────────────────────────────────── */

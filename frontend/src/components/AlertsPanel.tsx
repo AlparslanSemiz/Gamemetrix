@@ -1,8 +1,17 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Bell, CalendarDays, CheckCheck, ExternalLink, Percent, RefreshCw, Sparkles, X } from 'lucide-react'
 import { Link } from 'react-router-dom'
+import {
+  setAccountAlertState,
+  setAccountAlertStates,
+  type Account,
+  type AccountPreferences,
+  type AccountState,
+} from '../services/account'
 import { getGameBySlug } from '../services/games'
+import { useAccount } from '../state/useAccount'
 import type { Game, PriceSnapshot } from '../types/game'
+import { currentPriceSnapshots } from '../utils/prices'
 
 const READ_KEY = 'gamemetrix.alerts.read.v1'
 const DISMISSED_KEY = 'gamemetrix.alerts.dismissed.v1'
@@ -29,6 +38,7 @@ const DEFAULT_PREFERENCES: AlertPreferences = {
 }
 
 function loadStringSet(key: string): Set<string> {
+  if (typeof window === 'undefined') return new Set()
   try {
     const value: unknown = JSON.parse(localStorage.getItem(key) ?? '[]')
     return new Set(Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [])
@@ -38,6 +48,7 @@ function loadStringSet(key: string): Set<string> {
 }
 
 function loadPreferences(): AlertPreferences {
+  if (typeof window === 'undefined') return DEFAULT_PREFERENCES
   try {
     const value = JSON.parse(localStorage.getItem(PREFERENCES_KEY) ?? '{}') as Partial<AlertPreferences>
     return {
@@ -76,7 +87,7 @@ function buildAlerts(games: Game[], preferences: AlertPreferences): GameAlert[] 
   const alerts: GameAlert[] = []
 
   games.forEach((game) => {
-    const prices = game.price_snapshots ?? []
+    const prices = currentPriceSnapshots(game.price_snapshots ?? [])
     const freePrice = prices.find((price) => price.is_free || price.sale_price === 0)
     const discount = bestDiscount(prices)
 
@@ -132,18 +143,52 @@ function AlertIcon({ kind }: { kind: GameAlert['kind'] }) {
   return <Bell size={17} aria-hidden="true" />
 }
 
-export function AlertsPanel({ watchlistSlugs }: { watchlistSlugs: string[] }) {
+interface AlertsPanelContentProps {
+  watchlistSlugs: string[]
+  account: Account | null
+  accountState: AccountState | null
+  updatePreferences: (preferences: Partial<AccountPreferences>) => Promise<void>
+}
+
+function AlertsPanelContent({
+  watchlistSlugs,
+  account,
+  accountState,
+  updatePreferences,
+}: AlertsPanelContentProps) {
   const [games, setGames] = useState<Game[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [refreshKey, setRefreshKey] = useState(0)
-  const [readIds, setReadIds] = useState(() => loadStringSet(READ_KEY))
-  const [dismissedIds, setDismissedIds] = useState(() => loadStringSet(DISMISSED_KEY))
-  const [preferences, setPreferences] = useState(loadPreferences)
+  const [readIds, setReadIds] = useState(() => (
+    accountState ? new Set(accountState.read_alerts) : loadStringSet(READ_KEY)
+  ))
+  const [dismissedIds, setDismissedIds] = useState(() => (
+    accountState ? new Set(accountState.dismissed_alerts) : loadStringSet(DISMISSED_KEY)
+  ))
+  const [preferences, setPreferences] = useState<AlertPreferences>(() => accountState ? {
+    minDiscount: accountState.preferences.min_discount,
+    minScore: accountState.preferences.min_score,
+    upcomingDays: accountState.preferences.upcoming_days,
+  } : loadPreferences())
 
   useEffect(() => {
     localStorage.setItem(PREFERENCES_KEY, JSON.stringify(preferences))
-  }, [preferences])
+    if (!account) return
+    if (
+      accountState?.preferences.min_discount === preferences.minDiscount
+      && accountState.preferences.min_score === preferences.minScore
+      && accountState.preferences.upcoming_days === preferences.upcomingDays
+    ) return
+    const timer = window.setTimeout(() => {
+      void updatePreferences({
+        min_discount: preferences.minDiscount,
+        min_score: preferences.minScore,
+        upcoming_days: preferences.upcomingDays,
+      }).catch(() => setError('Alert preferences could not be synchronized.'))
+    }, 500)
+    return () => window.clearTimeout(timer)
+  }, [account, accountState, preferences, updatePreferences])
 
   useEffect(() => {
     let cancelled = false
@@ -194,12 +239,19 @@ export function AlertsPanel({ watchlistSlugs }: { watchlistSlugs: string[] }) {
     alerts.forEach((alert) => next.add(alert.id))
     setReadIds(next)
     persistSet(READ_KEY, next)
+    if (account) {
+      void setAccountAlertStates(
+        alerts.filter((alert) => !readIds.has(alert.id)).map((alert) => alert.id),
+        'read',
+      ).catch(() => setError('Read status could not be synchronized.'))
+    }
   }
 
   const dismiss = (id: string) => {
     const next = new Set(dismissedIds).add(id)
     setDismissedIds(next)
     persistSet(DISMISSED_KEY, next)
+    if (account) void setAccountAlertState(id, 'dismissed').catch(() => setError('Dismissal could not be synchronized.'))
   }
 
   return (
@@ -254,10 +306,11 @@ export function AlertsPanel({ watchlistSlugs }: { watchlistSlugs: string[] }) {
               <p>{alert.detail}</p>
             </div>
             <div className="alert-item-actions">
-              <Link to={`/games/${alert.game.slug}`} title={`Open ${alert.game.title}`} onClick={() => {
+              <Link to={`/game/${alert.game.slug}`} title={`Open ${alert.game.title}`} onClick={() => {
                 const next = new Set(readIds).add(alert.id)
                 setReadIds(next)
                 persistSet(READ_KEY, next)
+                if (account) void setAccountAlertState(alert.id, 'read').catch(() => undefined)
               }}>
                 <ExternalLink size={15} aria-hidden="true" />
               </Link>
@@ -269,5 +322,24 @@ export function AlertsPanel({ watchlistSlugs }: { watchlistSlugs: string[] }) {
         ))}
       </div>
     </div>
+  )
+}
+
+export function AlertsPanel({ watchlistSlugs }: { watchlistSlugs: string[] }) {
+  const accountContext = useAccount()
+  const stateKey = accountContext.accountState
+    ? `account:${accountContext.accountState.account.id}`
+    : accountContext.isLoading
+      ? 'loading'
+      : 'guest'
+
+  return (
+    <AlertsPanelContent
+      key={stateKey}
+      watchlistSlugs={watchlistSlugs}
+      account={accountContext.account}
+      accountState={accountContext.accountState}
+      updatePreferences={accountContext.updatePreferences}
+    />
   )
 }

@@ -59,7 +59,7 @@
   font-size: 0.72rem;
   color: #6b7280;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0;
   margin-bottom: 1.5rem;
 }
 .dp-bc-sep { color: #374151; }
@@ -71,7 +71,7 @@
   padding: 0;
   font-size: inherit;
   text-transform: inherit;
-  letter-spacing: inherit;
+  letter-spacing: 0;
   transition: color 0.15s, text-shadow 0.15s;
 }
 .dp-bc-link:hover {
@@ -115,7 +115,7 @@
   color: #f0f4ff;
   line-height: 1.05;
   margin: 0 0 0.4rem;
-  letter-spacing: -0.01em;
+  letter-spacing: 0;
 }
 .dp-subtitle {
   font-size: 0.82rem;
@@ -166,13 +166,12 @@
   color: #d1d5db;
 }
 .dp-btn-primary {
-  background: var(--score-color, #1d4ed8);
+  background: #252b36;
   border-color: var(--score-color, #3b82f6);
   color: #fff;
 }
 .dp-btn-primary:hover {
-  background: var(--score-color, #2563eb);
-  filter: brightness(1.12);
+  background: #303744;
 }
 .dp-btn-loading { opacity: 0.6; cursor: not-allowed; }
 
@@ -209,7 +208,7 @@
   font-size: 0.7rem;
   color: #6b7280;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0;
 }
 .dp-total-reviews {
   font-size: 0.7rem;
@@ -254,7 +253,7 @@
   font-size: 0.66rem;
   font-weight: 800;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0;
 }
 .dp-score-stats strong {
   color: #eef2ff;
@@ -280,11 +279,11 @@
   padding: 12px;
 }
 .dp-signal-card span {
-  color: #647084;
+  color: #9ca3af;
   font-size: 0.66rem;
   font-weight: 900;
   text-transform: uppercase;
-  letter-spacing: 0.07em;
+  letter-spacing: 0;
 }
 .dp-signal-card strong {
   color: #e5ebf7;
@@ -311,8 +310,8 @@
   font-size: 0.72rem;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.09em;
-  color: #4b5563;
+  letter-spacing: 0;
+  color: #9ca3af;
   margin: 0 0 0.85rem;
 }
 
@@ -333,10 +332,10 @@
   cursor: pointer;
   border: 1px solid rgba(255, 255, 255, 0.1);
   background: transparent;
-  color: #6b7280;
+  color: #9ca3af;
   transition: all 0.15s;
 }
-.dp-rtab:hover { color: #9ca3af; border-color: rgba(255, 255, 255, 0.2); }
+.dp-rtab:hover { color: #d1d5db; border-color: rgba(255, 255, 255, 0.2); }
 .dp-rtab-active {
   background: rgba(var(--score-rgb, 59, 130, 246), 0.12);
   border-color: var(--score-color, #3b82f6);
@@ -367,6 +366,8 @@
 }
 .dp-src-row:last-child { border-bottom: none; }
 .dp-src-row-secondary { opacity: 0.65; }
+.dp-src-row-unavailable .dp-src-bar { opacity: 0.42; }
+.dp-src-row-unavailable .dp-src-score { color: #777c87; }
 
 .dp-src-name {
   font-size: 0.78rem;
@@ -457,7 +458,7 @@
 }
 .dp-info-row:last-child { border-bottom: none; }
 .dp-info-key {
-  color: #4b5563;
+  color: #9ca3af;
   font-weight: 500;
 }
 .dp-info-val {
@@ -497,6 +498,7 @@
   color: var(--proton-tier-color);
 }
 
+.dp-proton-native { --proton-tier-color: #6ed7a7; --proton-tier-rgb: 110, 215, 167; }
 .dp-proton-platinum { --proton-tier-color: #b4c7dc; --proton-tier-rgb: 180, 199, 220; }
 .dp-proton-gold { --proton-tier-color: #cfb53b; --proton-tier-rgb: 207, 181, 59; }
 .dp-proton-silver { --proton-tier-color: #a6a6a6; --proton-tier-rgb: 166, 166, 166; }
@@ -529,11 +531,11 @@
 .dp-price-primary span,
 .dp-price-meta span,
 .dp-price-chart span {
-  color: #647084;
+  color: #9ca3af;
   font-size: 0.66rem;
   font-weight: 900;
   text-transform: uppercase;
-  letter-spacing: 0.07em;
+  letter-spacing: 0;
 }
 
 .dp-price-primary strong {
@@ -671,7 +673,7 @@
 
 .dp-store-name small {
   overflow: hidden;
-  color: #6f7a8e;
+  color: #9ca3af;
   font-size: 0.66rem;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -720,10 +722,11 @@
   background: rgba(var(--proton-rgb), 0.12);
   font-size: 0.74rem;
   font-weight: 900;
-  letter-spacing: 0.4px;
+  letter-spacing: 0;
   text-transform: uppercase;
 }
 
+.dp-proton-native { --proton-color: #6ed7a7; --proton-rgb: 110, 215, 167; }
 .dp-proton-platinum { --proton-color: #b4c7dc; --proton-rgb: 180, 199, 220; }
 .dp-proton-gold { --proton-color: #cfb53b; --proton-rgb: 207, 181, 59; }
 .dp-proton-silver { --proton-color: #a6a6a6; --proton-rgb: 166, 166, 166; }
@@ -776,7 +779,7 @@
   font-weight: 700;
   color: #6b7280;
   text-transform: uppercase;
-  letter-spacing: 0.07em;
+  letter-spacing: 0;
   margin: 0 0 0.65rem;
 }
 .dp-sysreq-tabs {
@@ -847,7 +850,7 @@
   color: #f0f4ff;
   font-size: clamp(1.55rem, 3vw, 2.25rem);
   font-weight: 850;
-  letter-spacing: -0.01em;
+  letter-spacing: 0;
 }
 
 .dp-similar-heading small {
@@ -855,7 +858,7 @@
   font-size: 0.74rem;
   font-weight: 850;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0;
   white-space: nowrap;
 }
 
@@ -920,7 +923,7 @@
   color: var(--score-color, #8ea2ff);
   font-size: 0.64rem;
   font-weight: 900;
-  letter-spacing: 0.08em;
+  letter-spacing: 0;
 }
 
 .dp-dlc-body strong {
@@ -1105,7 +1108,7 @@
   font-size: 0.68rem;
   font-weight: 900;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0;
 }
 
 .dp-gallery-count {

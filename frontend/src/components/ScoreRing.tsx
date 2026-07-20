@@ -1,4 +1,4 @@
-import { scoreColor } from '../utils/scoreColors'
+import { scoreColor, scoreTextColor } from '../utils/scoreColors'
 
 interface ScoreRingProps {
   score: number
@@ -11,7 +11,7 @@ export function ScoreRing({ score, size = 'lg' }: ScoreRingProps) {
   return (
     <span
       className={`score-ring score-ring-${size}`}
-      style={{ background: color }}
+      style={{ background: color, color: scoreTextColor(rounded) }}
       aria-label={`GameMetrix score ${rounded}`}
     >
       {rounded}

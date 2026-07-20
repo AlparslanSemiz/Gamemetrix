@@ -12,7 +12,6 @@ Routes:
   POST /api/metadata/enrich-summaries    — enrich weak/placeholder summaries
 """
 
-import asyncio
 import math
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
@@ -31,7 +30,8 @@ from ..schemas import (
 )
 from ..integrations.provider_status import get_provider_statuses
 from ..integrations.rate_limiter import get_rate_limiter
-from ..integrations.sync import SOURCE_WEIGHTS, calculate_metrix_score, refresh_game_sources
+from ..integrations.source_registry import RATING_SOURCES
+from ..integrations.sync import SOURCE_WEIGHTS, calculate_metrix_score, compute_rank_fields, refresh_game_sources
 from ..integrations.rawg_score import get_rawg_game_metadata
 from ..services.background import fix_year_batch, rating_refresh_candidates, refresh_all_games
 from ..services.metadata_backfill import metadata_backfill_batch
@@ -51,7 +51,7 @@ def integration_status() -> list[dict[str, str]]:
 
 @router.get("/api/score-weights", response_model=ScoreWeightsResponse)
 def get_score_weights() -> dict[str, dict[str, float]]:
-    return {"weights": SOURCE_WEIGHTS}
+    return {"weights": {source: value for source, value in SOURCE_WEIGHTS.items() if source in RATING_SOURCES}}
 
 
 @router.put("/api/score-weights", response_model=ScoreWeightsResponse)
@@ -60,7 +60,7 @@ def update_score_weights(
     _admin=Depends(require_admin_user),
 ) -> dict[str, dict[str, float]]:
     for source, value in payload.weights.items():
-        if source not in SOURCE_WEIGHTS:
+        if source not in RATING_SOURCES:
             raise HTTPException(status_code=422, detail=f"Unknown score source: {source}")
         if not math.isfinite(value):
             raise HTTPException(status_code=422, detail=f"Invalid score weight for {source}")
@@ -76,6 +76,9 @@ def recalculate_scores(
     games = db.query(Game).all()
     for game in games:
         game.metrix_score = calculate_metrix_score(game.source_scores)
+        game.rank_score, game.is_rankable, _ = compute_rank_fields(game)
+    from ..services.seo import refresh_catalog_seo_states
+    refresh_catalog_seo_states(db)
     db.commit()
     return {"recalculated": len(games)}
 
@@ -99,7 +102,7 @@ async def enrich_ratings(
 def get_rate_limit_status(
     _admin=Depends(require_admin_user),
 ) -> dict[str, dict[str, int]]:
-    """Remaining daily request budget per source. Resets at midnight."""
+    """Remaining persistent daily, monthly, and short-window provider budgets."""
     return get_rate_limiter().status()
 
 
@@ -120,7 +123,7 @@ async def refresh_all_scores(
     can be triggered while an import is running and will simply report
     "already_running" rather than doubling up the load. See app/heavy_jobs.py.
     """
-    background_tasks.add_task(asyncio.ensure_future, refresh_all_games(concurrency=concurrency, force=force))
+    background_tasks.add_task(refresh_all_games, concurrency=concurrency, force=force)
     return {"status": "started", "message": f"Refreshing all games (concurrency={concurrency}, force={force})"}
 
 
@@ -172,6 +175,8 @@ async def enrich_summaries(
         if not summary_needs_enrichment(game):
             skipped += 1
             continue
+        if not await get_rate_limiter().acquire("RAWG"):
+            break
         raw_game = await get_rawg_game_metadata(game.title)
         if not raw_game or not apply_rawg_metadata(game, raw_game):
             skipped += 1

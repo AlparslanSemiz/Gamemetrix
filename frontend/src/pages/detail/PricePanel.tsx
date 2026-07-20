@@ -1,4 +1,5 @@
 import type { Game, PriceSnapshot } from '../../types/game'
+import { trackProductEvent } from '../../services/analytics'
 import { steamAppIdFromGame } from '../../utils/steam'
 import { safeExternalUrl } from '../../utils/url'
 import { formatDate, formatMoney } from './format'
@@ -167,7 +168,14 @@ export function PricePanel({ prices, game }: { prices: PriceSnapshot[]; game: Ga
               </>
             )
             return offer.url ? (
-              <a key={offer.id} href={offer.url} target="_blank" rel="noreferrer" className="dp-store-row">
+              <a
+                key={offer.id}
+                href={offer.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="dp-store-row"
+                onClick={() => trackProductEvent('store_outbound', { game_slug: game.slug, store: offer.store })}
+              >
                 {content}
               </a>
             ) : (

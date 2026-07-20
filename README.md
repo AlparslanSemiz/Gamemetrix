@@ -1,9 +1,9 @@
 GameMetrix
 ==========
 
-GameMetrix is a dark, minimalist game score explorer. The current version has a
-FastAPI backend with SQLAlchemy models, seeded mock game data, and a Vite React
-frontend that filters games by search, genre, year, score, and sort order.
+GameMetrix is a game decision catalog with a FastAPI/PostgreSQL backend and a
+React Router Framework Mode frontend. Public game and curation routes render on
+the server; the catalog remains interactive after hydration.
 
 ## Run PostgreSQL
 
@@ -36,8 +36,9 @@ the backend is directly reachable from the internet.
 ## Run Backend
 
 ```powershell
-python -m pip install -r backend\requirements.txt
+python -m pip install -r backend\requirements-dev.txt
 cd backend
+alembic upgrade head
 python -m uvicorn app.main:app --reload
 ```
 
@@ -51,4 +52,43 @@ npm install
 npm run dev
 ```
 
-The app runs at `http://127.0.0.1:5173`.
+The SSR app runs at `http://127.0.0.1:5173`. Server loaders use
+`INTERNAL_API_BASE_URL` when set and otherwise call `http://127.0.0.1:8000`.
+Browser API calls stay same-origin; the development server proxies `/api` and
+backend `/admin/*` requests to port 8000 so account cookies behave like production.
+
+## Accounts
+
+Normal accounts and admin authentication are intentionally separate. Normal
+accounts use Argon2id passwords and hashed opaque sessions in PostgreSQL;
+admin continues to use `/api/auth/token` and a short-lived Bearer token. The
+admin token is held in page memory only and is never written to browser storage.
+
+Development can use `ACCOUNT_EMAIL_DELIVERY=log`. Production requires
+`ENV=production` and validates HTTPS, JWT issuer/audience, SMTP, numeric job
+limits, and admin settings before startup. Configure Google OAuth and SMTP only
+in backend/deployment secrets.
+
+## Verify
+
+```powershell
+cd backend
+python -m pytest -q
+python -m compileall app alembic
+
+cd ..\frontend
+npm run lint
+npm run typecheck
+npm run build
+npm run test:e2e
+npm run lighthouse:ci
+
+cd ..
+docker compose config
+```
+
+PostgreSQL integration tests run when `TEST_DATABASE_URL` names a dedicated
+database ending in `_test`.
+
+Operational policy is documented in [SEO growth](docs/seo-growth.md) and
+[provider access](docs/provider-access.md).

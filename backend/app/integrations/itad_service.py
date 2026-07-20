@@ -14,7 +14,8 @@ from datetime import UTC, date, datetime
 import httpx
 
 from ..config import get_settings
-from .types import NormalizedGame, SourceHealth
+from .rate_limiter import get_rate_limiter
+from .types import NormalizedGame, SourceHealth, bounded_float, bounded_int
 from .value_score import PriceData
 
 log = logging.getLogger(__name__)
@@ -42,6 +43,14 @@ class ITADService:
                 message="ITAD_API_KEY not configured",
             )
         t0 = time.monotonic()
+        if not await get_rate_limiter().acquire("ITAD"):
+            return SourceHealth(
+                source="itad",
+                configured=True,
+                working=False,
+                status="rate_limited",
+                message="Configured ITAD request budget is exhausted",
+            )
         try:
             async with httpx.AsyncClient(timeout=10) as client:
                 response = await client.get(
@@ -55,8 +64,14 @@ class ITADService:
                     source="itad",
                     configured=True,
                     working=False,
-                    status="failing",
+                    status="invalid_key",
                     message=f"ITAD API key is invalid or expired (HTTP {response.status_code})",
+                    latency_ms=latency,
+                )
+            if response.status_code == 429:
+                return SourceHealth(
+                    source="itad", configured=True, working=False,
+                    status="rate_limited", message="ITAD quota or rate limit reached (HTTP 429)",
                     latency_ms=latency,
                 )
             if not response.is_success:
@@ -64,7 +79,7 @@ class ITADService:
                     source="itad",
                     configured=True,
                     working=False,
-                    status="failing",
+                    status="provider_error" if response.status_code >= 500 else "failing",
                     message=f"ITAD endpoint returned HTTP {response.status_code}",
                     latency_ms=latency,
                 )
@@ -91,6 +106,11 @@ class ITADService:
                 message=f'Could not resolve "{SMOKE_TEST_TITLE}" — check API key or title spelling',
                 latency_ms=latency,
             )
+        except httpx.TimeoutException:
+            return SourceHealth(
+                source="itad", configured=True, working=False,
+                status="timeout", message="ITAD health check timed out",
+            )
         except Exception as exc:
             return SourceHealth(
                 source="itad",
@@ -103,6 +123,8 @@ class ITADService:
     async def lookup_id(self, title: str) -> str | None:
         """GET /games/lookup/v1 — resolve title to ITAD game UUID."""
         if not self.is_configured():
+            return None
+        if not await get_rate_limiter().acquire("ITAD"):
             return None
         try:
             async with httpx.AsyncClient(timeout=10) as client:
@@ -123,6 +145,8 @@ class ITADService:
         """Resolve an ITAD game UUID from a Steam app ID."""
         if not self.is_configured():
             return None
+        if not await get_rate_limiter().acquire("ITAD"):
+            return None
         try:
             async with httpx.AsyncClient(timeout=10) as client:
                 resp = await client.get(
@@ -142,6 +166,8 @@ class ITADService:
         """GET /games/prices/v3 — current store prices."""
         if not self.is_configured() or not itad_id:
             return []
+        if not await get_rate_limiter().acquire("ITAD"):
+            return []
         try:
             async with httpx.AsyncClient(timeout=10) as client:
                 resp = await client.get(
@@ -150,10 +176,15 @@ class ITADService:
                     params={"id": itad_id, "country": country, "capacity": 20},
                 )
                 resp.raise_for_status()
-                results = resp.json()
-                for entry in results:
-                    if str(entry.get("id")) == itad_id:
-                        return entry.get("deals", [])
+            results = resp.json()
+            if not isinstance(results, list):
+                return []
+            for entry in results:
+                if not isinstance(entry, dict):
+                    continue
+                if str(entry.get("id")) == itad_id:
+                    deals = entry.get("deals", [])
+                    return [deal for deal in deals if isinstance(deal, dict)] if isinstance(deals, list) else []
         except Exception as exc:
             log.debug("ITAD prices failed for %s: %s", itad_id, exc)
         return []
@@ -161,6 +192,8 @@ class ITADService:
     async def get_history_low(self, itad_id: str, country: str = "EU") -> dict | None:
         """GET /games/historylow/v1 — all-time lowest price."""
         if not self.is_configured() or not itad_id:
+            return None
+        if not await get_rate_limiter().acquire("ITAD"):
             return None
         try:
             async with httpx.AsyncClient(timeout=10) as client:
@@ -170,10 +203,14 @@ class ITADService:
                     params={"id": itad_id, "country": country},
                 )
                 resp.raise_for_status()
-                results = resp.json()
-                for entry in results:
-                    if str(entry.get("id")) == itad_id and entry.get("low"):
-                        return entry["low"]
+            results = resp.json()
+            if not isinstance(results, list):
+                return None
+            for entry in results:
+                if not isinstance(entry, dict):
+                    continue
+                if str(entry.get("id")) == itad_id and entry.get("low"):
+                    return entry["low"] if isinstance(entry["low"], dict) else None
         except Exception as exc:
             log.debug("ITAD history low failed for %s: %s", itad_id, exc)
         return None
@@ -181,6 +218,8 @@ class ITADService:
     async def get_subscriptions(self, itad_id: str) -> list[str]:
         """GET /games/subscriptions/v1 — which subscription services include the game."""
         if not self.is_configured() or not itad_id:
+            return []
+        if not await get_rate_limiter().acquire("ITAD"):
             return []
         try:
             async with httpx.AsyncClient(timeout=10) as client:
@@ -190,10 +229,21 @@ class ITADService:
                     params={"id": itad_id},
                 )
                 resp.raise_for_status()
-                results = resp.json()
-                for entry in results:
-                    if str(entry.get("id")) == itad_id:
-                        return [s.get("name", "") for s in entry.get("subscriptions", [])]
+            results = resp.json()
+            if not isinstance(results, list):
+                return []
+            for entry in results:
+                if not isinstance(entry, dict):
+                    continue
+                if str(entry.get("id")) == itad_id:
+                    subscriptions = entry.get("subscriptions", [])
+                    if not isinstance(subscriptions, list):
+                        return []
+                    return [
+                        str(subscription["name"])[:120]
+                        for subscription in subscriptions
+                        if isinstance(subscription, dict) and subscription.get("name")
+                    ]
         except Exception as exc:
             log.debug("ITAD subscriptions failed for %s: %s", itad_id, exc)
         return []
@@ -221,33 +271,57 @@ class ITADService:
         if not deals and not low:
             return None
 
-        best: dict = {}
-        if deals:
-            best = min(deals, key=lambda d: float((d.get("price") or {}).get("amount", 9999)))
+        priced_deals: list[tuple[dict, float]] = []
+        for deal in deals:
+            price = deal.get("price")
+            amount = bounded_float(
+                price.get("amount") if isinstance(price, dict) else None,
+                maximum=1_000_000.0,
+            )
+            if amount is not None:
+                priced_deals.append((deal, amount))
+        best, best_sale = min(priced_deals, key=lambda item: item[1]) if priced_deals else ({}, None)
 
         list_price: float | None = None
         sale_price: float | None = None
         discount_pct: int | None = None
-        store: str = (best.get("shop") or {}).get("name", "") if best else ""
-        currency: str = (best.get("price") or {}).get("currency", "EUR") if best else "EUR"
+        shop = best.get("shop") if best else None
+        store = str(shop.get("name") or "")[:120] if isinstance(shop, dict) else ""
+        price_block = best.get("price") if best else None
+        raw_currency = price_block.get("currency") if isinstance(price_block, dict) else None
+        currency = str(raw_currency or "EUR").upper()
+        if len(currency) != 3 or not currency.isalpha():
+            currency = "EUR"
 
         if best:
-            raw_sale = (best.get("price") or {}).get("amount")
-            raw_list = (best.get("regular") or {}).get("amount")
-            sale_price = float(raw_sale) if raw_sale is not None else None
-            list_price = float(raw_list) if raw_list is not None else sale_price
-            discount_pct = int(best.get("cut", 0)) or None
+            regular = best.get("regular")
+            sale_price = best_sale
+            list_price = bounded_float(
+                regular.get("amount") if isinstance(regular, dict) else None,
+                maximum=1_000_000.0,
+            )
+            list_price = list_price if list_price is not None else sale_price
+            if sale_price is not None and list_price is not None and sale_price > list_price:
+                list_price = sale_price
+            discount_pct = bounded_int(best.get("cut"), maximum=100)
+            if list_price and sale_price is not None:
+                discount_pct = round(max(0.0, (list_price - sale_price) / list_price) * 100)
+            if not discount_pct:
+                discount_pct = None
 
         hist_low: float | None = None
         hist_low_date: date | None = None
         if low:
-            raw_low = (low.get("price") or {}).get("amount")
-            hist_low = float(raw_low) if raw_low is not None else None
+            low_price = low.get("price")
+            hist_low = bounded_float(
+                low_price.get("amount") if isinstance(low_price, dict) else None,
+                maximum=1_000_000.0,
+            )
             raw_date = low.get("recorded")
             if raw_date:
                 try:
-                    hist_low_date = datetime.fromisoformat(raw_date).date()
-                except ValueError:
+                    hist_low_date = datetime.fromisoformat(str(raw_date)).date()
+                except (TypeError, ValueError):
                     pass
 
         is_free = sale_price == 0.0 if sale_price is not None else False

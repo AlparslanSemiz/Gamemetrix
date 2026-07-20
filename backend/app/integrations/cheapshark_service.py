@@ -12,7 +12,8 @@ import time
 import httpx
 
 from ..config import get_settings
-from .types import NormalizedGame, SourceHealth
+from .rate_limiter import get_rate_limiter
+from .types import NormalizedGame, SourceHealth, bounded_float
 
 log = logging.getLogger(__name__)
 
@@ -88,6 +89,14 @@ class CheapSharkService:
         return {"User-Agent": get_settings().CHEAPSHARK_USER_AGENT}
 
     async def health_check(self) -> SourceHealth:
+        if get_rate_limiter().remaining("CheapShark") <= 0:
+            return SourceHealth(
+                source="cheapshark",
+                configured=True,
+                working=False,
+                status="rate_limited",
+                message="Configured CheapShark request budget is exhausted",
+            )
         try:
             t0 = time.monotonic()
             deals = await self.search_deals(SMOKE_TEST_TITLE, limit=3)
@@ -120,6 +129,8 @@ class CheapSharkService:
 
     async def search_deals(self, title: str, limit: int = 10) -> list[dict]:
         """Search deals by title. Returns raw CheapShark deal objects."""
+        if not await get_rate_limiter().acquire("CheapShark"):
+            return []
         try:
             async with httpx.AsyncClient(timeout=10, headers=self._headers()) as client:
                 resp = await client.get(
@@ -134,6 +145,8 @@ class CheapSharkService:
 
     async def get_game_deals(self, cs_game_id: str) -> list[dict]:
         """Get all deals for a known CheapShark game ID."""
+        if not await get_rate_limiter().acquire("CheapShark"):
+            return []
         try:
             async with httpx.AsyncClient(timeout=10, headers=self._headers()) as client:
                 resp = await client.get(
@@ -165,6 +178,8 @@ class CheapSharkService:
 
     async def lookup_game_id(self, title: str, steam_appid: int | None = None) -> str | None:
         """Search games endpoint to find the CheapShark game ID."""
+        if not await get_rate_limiter().acquire("CheapShark"):
+            return None
         try:
             async with httpx.AsyncClient(timeout=10, headers=self._headers()) as client:
                 resp = await client.get(
@@ -194,18 +209,18 @@ class CheapSharkService:
 
     def normalize_deal(self, raw: dict) -> NormalizedGame:
         """Convert one CheapShark deal into a NormalizedGame with price fields."""
-        store_id = str(raw.get("storeID", ""))
+        store_id = str(raw.get("storeID") or "")[:20]
         store_name = STORE_NAMES.get(store_id, f"Store {store_id}")
 
-        normal_price = float(raw.get("normalPrice", 0)) or None
-        sale_price = float(raw.get("salePrice", 0)) or None
-        savings = float(raw.get("savings", 0))
+        normal_price = bounded_float(raw.get("normalPrice"), maximum=1_000_000.0)
+        sale_price = bounded_float(raw.get("salePrice"), maximum=1_000_000.0)
+        savings = bounded_float(raw.get("savings"), maximum=100.0) or 0.0
 
         return NormalizedGame(
             source="CheapShark",
-            external_id=str(raw.get("dealID", "")),
-            name=raw.get("title", ""),
-            cover_url=raw.get("thumb"),
+            external_id=str(raw.get("dealID") or "")[:200],
+            name=str(raw.get("title") or "")[:500],
+            cover_url=str(raw["thumb"])[:500] if raw.get("thumb") else None,
             list_price=normal_price,
             sale_price=sale_price,
             currency="USD",

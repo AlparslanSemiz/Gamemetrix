@@ -18,6 +18,15 @@ export function scoreColorRgb(score: number): string {
   return `${red}, ${green}, ${blue}`
 }
 
+export function scoreTextColor(score: number): string {
+  const color = scoreColor(score).replace('#', '')
+  const channels = [0, 2, 4].map((offset) => Number.parseInt(color.slice(offset, offset + 2), 16) / 255)
+  const luminance = channels
+    .map((channel) => channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4)
+    .reduce((total, channel, index) => total + channel * [0.2126, 0.7152, 0.0722][index], 0)
+  return (luminance + 0.05) / 0.05 >= 4.5 ? '#071018' : '#ffffff'
+}
+
 export function sourceScoreColor(score: number): string {
   if (score >= 95) return '#a79bd6'
   if (score >= 90) return '#89a4d6'

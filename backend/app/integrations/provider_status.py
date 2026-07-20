@@ -1,12 +1,11 @@
-import os
+from ..config import get_settings
 
 
 def get_provider_statuses() -> list[dict[str, str]]:
-    opencritic_ready = bool(os.getenv("RAPIDAPI_KEY"))
-    rawg_ready = bool(os.getenv("RAWG_API_KEY"))
-    metacritic_ready = rawg_ready or bool(
-        os.getenv("METACRITIC_API_KEY") or os.getenv("METACRITIC_API_BASE")
-    )
+    cfg = get_settings()
+    opencritic_ready = cfg.opencritic_configured()
+    rawg_ready = cfg.rawg_configured()
+    metacritic_ready = rawg_ready
 
     return [
         {
@@ -41,7 +40,7 @@ def get_provider_statuses() -> list[dict[str, str]]:
         },
         {
             "source": "IGDB",
-            "status": "ready" if os.getenv("IGDB_CLIENT_ID") and os.getenv("IGDB_CLIENT_SECRET") else "needs_credentials",
+            "status": "ready" if cfg.igdb_configured() else "needs_credentials",
             "detail": "Requires Twitch OAuth credentials: IGDB_CLIENT_ID and IGDB_CLIENT_SECRET.",
         },
         {

@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session, noload
 from ..config import get_settings
 from ..database import SessionLocal
 from ..integrations.rate_limiter import get_rate_limiter
-from ..integrations.sync import refresh_game_sources
+from ..integrations.sync import _score_value, refresh_game_sources
 from ..models import Game
 
 PRIMARY_SCORE_SOURCES: tuple[str, ...] = ("OpenCritic", "Metacritic", "IGDB", "Steam")
@@ -19,13 +19,18 @@ def _has_live_score(game: Game, source: str) -> bool:
     return any(
         row.get("source") == source
         and row.get("status") == "live"
-        and float(row.get("score", 0) or 0) > 0
+        and _score_value(row) is not None
         for row in game.source_scores
     )
 
 
 def missing_primary_score_sources(game: Game) -> tuple[str, ...]:
-    return tuple(source for source in PRIMARY_SCORE_SOURCES if not _has_live_score(game, source))
+    applicable = game.applicable_primary_sources
+    return tuple(
+        source
+        for source in PRIMARY_SCORE_SOURCES
+        if source in applicable and not _has_live_score(game, source)
+    )
 
 
 def _source_configured(source: str) -> bool:
@@ -56,13 +61,20 @@ def primary_score_coverage_status() -> dict[str, object]:
     complete_games = 0
 
     for source in PRIMARY_SCORE_SOURCES:
-        live = sum(1 for game in games if _has_live_score(game, source))
-        missing = total - live
+        applicable = sum(1 for game in games if source in game.applicable_primary_sources)
+        live = sum(
+            1
+            for game in games
+            if source in game.applicable_primary_sources and _has_live_score(game, source)
+        )
+        missing = applicable - live
         total_live_slots += live
         total_missing_slots += missing
         source_rows[source] = {
             "live": live,
             "missing": missing,
+            "applicable": applicable,
+            "not_applicable": total - applicable,
             "configured": _source_configured(source),
         }
 
@@ -77,7 +89,10 @@ def primary_score_coverage_status() -> dict[str, object]:
         "incomplete_games": total - complete_games,
         "live_score_slots": total_live_slots,
         "missing_score_slots": total_missing_slots,
-        "target_score_slots": total * len(PRIMARY_SCORE_SOURCES),
+        "target_score_slots": total_live_slots + total_missing_slots,
+        "not_applicable_score_slots": total * len(PRIMARY_SCORE_SOURCES)
+        - total_live_slots
+        - total_missing_slots,
     }
 
 
@@ -93,7 +108,11 @@ def primary_score_backfill_candidates(db: Session, limit: int, *, force: bool = 
 
     candidates: list[tuple[int, tuple[str, ...]]] = []
     for game in games:
-        missing = PRIMARY_SCORE_SOURCES if force else missing_primary_score_sources(game)
+        missing = (
+            tuple(source for source in PRIMARY_SCORE_SOURCES if source in game.applicable_primary_sources)
+            if force
+            else missing_primary_score_sources(game)
+        )
         if missing:
             candidates.append((game.id, tuple(missing)))
         if len(candidates) >= limit:

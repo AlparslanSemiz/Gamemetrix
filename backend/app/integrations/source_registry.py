@@ -3,12 +3,12 @@ Centralized rating source registry.
 
 Source taxonomy:
   Primary rating   — Metacritic, OpenCritic, IGDB, Steam
-  Secondary rating — RAWG (fills missing primary slots at lower weight)
+  Supplementary    — RAWG (display/enrichment only; never fills a primary slot)
   Popularity       — SteamSpy (ownership / player activity; never a rating)
   Price            — CheapShark, ITAD (deals / value; never a rating)
   Metadata         — FreeToGame (catalog / availability; never a rating)
 
-Only primary + secondary sources contribute to GameMetrix Score.
+Only primary sources contribute to GameMetrix Score.
 Weight 0.0 guarantees a source never enters the score calculation.
 """
 
@@ -77,7 +77,7 @@ REGISTRY: dict[str, SourceDef] = {
         key="RAWG",
         display_name="RAWG",
         source_type="aggregate",
-        weight=0.04,
+        weight=0.0,
         is_primary=False,
         requires_pc=False,
         prior_count=150,
@@ -126,8 +126,8 @@ REGISTRY: dict[str, SourceDef] = {
     ),
 }
 
-# Sources that may provide a quality rating score (primary + RAWG secondary)
-RATING_SOURCES: frozenset[str] = frozenset({"Metacritic", "OpenCritic", "IGDB", "Steam", "RAWG"})
+# Sources that contribute to score and confidence calculations.
+RATING_SOURCES: frozenset[str] = frozenset({"Metacritic", "OpenCritic", "IGDB", "Steam"})
 
 # Convenience sets (immutable)
 PRIMARY_SOURCES: frozenset[str] = frozenset(

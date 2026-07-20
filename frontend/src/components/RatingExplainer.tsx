@@ -28,7 +28,7 @@ export function RatingExplainer() {
             <div className="about-badges">
               <span className="about-badge badge-secondary">RAWG</span>
             </div>
-            <span className="about-source-desc">Backup only — fills a missing primary slot at 70% weight</span>
+            <span className="about-source-desc">Supplementary context and metadata — never fills a primary score slot</span>
           </div>
           <div className="about-source-row">
             <div className="about-badges">
@@ -45,8 +45,8 @@ export function RatingExplainer() {
       <div className="about-block">
         <h3>GameMetrix Score</h3>
         <p>
-          Up to 4 sources averaged with equal weight (25% each). If a primary source
-          is unavailable for a game, RAWG can fill the gap at reduced weight.
+          Up to four named primary sources are combined. Missing primary scores remain visibly missing;
+          RAWG and support providers never substitute for them.
         </p>
         <div className="about-score-demo">
           {[['Metacritic', 96], ['OpenCritic', 94], ['Steam', 92], ['IGDB', 90]].map(([src, val]) => (
