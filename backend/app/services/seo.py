@@ -8,10 +8,10 @@ from urllib.parse import quote
 from urllib.parse import urlsplit
 
 from sqlalchemy import select
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session
 
 from ..config import get_settings
-from ..models import Game
+from ..models import Game, PriceSnapshot
 
 
 PRIMARY_SOURCES = frozenset({"Metacritic", "OpenCritic", "IGDB", "Steam"})
@@ -49,7 +49,7 @@ def _valid_live_primary_score(score: dict, applicable: frozenset[str]) -> bool:
     return isfinite(value) and 0 < value <= 100
 
 
-def seo_exclusion_reason(game: Game) -> str | None:
+def seo_exclusion_reason(game: Game, *, has_price_data: bool) -> str | None:
     if game.content_type != "game":
         return "not_a_game"
     if game.release_year <= 1970:
@@ -75,7 +75,7 @@ def seo_exclusion_reason(game: Game) -> str | None:
         or game.hltb_all_styles_minutes
         or game.award_count
         or game.goty_year
-        or game.price_snapshots
+        or has_price_data
     )
     if not has_context:
         return "missing_decision_context"
@@ -88,7 +88,7 @@ def refresh_game_seo_state(
     content_updated: bool = False,
     now: datetime | None = None,
 ) -> bool:
-    quality_reason = seo_exclusion_reason(game)
+    quality_reason = seo_exclusion_reason(game, has_price_data=bool(game.price_snapshots))
     indexable = quality_reason is None and game.seo_indexable
     reason = quality_reason
     if quality_reason is None and not indexable:
@@ -103,12 +103,16 @@ def refresh_game_seo_state(
 
 def refresh_catalog_seo_states(db: Session, *, now: datetime | None = None) -> dict[str, int]:
     timestamp = now or datetime.now(UTC)
-    games = list(
-        db.scalars(
-            select(Game).options(selectinload(Game.price_snapshots))
-        ).unique().all()
-    )
-    quality_reasons = {game.id: seo_exclusion_reason(game) for game in games}
+    # seo_exclusion_reason only needs to know *whether* a game has priced data, so a
+    # set of ids answers it in one cheap query. Eager-loading the snapshot collections
+    # instead pulled every PriceSnapshot row for the whole catalog into memory and was
+    # repeatedly OOM-killing the 400m backend container at startup.
+    priced_game_ids = set(db.scalars(select(PriceSnapshot.game_id).distinct()))
+    games = list(db.scalars(select(Game)))
+    quality_reasons = {
+        game.id: seo_exclusion_reason(game, has_price_data=game.id in priced_game_ids)
+        for game in games
+    }
     eligible = [game for game in games if quality_reasons[game.id] is None]
     eligible.sort(
         key=lambda game: (game.rank_score, game.metrix_score, game.live_primary_source_count, game.release_year),

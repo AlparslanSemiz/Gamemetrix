@@ -50,28 +50,38 @@ def game_fixture(**overrides) -> Game:
 
 
 def test_quality_gate_accepts_complete_game() -> None:
-    assert seo_exclusion_reason(game_fixture()) is None
+    assert seo_exclusion_reason(game_fixture(), has_price_data=False) is None
 
 
 def test_quality_gate_rejects_thin_and_single_source_games() -> None:
-    assert seo_exclusion_reason(game_fixture(summary="Too short")) == "thin_summary"
+    assert seo_exclusion_reason(
+        game_fixture(summary="Too short"), has_price_data=False
+    ) == "thin_summary"
     assert seo_exclusion_reason(game_fixture(source_scores=[
         {"source": "Steam", "score": 88, "scale": 100, "status": "live"},
-    ])) == "insufficient_primary_scores"
+    ]), has_price_data=False) == "insufficient_primary_scores"
 
 
 def test_quality_gate_rejects_invalid_images_and_out_of_range_scores() -> None:
-    assert seo_exclusion_reason(game_fixture(cover_url="https://")) == "missing_image"
+    assert seo_exclusion_reason(
+        game_fixture(cover_url="https://"), has_price_data=False
+    ) == "missing_image"
     assert seo_exclusion_reason(game_fixture(
         source_scores=[
             {"source": "Metacritic", "score": 101, "scale": 100, "status": "live"},
             {"source": "Steam", "score": 88, "scale": 100, "status": "live"},
         ],
-    )) == "insufficient_primary_scores"
+    ), has_price_data=False) == "insufficient_primary_scores"
     assert seo_exclusion_reason(game_fixture(source_scores=[
         {"source": "RAWG", "score": 99, "scale": 100, "status": "live"},
         {"source": "Steam", "score": 88, "scale": 100, "status": "live"},
-    ])) == "insufficient_primary_scores"
+    ]), has_price_data=False) == "insufficient_primary_scores"
+
+
+def test_price_data_alone_satisfies_decision_context() -> None:
+    no_context = game_fixture(proton_tier=None)
+    assert seo_exclusion_reason(no_context, has_price_data=False) == "missing_decision_context"
+    assert seo_exclusion_reason(no_context, has_price_data=True) is None
 
 
 def test_sitemap_contains_only_supplied_canonical_urls() -> None:

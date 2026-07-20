@@ -101,8 +101,13 @@ async def enrich_ratings(
 @router.get("/api/rate-limits")
 def get_rate_limit_status(
     _admin=Depends(require_admin_user),
-) -> dict[str, dict[str, int]]:
-    """Remaining persistent daily, monthly, and short-window provider budgets."""
+) -> dict[str, dict[str, object]]:
+    """Remaining persistent daily, monthly, and short-window provider budgets.
+
+    Mirrors RateLimiter.status(). Without a response_model FastAPI validates against
+    this annotation, so narrowing it to int rejects every response: a source entry
+    also carries the nested per-window breakdown, reserve_percent and metered.
+    """
     return get_rate_limiter().status()
 
 

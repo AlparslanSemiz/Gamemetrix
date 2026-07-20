@@ -25,6 +25,7 @@ from .primary_score_backfill import primary_score_backfill_batch, primary_score_
 
 log = logging.getLogger(__name__)
 
+RATING_SCAN_CHUNK = 500
 RATING_BUDGET_SOURCES = ("RAWG", "OpenCritic", "IGDB", "Steam", "SteamSpy")
 METADATA_BUDGET_SOURCES = ("Steam", "RAWG", "IGDB")
 PRICE_BUDGET_SOURCES = ("Steam", "ITAD", "CheapShark")
@@ -240,16 +241,21 @@ async def _fill_ratings(*, force: bool) -> dict[str, int]:
                 ).all()
             )
         else:
-            all_games = list(
-                db.scalars(
-                    select(Game)
-                    .where(Game.content_type == "game")
-                    .options(noload(Game.price_snapshots))
-                    .order_by(desc(Game.rank_score), desc(Game.metrix_score))
-                ).all()
-            )
+            # Only the ids survive this scan, so the rows are streamed and detached as
+            # they are checked. Materialising the whole catalog here held every Game
+            # object in the identity map at once and helped OOM the backend container.
             now = datetime.now(UTC)
-            game_ids = [game.id for game in all_games if game_needs_rating_refresh(game, now)]
+            game_ids: list[int] = []
+            for game in db.scalars(
+                select(Game)
+                .where(Game.content_type == "game")
+                .options(noload(Game.price_snapshots))
+                .order_by(desc(Game.rank_score), desc(Game.metrix_score))
+                .execution_options(yield_per=RATING_SCAN_CHUNK)
+            ):
+                if game_needs_rating_refresh(game, now):
+                    game_ids.append(game.id)
+                db.expunge(game)
 
     for game_id in game_ids:
         if not _remaining_any(RATING_BUDGET_SOURCES):
