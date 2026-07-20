@@ -36,10 +36,14 @@ services:
       dockerfile: Dockerfile # backend içindeki Dockerfile adı (genelde Dockerfile olur)
     container_name: gamemetrix-backend
     restart: always
+    # DATABASE_URL and every other secret come from backend/.env, which is
+    # gitignored and is the server's source of truth. It is deliberately NOT set
+    # in an `environment:` block here: that block overrides env_file, so building
+    # the URL from the db service's POSTGRES_* variables silently ignored the
+    # working value in backend/.env and made the backend depend on variables
+    # intended for a different service.
     env_file:
-      - ./backend/.env # .env dosyasını buraya aldığın için yolunu böyle belirttik
-    environment:
-      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:?Set POSTGRES_USER before running docker compose}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD before running docker compose}@db:5432/${POSTGRES_DB:-gamemetrix}
+      - ./backend/.env
     expose:
       - "8000"
     depends_on:
