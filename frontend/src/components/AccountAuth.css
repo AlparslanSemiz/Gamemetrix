@@ -1,0 +1,101 @@
+.account-auth-shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: #0f1014;
+  color: #f7f7f8;
+}
+
+.account-auth-dialog {
+  width: min(100%, 430px);
+  border: 1px solid #292b33;
+  border-radius: 8px;
+  background: #17181e;
+  padding: 24px;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.42);
+}
+
+.account-auth-head {
+  display: grid;
+  grid-template-columns: 36px 1fr 36px;
+  align-items: center;
+}
+
+.account-auth-brand {
+  justify-self: center;
+  color: #f7f7f8;
+  font-weight: 800;
+  font-size: 18px;
+  text-decoration: none;
+}
+
+.account-auth-brand span { color: #f0b94b; }
+
+.account-auth-back,
+.account-auth-close {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border: 1px solid #30323b;
+  border-radius: 6px;
+  background: #202129;
+  color: #d6d7dc;
+  cursor: pointer;
+}
+
+.account-auth-icon {
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  margin: 28px auto 12px;
+  border-radius: 8px;
+  background: #262833;
+  color: #f0b94b;
+}
+
+.account-auth-dialog h1 {
+  margin: 0 0 22px;
+  text-align: center;
+  font-size: 25px;
+  letter-spacing: 0;
+}
+
+.account-auth-form { display: grid; gap: 15px; }
+.account-auth-form label { display: grid; gap: 7px; }
+.account-auth-form label span { color: #b8bac3; font-size: 13px; font-weight: 650; }
+.account-auth-form input {
+  min-width: 0;
+  height: 44px;
+  border: 1px solid #343640;
+  border-radius: 6px;
+  background: #111218;
+  color: #f7f7f8;
+  padding: 0 12px;
+  font: inherit;
+}
+.account-auth-form input:focus { outline: 2px solid rgba(240, 185, 75, 0.35); border-color: #f0b94b; }
+
+.account-auth-submit,
+.account-auth-google {
+  min-height: 44px;
+  display: grid;
+  place-items: center;
+  border-radius: 6px;
+  font: inherit;
+  font-weight: 750;
+  text-decoration: none;
+}
+.account-auth-submit { border: 0; background: #f0b94b; color: #17130b; cursor: pointer; }
+.account-auth-submit:disabled { opacity: 0.58; cursor: wait; }
+.account-auth-google { border: 1px solid #3a3c46; background: #202129; color: #f7f7f8; }
+.account-auth-divider { display: flex; align-items: center; gap: 10px; margin: 18px 0; color: #858894; font-size: 12px; }
+.account-auth-divider::before,
+.account-auth-divider::after { content: ''; flex: 1; border-top: 1px solid #30323a; }
+.account-auth-status { margin: 0; padding: 10px 12px; border-radius: 6px; font-size: 13px; }
+.account-auth-status.is-error { background: rgba(255, 89, 100, 0.1); color: #ff8b93; }
+.account-auth-status.is-success { background: rgba(75, 210, 129, 0.1); color: #7be3a5; }
+.account-auth-links { display: flex; justify-content: center; flex-wrap: wrap; gap: 10px 18px; margin-top: 20px; }
+.account-auth-links a { color: #bfc2cc; font-size: 13px; }
