@@ -1,0 +1,55 @@
+.curated-shell { min-height: 100vh; background: #101116; color: #eff0f3; }
+.curated-topbar { height: 64px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #272932; padding: 0 max(20px, calc((100vw - 1120px) / 2)); }
+.curated-brand { color: #f5f5f7; text-decoration: none; font-size: 20px; font-weight: 850; }
+.curated-brand span { color: #f0b94b; }
+.curated-topbar nav { display: flex; gap: 8px; }
+.curated-topbar nav a { min-height: 36px; display: inline-flex; align-items: center; gap: 7px; border: 1px solid #30323b; border-radius: 6px; color: #c7c9d0; padding: 0 10px; text-decoration: none; font-size: 13px; }
+.curated-inner { width: min(1080px, calc(100% - 32px)); margin: 0 auto; padding: 28px 0 84px; }
+.curated-breadcrumb { display: flex; gap: 8px; color: #747985; font-size: 12px; }
+.curated-breadcrumb a { color: #aeb1bb; }
+.curated-heading { max-width: 800px; padding: 48px 0 28px; }
+.curated-heading > p { margin: 0 0 9px; color: #f0b94b; font-size: 12px; font-weight: 800; text-transform: uppercase; }
+.curated-heading h1 { margin: 0; font-size: 52px; line-height: 1.05; letter-spacing: 0; }
+.curated-heading > div { margin-top: 16px; color: #c2c4cc; font-size: 17px; line-height: 1.55; }
+.curated-heading small { display: block; margin-top: 12px; color: #7f838e; line-height: 1.5; }
+.curated-links { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 24px; }
+.curated-links a { border: 1px solid #30323b; border-radius: 5px; color: #b9bbc4; padding: 7px 10px; text-decoration: none; font-size: 12px; }
+.curated-list { display: grid; gap: 1px; margin: 0; padding: 0; list-style: none; border-top: 1px solid #2a2c34; }
+.curated-list > li { display: grid; grid-template-columns: 36px 92px minmax(0, 1fr); gap: 16px; align-items: center; border-bottom: 1px solid #2a2c34; padding: 15px 4px; }
+.curated-rank { color: #767a85; text-align: center; font-size: 15px; font-weight: 800; }
+.curated-cover { width: 92px; aspect-ratio: 3 / 4; overflow: hidden; border-radius: 5px; background: #1c1e25; }
+.curated-cover img { width: 100%; height: 100%; display: block; object-fit: cover; }
+.curated-game-head { display: flex; align-items: start; justify-content: space-between; gap: 14px; }
+.curated-game-head a { color: #f1f1f3; text-decoration: none; }
+.curated-game-head h2 { margin: 0; font-size: 18px; letter-spacing: 0; }
+.curated-game-head p { margin: 4px 0 0; color: #898d98; font-size: 12px; }
+.curated-game-head > strong { min-width: 48px; color: #f0b94b; font-size: 26px; text-align: right; }
+.curated-scores { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin-top: 12px; }
+.curated-scores span { display: flex; justify-content: space-between; gap: 7px; border: 1px solid #2b2d35; border-radius: 5px; background: #18191f; padding: 6px 8px; }
+.curated-scores small { min-width: 0; overflow: hidden; color: #848894; text-overflow: ellipsis; white-space: nowrap; }
+.curated-scores b { color: #dadbe0; }
+.curated-context { min-height: 26px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 9px; }
+.curated-context span,
+.curated-context a { display: inline-flex; align-items: center; gap: 5px; border-radius: 4px; background: #22242b; color: #aeb1ba; padding: 4px 7px; font-size: 11px; text-decoration: none; }
+.curated-context .is-proton-native { color: #6ed7a7; }
+.curated-context .is-proton-platinum { color: #78dfe9; }
+.curated-context .is-proton-gold { color: #f1ca5d; }
+.curated-context .is-proton-silver { color: #c7cad1; }
+.curated-context .is-proton-bronze { color: #d99562; }
+.curated-context .is-proton-borked { color: #f17d88; }
+.curated-method { max-width: 780px; border-top: 1px solid #2a2c34; margin-top: 42px; padding-top: 26px; }
+.curated-method h2 { margin: 0 0 10px; font-size: 19px; letter-spacing: 0; }
+.curated-method p { margin: 0; color: #9a9da7; line-height: 1.7; }
+.curated-empty { padding: 30px 0; color: #a2a5ae; }
+@media (max-width: 700px) {
+  .curated-topbar { padding-inline: 14px; }
+  .curated-topbar nav a { width: 38px; justify-content: center; overflow: hidden; color: transparent; padding: 0; }
+  .curated-topbar nav a svg { color: #c7c9d0; flex: 0 0 auto; }
+  .curated-heading { padding-top: 36px; }
+  .curated-heading h1 { font-size: 34px; }
+  .curated-list > li { grid-template-columns: 26px 70px minmax(0, 1fr); gap: 10px; align-items: start; }
+  .curated-cover { width: 70px; }
+  .curated-scores { grid-template-columns: 1fr 1fr; }
+  .curated-game-head h2 { font-size: 16px; }
+  .curated-game-head > strong { min-width: 38px; font-size: 21px; }
+}
