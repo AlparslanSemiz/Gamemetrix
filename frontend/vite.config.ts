@@ -1,7 +1,17 @@
 import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
+import { reactRouter } from '@react-router/dev/vite'
 
-// https://vite.dev/config/
+const devApiTarget = process.env.DEV_API_BASE_URL ?? 'http://127.0.0.1:8000'
+
 export default defineConfig({
-  plugins: [react()],
+  envDir: false,
+  plugins: [reactRouter()],
+  server: {
+    proxy: {
+      '/api': devApiTarget,
+      '/admin/': devApiTarget,
+      '/robots.txt': devApiTarget,
+      '/sitemap.xml': devApiTarget,
+    },
+  },
 })
