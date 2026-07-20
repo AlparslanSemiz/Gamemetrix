@@ -15,6 +15,10 @@ depends_on = None
 
 
 def upgrade() -> None:
+    # Guarded like every other migration here because 20260720_0001 runs
+    # Base.metadata.create_all against live metadata: the baseline is not frozen
+    # in time, so on a database it adopts it already creates every table models.py
+    # defines today, this one included.
     op.create_table(
         "admin_audit_logs",
         sa.Column("id", sa.Integer(), primary_key=True),
@@ -29,13 +33,15 @@ def upgrade() -> None:
         sa.Column("user_agent", sa.String(length=300), nullable=True),
         sa.Column("duration_ms", sa.Integer(), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+        if_not_exists=True,
     )
-    op.create_index("ix_admin_audit_logs_username", "admin_audit_logs", ["username"])
-    op.create_index("ix_admin_audit_logs_action", "admin_audit_logs", ["action"])
-    op.create_index("ix_admin_audit_logs_path", "admin_audit_logs", ["path"])
-    op.create_index("ix_admin_audit_logs_status_code", "admin_audit_logs", ["status_code"])
-    op.create_index("ix_admin_audit_logs_success", "admin_audit_logs", ["success"])
-    op.create_index("ix_admin_audit_logs_created_at", "admin_audit_logs", ["created_at"])
+    for column in ("username", "action", "path", "status_code", "success", "created_at"):
+        op.create_index(
+            f"ix_admin_audit_logs_{column}",
+            "admin_audit_logs",
+            [column],
+            if_not_exists=True,
+        )
 
 
 def downgrade() -> None:
