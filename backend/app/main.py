@@ -47,8 +47,7 @@ settings.validate()
 # ── Startup seed / classify ────────────────────────────────────────────────────
 
 
-def _seed_and_classify(db: Session) -> None:
-    seed_games(db)
+def _reclassify_and_rescore(db: Session) -> None:
     changed: list[Game] = []
     all_games = db.scalars(select(Game)).all()
     parent_titles = frozenset(g.title.strip().lower() for g in all_games)
@@ -69,7 +68,18 @@ def _seed_and_classify(db: Session) -> None:
             changed.append(game)
     if changed:
         db.add_all(changed)
-    db.flush()
+    db.commit()
+
+
+def _seed_and_classify(db: Session) -> None:
+    seed_games(db)
+    _reclassify_and_rescore(db)
+    # Both passes walk the whole catalog. Releasing the first one's objects before the
+    # second loads its own keeps one copy of the catalog in memory instead of two, which
+    # was a large part of the startup peak that OOM-killed the container. Each pass
+    # commits independently and both are idempotent recomputations, so a crash between
+    # them is repaired by the next boot rather than leaving a half-written state.
+    db.expunge_all()
     refresh_catalog_seo_states(db)
     db.commit()
     result = consolidate_duplicate_games(db)

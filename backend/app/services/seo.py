@@ -8,13 +8,37 @@ from urllib.parse import quote
 from urllib.parse import urlsplit
 
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, load_only
 
 from ..config import get_settings
 from ..models import Game, PriceSnapshot
 
 
 PRIMARY_SOURCES = frozenset({"Metacritic", "OpenCritic", "IGDB", "Steam"})
+# Every Game column the catalog-wide pass below reads or writes, including the two
+# feeding the applicable_primary_sources / live_primary_source_count properties.
+# The heavy JSON blobs a game carries (screenshots, system_requirements, dlcs,
+# similar_games, awards) are deliberately absent: nothing here looks at them and
+# loading them for the whole catalog is what pushed the container past its limit.
+_SEO_STATE_COLUMNS = (
+    Game.content_type,
+    Game.release_year,
+    Game.cover_url,
+    Game.image_url,
+    Game.summary,
+    Game.platforms,
+    Game.source_scores,
+    Game.proton_tier,
+    Game.hltb_main_story_minutes,
+    Game.hltb_all_styles_minutes,
+    Game.award_count,
+    Game.goty_year,
+    Game.rank_score,
+    Game.metrix_score,
+    Game.seo_indexable,
+    Game.seo_exclusion_reason,
+    Game.seo_updated_at,
+)
 PLACEHOLDER_SUMMARY_MARKERS = (
     "cached from rawg search",
     "editorial metadata can be enriched",
@@ -108,7 +132,7 @@ def refresh_catalog_seo_states(db: Session, *, now: datetime | None = None) -> d
     # instead pulled every PriceSnapshot row for the whole catalog into memory and was
     # repeatedly OOM-killing the 400m backend container at startup.
     priced_game_ids = set(db.scalars(select(PriceSnapshot.game_id).distinct()))
-    games = list(db.scalars(select(Game)))
+    games = list(db.scalars(select(Game).options(load_only(*_SEO_STATE_COLUMNS))))
     quality_reasons = {
         game.id: seo_exclusion_reason(game, has_price_data=game.id in priced_game_ids)
         for game in games
