@@ -13,7 +13,7 @@ import logging
 import re
 import time
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from difflib import SequenceMatcher
 from typing import Any
 
@@ -22,6 +22,7 @@ from sqlalchemy import desc, func, or_, select
 from sqlalchemy.orm import Session
 
 from ..models import Game
+from .rate_limiter import get_rate_limiter
 
 
 log = logging.getLogger(__name__)
@@ -41,15 +42,6 @@ POST_ENDPOINT_RE = re.compile(
     r"fetch\s*\(\s*[\"']/api/([a-zA-Z0-9_/]+)[^\"']*[\"']\s*,\s*{[^}]*method:\s*[\"']POST[\"']",
     re.DOTALL | re.IGNORECASE,
 )
-
-KNOWN_COVER_URLS: dict[str, str] = {
-    "the-witcher-goodies-collection-709179": "https://images.gog-statics.com/a344e6ee3a17af9e6529dd22deda462aa0c5cc7a856d3a4f8cb84e15d31a3a76.jpg",
-    "rock-band-music-store-28624": "https://cdn2.steamgriddb.com/grid/a1d2282208205a6832a37601df840de2.png",
-    "ea-play-hub-481920": "https://image.api.playstation.com/gs2-sec/appkgo/prod/CUSA16175_00/2/i_06a73a7513560fbfe586ab17d2a66df2c1bfec61431138c6cc60a07841dd6d2b/i/pic0.png?thumb=true&w=512",
-    "last-fm-28854": "https://upload.wikimedia.org/wikipedia/commons/c/c4/Lastfm_logo.svg",
-    "into-the-war-20690": "https://howlongtobeat.com/games/Into_The_War_header.jpg",
-}
-
 
 @dataclass(slots=True)
 class HltbMatch:
@@ -346,11 +338,7 @@ def apply_hltb_match(game: Game, match: HltbMatch, refresh_existing: bool = Fals
 def repair_missing_cover(game: Game, hltb_image_url: str | None = None) -> bool:
     if not _is_missing_cover(game.cover_url):
         return False
-    cover_url = (
-        KNOWN_COVER_URLS.get(game.slug)
-        or hltb_image_url
-        or _igdb_cover_from_source_scores(game)
-    )
+    cover_url = hltb_image_url or _igdb_cover_from_source_scores(game)
     if not cover_url:
         return False
     game.cover_url = cover_url[:500]
@@ -362,8 +350,11 @@ async def backfill_hltb_playtimes(
     db: Session,
     target: int = 200,
     refresh_existing: bool = False,
-    delay_seconds: float = 0.2,
+    delay_seconds: float | None = None,
 ) -> dict[str, int]:
+    if delay_seconds is None:
+        from ..config import get_settings
+        delay_seconds = get_settings().HLTB_REQUEST_DELAY_SECONDS
     cover_missing = or_(
         Game.cover_url.is_(None),
         func.trim(Game.cover_url) == "",
@@ -373,7 +364,11 @@ async def backfill_hltb_playtimes(
     if refresh_existing:
         query = query.where(or_(Game.hltb_id.is_not(None), Game.playtime_minutes > 0, cover_missing))
     else:
-        query = query.where(or_(Game.hltb_id.is_(None), Game.playtime_minutes <= 0, cover_missing))
+        stale_before = datetime.now(UTC) - timedelta(days=30)
+        query = query.where(
+            or_(Game.hltb_id.is_(None), Game.playtime_minutes <= 0, cover_missing),
+            or_(Game.hltb_refreshed_at.is_(None), Game.hltb_refreshed_at < stale_before),
+        )
     query = query.order_by(desc(Game.rank_score), desc(Game.metrix_score)).limit(target)
     games = list(db.scalars(query).all())
 
@@ -385,18 +380,27 @@ async def backfill_hltb_playtimes(
         if repair_missing_cover(game):
             repaired_covers += 1
             imported += 1
-            db.add(game)
-            db.commit()
 
-        match = await client.search(game.title, release_year=game.release_year)
+        if not await get_rate_limiter().acquire("HLTB"):
+            if game in db.dirty:
+                db.commit()
+            break
+        try:
+            match = await client.search(game.title, release_year=game.release_year)
+        except Exception as exc:
+            log.warning("HLTB backfill paused after %s", type(exc).__name__)
+            if game in db.dirty:
+                db.commit()
+            break
         if not match:
             skipped += 1
         elif apply_hltb_match(game, match, refresh_existing=refresh_existing):
             imported += 1
-            db.add(game)
-            db.commit()
         else:
             skipped += 1
+        game.hltb_refreshed_at = datetime.now(UTC)
+        db.add(game)
+        db.commit()
         if delay_seconds > 0:
             await asyncio.sleep(delay_seconds)
 

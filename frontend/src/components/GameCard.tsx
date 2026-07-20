@@ -17,11 +17,13 @@ import { memo, type CSSProperties, type SyntheticEvent } from 'react'
 import { Link } from 'react-router-dom'
 import type { Game, PriceSnapshot, ProtonTier, SourceScore } from '../types/game'
 import type { CollectionKey } from '../state/collections'
+import { trackProductEvent } from '../services/analytics'
 import { PlatformIcons } from './PlatformIcons'
 import { ScoreRing } from './ScoreRing'
 import { scoreColor, scoreColorRgb, sourceScoreColor } from '../utils/scoreColors'
 import { steamAppIdFromGame } from '../utils/steam'
-import { PROTON_TIER_DESCRIPTIONS, PROTON_TIER_LABELS, isProtonTier } from '../utils/proton'
+import { PROTON_TIER_DESCRIPTIONS, PROTON_TIER_LABELS, formatProtonScore, isProtonTier } from '../utils/proton'
+import { currentPriceSnapshots } from '../utils/prices'
 import { safeExternalUrl } from '../utils/url'
 
 interface GameCardProps {
@@ -46,8 +48,6 @@ interface GameCardProps {
 
 const ALL_PRIMARY_SOURCES = new Set(['Metacritic', 'OpenCritic', 'IGDB', 'Steam'])
 const PRIMARY_SOURCE_ORDER = ['Metacritic', 'OpenCritic', 'IGDB', 'Steam'] as const
-// Only RAWG may fill a missing primary rating slot — SteamSpy/CheapShark/FreeToGame are not rating sources
-const SECONDARY_SOURCE_ORDER = ['RAWG'] as const
 
 function sourceUrl(source: string, game: Game): string | null {
   const q = encodeURIComponent(game.title)
@@ -89,9 +89,13 @@ function ProtonBadge({
   compact?: boolean
 }) {
   const reportUrl = protonReportUrl(game)
-  const title = `ProtonDB: ${PROTON_TIER_DESCRIPTIONS[tier]}`
+  const scoreText = formatProtonScore(game.proton_score)
+  const title = scoreText
+    ? `ProtonDB: ${PROTON_TIER_DESCRIPTIONS[tier]} (${scoreText}/100)`
+    : `ProtonDB: ${PROTON_TIER_DESCRIPTIONS[tier]}`
   const className = `proton-badge proton-badge-${tier}${compact ? ' proton-badge-compact' : ''}`
-  const label = compact ? PROTON_TIER_LABELS[tier] : `Linux ${PROTON_TIER_LABELS[tier]}`
+  const tierLabel = compact ? PROTON_TIER_LABELS[tier] : `Linux ${PROTON_TIER_LABELS[tier]}`
+  const label = scoreText ? `${tierLabel} ${scoreText}` : tierLabel
   const content = (
     <>
       <MonitorCheck size={compact ? 10 : 13} aria-hidden="true" />
@@ -120,7 +124,7 @@ function priceAmount(price: PriceSnapshot): number | null {
 }
 
 function bestPriceSnapshot(game: Game): PriceSnapshot | null {
-  const priced = (game.price_snapshots ?? [])
+  const priced = currentPriceSnapshots(game.price_snapshots ?? [])
     .filter((price) => priceAmount(price) !== null)
     .sort((a, b) => (priceAmount(a) ?? Infinity) - (priceAmount(b) ?? Infinity))
   return priced[0] ?? null
@@ -260,7 +264,8 @@ export const GameCard = memo(function GameCard({
   }
 
   const handleShare = () => {
-    void navigator.clipboard.writeText(`${window.location.origin}/?game=${game.slug}`)
+    void navigator.clipboard.writeText(`${window.location.origin}/game/${game.slug}`).catch(() => undefined)
+    trackProductEvent('share', { game_slug: game.slug, surface: 'game_card' })
   }
 
   const applicableSources = new Set(
@@ -270,20 +275,16 @@ export const GameCard = memo(function GameCard({
 
   const scoreBySource = new Map(game.source_scores.map((s) => [s.source, s]))
 
-  // Live primary sources applicable to this game
-  const livePrimary = PRIMARY_SOURCE_ORDER
-    .filter((src) => applicableSources.has(src))
-    .map((src) => scoreBySource.get(src))
-    .filter((s): s is SourceScore => s !== undefined && s.status === 'live' && (s.score ?? 0) > 0)
-
-  // Secondary sources with live data — fill slots left by missing primaries
-  const liveSecondary = SECONDARY_SOURCE_ORDER
-    .map((src) => scoreBySource.get(src))
-    .filter((s): s is SourceScore => s !== undefined && s.status === 'live' && (s.score ?? 0) > 0)
-
-  const gapCount = Math.max(0, applicableSourceCount - livePrimary.length)
-  const filledSecondary = liveSecondary.slice(0, gapCount)
-  const displayedSources: SourceScore[] = [...livePrimary, ...filledSecondary]
+  const displayedSources: SourceScore[] = PRIMARY_SOURCE_ORDER.map((source) => (
+    scoreBySource.get(source) ?? {
+      source,
+      score: 0,
+      scale: 100,
+      status: 'unavailable',
+      detail: applicableSources.has(source) ? 'Rating pending.' : 'Not applicable to this platform.',
+    }
+  ))
+  const livePrimary = displayedSources.filter((source) => source.status === 'live' && source.score > 0)
 
   const confidenceLevel = game.confidence_level ?? 'Limited'
   const primarySourceCount = game.live_primary_source_count ?? livePrimary.length
@@ -379,7 +380,7 @@ export const GameCard = memo(function GameCard({
           </div>
         </div>
         <div className="compact-body">
-          <h3 className="compact-title">
+          <h2 className="compact-title">
             <Link
               to={`/game/${game.slug}`}
               className="game-title-link"
@@ -387,7 +388,7 @@ export const GameCard = memo(function GameCard({
             >
               {game.title}
             </Link>
-          </h3>
+          </h2>
           <p className="compact-meta">{game.release_year} · {game.genres.slice(0, 2).join(' · ')}</p>
           {game.developer ? <p className="compact-dev">{game.developer}</p> : null}
           {(playtimeFmt || protonTier || bestPrice) ? (
@@ -526,7 +527,7 @@ export const GameCard = memo(function GameCard({
       {/* Body */}
       <div className="card-body">
         <div className="card-heading">
-          <h3>
+          <h2>
             <Link
               to={`/game/${game.slug}`}
               className="game-title-link"
@@ -534,7 +535,7 @@ export const GameCard = memo(function GameCard({
             >
               {game.title}
             </Link>
-          </h3>
+          </h2>
           <span className="card-year">{game.release_year}</span>
           <div className="genre-links" aria-label={`${game.title} genres`}>
             {game.genres.slice(0, 4).map((genre, i, arr) => (
@@ -668,45 +669,35 @@ export const GameCard = memo(function GameCard({
         ) : null}
 
         <div className="sources" aria-label={`${game.title} source scores`}>
-          {displayedSources.length === 0 ? (
-            <div className="source-empty">Ratings pending</div>
-          ) : null}
           {displayedSources.map((source) => {
             const url = sourceUrl(source.source, game)
-            const isSecondary = !ALL_PRIMARY_SOURCES.has(source.source)
-            const sourceLabel = isSecondary && source.source === 'RAWG' ? 'RAWG fill' : source.source
+            const unavailable = source.status !== 'live' || source.score <= 0
             const nameEl = url ? (
               <a
                 href={url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className={`source-name source-name-link${isSecondary ? ' source-name-secondary' : ''}`}
-                title={isSecondary ? `${source.source} (secondary source)` : undefined}
+                className="source-name source-name-link"
               >
-                {sourceLabel}
+                {source.source}
               </a>
             ) : (
-              <span
-                className={`source-name${isSecondary ? ' source-name-secondary' : ''}`}
-                title={isSecondary ? `${source.source} (secondary source)` : undefined}
-              >
-                {sourceLabel}
-              </span>
+              <span className="source-name">{source.source}</span>
             )
 
             const pct = Math.max(0, Math.min(source.score, 100))
             return (
               <div
-                className={`source-row${isSecondary ? ' source-row-secondary' : ''}`}
+                className={`source-row${unavailable ? ' source-row-unavailable' : ''}`}
                 key={source.source}
                 title={source.detail ?? source.refreshed_at ?? source.source}
                 style={{ '--source-color': sourceScoreColor(pct) } as CSSProperties}
               >
                 {nameEl}
                 <div className="source-bar">
-                  <span className="source-fill" style={{ width: `${pct}%` }} />
+                  <span className="source-fill" style={{ width: unavailable ? '0%' : `${pct}%` }} />
                 </div>
-                <strong>{Math.round(source.score)}</strong>
+                <strong>{unavailable ? '—' : Math.round(source.score)}</strong>
               </div>
             )
           })}

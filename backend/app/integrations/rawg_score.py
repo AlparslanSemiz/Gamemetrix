@@ -1,8 +1,11 @@
 from datetime import date
+from math import isfinite
 
 import httpx
 
 from ..config import get_settings
+from .rate_limiter import get_rate_limiter
+from .title_matching import title_match_quality
 from .types import ExternalScore
 
 
@@ -20,9 +23,38 @@ def _parse_rawg_date(value: str | None) -> date | None:
         return None
 
 
+def _best_rawg_result(title: str, results: object, release_year: int | None = None) -> dict | None:
+    if not isinstance(results, list):
+        return None
+    candidates = [row for row in results if isinstance(row, dict)]
+    if not candidates:
+        return None
+
+    def quality(row: dict) -> float:
+        released = _parse_rawg_date(str(row.get("released") or ""))
+        return title_match_quality(
+            title,
+            str(row.get("name") or ""),
+            expected_year=release_year,
+            candidate_year=released.year if released else None,
+        )
+
+    best = max(candidates, key=quality)
+    return best if quality(best) > 0 else None
+
+
+def _bounded_number(value: object, minimum: float, maximum: float) -> float | None:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if isfinite(number) and minimum <= number <= maximum else None
+
+
 async def get_rawg_metacritic_score(
     title: str,
     cached_value: int | None = None,
+    release_year: int | None = None,
 ) -> ExternalScore:
     if cached_value is not None:
         return ExternalScore(
@@ -43,7 +75,7 @@ async def get_rawg_metacritic_score(
     async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT_SEARCH) as client:
         response = await client.get(
             _RAWG_GAMES_URL,
-            params={"key": api_key, "search": title, "page_size": 1},
+            params={"key": api_key, "search": title, "page_size": 10},
         )
         if not response.is_success:
             return ExternalScore(
@@ -53,15 +85,14 @@ async def get_rawg_metacritic_score(
                 detail=f"RAWG search HTTP {response.status_code}.",
             )
 
-    results = response.json().get("results", [])
-    if not results:
+    raw_game = _best_rawg_result(title, response.json().get("results", []), release_year)
+    if raw_game is None:
         return ExternalScore(
             source="Metacritic", score=0, status="unavailable",
             detail="RAWG returned no matching game.",
         )
 
-    raw_game = results[0]
-    metacritic = raw_game.get("metacritic")
+    metacritic = _bounded_number(raw_game.get("metacritic"), 0, 100)
     if metacritic is None:
         return ExternalScore(
             source="Metacritic", score=0, status="unavailable",
@@ -70,7 +101,7 @@ async def get_rawg_metacritic_score(
 
     return ExternalScore(
         source="Metacritic",
-        score=float(metacritic),
+        score=metacritic,
         detail="Metacritic score via RAWG.",
         review_count=int(raw_game.get("ratings_count") or raw_game.get("reviews_count") or 0),
         raw={
@@ -83,7 +114,7 @@ async def get_rawg_metacritic_score(
     )
 
 
-async def get_rawg_rating_score(title: str) -> ExternalScore:
+async def get_rawg_rating_score(title: str, release_year: int | None = None) -> ExternalScore:
     api_key = get_settings().RAWG_API_KEY
     if not api_key:
         return ExternalScore(
@@ -96,7 +127,7 @@ async def get_rawg_rating_score(title: str) -> ExternalScore:
     async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT_SEARCH) as client:
         response = await client.get(
             _RAWG_GAMES_URL,
-            params={"key": api_key, "search": title, "page_size": 1},
+            params={"key": api_key, "search": title, "page_size": 10},
         )
         if not response.is_success:
             return ExternalScore(
@@ -106,8 +137,8 @@ async def get_rawg_rating_score(title: str) -> ExternalScore:
                 detail=f"RAWG search HTTP {response.status_code}.",
             )
 
-    results = response.json().get("results", [])
-    if not results:
+    raw_game = _best_rawg_result(title, response.json().get("results", []), release_year)
+    if raw_game is None:
         return ExternalScore(
             source="RAWG",
             score=0,
@@ -115,8 +146,7 @@ async def get_rawg_rating_score(title: str) -> ExternalScore:
             detail="RAWG returned no matching game.",
         )
 
-    raw_game = results[0]
-    raw_rating = raw_game.get("rating")
+    raw_rating = _bounded_number(raw_game.get("rating"), 0, 5)
     if raw_rating is None:
         return ExternalScore(
             source="RAWG",
@@ -126,7 +156,7 @@ async def get_rawg_rating_score(title: str) -> ExternalScore:
             raw={"response": raw_game},
         )
 
-    score = round(float(raw_rating) * 20, 1)
+    score = round(raw_rating * 20, 1)
     review_count = int(raw_game.get("ratings_count") or raw_game.get("reviews_count") or 0)
     return ExternalScore(
         source="RAWG",
@@ -151,13 +181,13 @@ async def get_rawg_release_date(title: str) -> date | None:
     async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT_SEARCH) as client:
         response = await client.get(
             _RAWG_GAMES_URL,
-            params={"key": api_key, "search": title, "page_size": 1},
+            params={"key": api_key, "search": title, "page_size": 10},
         )
         if not response.is_success:
             return None
 
-    results = response.json().get("results", [])
-    return _parse_rawg_date(results[0].get("released")) if results else None
+    result = _best_rawg_result(title, response.json().get("results", []))
+    return _parse_rawg_date(result.get("released")) if result else None
 
 
 async def get_rawg_game_metadata(title: str) -> dict | None:
@@ -168,20 +198,20 @@ async def get_rawg_game_metadata(title: str) -> dict | None:
     async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT_DETAIL) as client:
         search_resp = await client.get(
             _RAWG_GAMES_URL,
-            params={"key": api_key, "search": title, "page_size": 1},
+            params={"key": api_key, "search": title, "page_size": 10},
         )
         if not search_resp.is_success:
             return None
 
-        results = search_resp.json().get("results", [])
-        if not results:
+        raw_game = _best_rawg_result(title, search_resp.json().get("results", []))
+        if raw_game is None:
             return None
-
-        raw_game = results[0]
         rawg_id = raw_game.get("id")
         if not rawg_id:
             return raw_game
 
+        if not await get_rate_limiter().acquire("RAWG"):
+            return raw_game
         detail_resp = await client.get(
             f"{_RAWG_GAMES_URL}/{rawg_id}",
             params={"key": api_key},

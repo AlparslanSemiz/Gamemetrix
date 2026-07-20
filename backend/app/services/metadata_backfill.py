@@ -8,9 +8,8 @@ website URLs, and external IDs in small periodic batches.
 
 import asyncio
 import logging
-import re
 from datetime import UTC, datetime, timedelta
-from urllib.parse import urlparse
+from urllib.parse import urlsplit
 
 from sqlalchemy import asc, desc, select
 from sqlalchemy.orm import Session
@@ -23,6 +22,7 @@ from ..integrations.rate_limiter import get_rate_limiter
 from ..integrations.rawg import enrich_rawg_game_detail
 from ..integrations.steam import extract_steam_app_id
 from ..integrations.steam_service import steam_service
+from ..integrations.title_matching import titles_match
 from ..integrations.types import NormalizedGame
 from ..models import ExternalId, Game, SourceSnapshot
 from .metadata import clean_game_summary, summary_needs_enrichment
@@ -55,41 +55,33 @@ def _as_aware(value: datetime | None) -> datetime | None:
     return value
 
 
-def _norm_title(value: str | None) -> str:
-    if not value:
-        return ""
-    roman = {"ii": "2", "iii": "3", "iv": "4", "v": "5"}
-    parts = re.sub(r"[^a-z0-9]+", " ", value.lower()).split()
-    return " ".join(roman.get(part, part) for part in parts)
-
-
 def _titles_match(game: Game, candidate: NormalizedGame) -> bool:
-    expected = _norm_title(game.title)
-    actual = _norm_title(candidate.name)
-    if not expected or not actual:
-        return False
-    if expected == actual:
-        return True
-    if expected in actual or actual in expected:
-        if candidate.release_date is None or game.release_year == 1970:
-            return True
-        return abs(candidate.release_date.year - game.release_year) <= 2
-    return False
+    return titles_match(
+        game.title,
+        candidate.name,
+        expected_year=game.release_year if game.release_year > 1970 else None,
+        candidate_year=candidate.release_date.year if candidate.release_date else None,
+    )
 
 
 def _safe_url(value: str | None) -> str | None:
     if not value:
         return None
     url = value.strip()
-    if not url:
+    if not url or len(url) > 500 or any(char.isspace() or ord(char) < 32 for char in url):
         return None
-    parsed = urlparse(url)
+    parsed = urlsplit(url)
     if not parsed.scheme:
         url = f"https://{url}"
-        parsed = urlparse(url)
-    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        parsed = urlsplit(url)
+    if (
+        parsed.scheme not in {"http", "https"}
+        or not parsed.hostname
+        or parsed.username is not None
+        or parsed.password is not None
+    ):
         return None
-    return url[:500]
+    return url
 
 
 def _is_missing_cover(value: str | None) -> bool:
@@ -200,6 +192,8 @@ def _field_gaps(game: Game) -> set[str]:
         gaps.add("developer")
     if not game.publisher:
         gaps.add("publisher")
+    if not game.game_modes:
+        gaps.add("game_modes")
     if _tupled(game.genres) in _GENERIC_GENRES:
         gaps.add("genres")
     if _tupled(game.platforms) in _GENERIC_PLATFORMS:
@@ -223,6 +217,7 @@ def metadata_gap_score(game: Game) -> int:
         "summary": 28,
         "developer": 16,
         "publisher": 16,
+        "game_modes": 14,
         "genres": 12,
         "platforms": 12,
         "screenshots": 10,
@@ -295,15 +290,8 @@ def _source_needed(db: Session, game: Game, source: str) -> bool:
     if source == "IGDB":
         return (
             not _has_external_id(db, game, "IGDB")
-            or bool(gaps & {"cover", "summary", "developer", "publisher", "genres", "platforms"})
+            or bool(gaps & {"cover", "summary", "developer", "publisher", "genres", "platforms", "game_modes"})
         )
-    return False
-
-
-async def _acquire(source: str, skipped: set[str]) -> bool:
-    if await get_rate_limiter().acquire(source):
-        return True
-    skipped.add(source)
     return False
 
 
@@ -362,6 +350,9 @@ def _apply_normalized_game(
     if result.genres and _tupled(game.genres) in _GENERIC_GENRES:
         game.genres = result.genres[:6]
         changed = True
+    if result.game_modes and not game.game_modes:
+        game.game_modes = result.game_modes
+        changed = True
     if result.platforms and _tupled(game.platforms) in _GENERIC_PLATFORMS:
         game.platforms = result.platforms[:12]
         changed = True
@@ -376,13 +367,23 @@ def _apply_normalized_game(
         game.website_url = website
         changed = True
 
-    screenshots = [url for url in result.raw.get("screenshots", []) if isinstance(url, str)]
+    raw_screenshots = result.raw.get("screenshots", [])
+    if not isinstance(raw_screenshots, list):
+        raw_screenshots = []
+    screenshots = [
+        safe
+        for url in raw_screenshots[:_MAX_SCREENSHOTS]
+        if isinstance(url, str) and (safe := _safe_url(url)) is not None
+    ]
     if screenshots and not game.screenshots:
         game.screenshots = _merge_unique(game.screenshots, screenshots, _MAX_SCREENSHOTS)
         changed = True
 
+    raw_requirements = result.raw.get("system_requirements", [])
+    if not isinstance(raw_requirements, list):
+        raw_requirements = []
     requirements = [
-        row for row in result.raw.get("system_requirements", [])
+        row for row in raw_requirements[:12]
         if isinstance(row, dict)
     ]
     if requirements and _system_requirements_need_repair(game.system_requirements):
@@ -395,15 +396,15 @@ def _apply_normalized_game(
 async def _refresh_steam_metadata(db: Session, game: Game, skipped: set[str]) -> tuple[bool, bool]:
     app_id = _steam_app_id(db, game)
     trusted_app_id = app_id is not None
+    required_requests = 1 if app_id is not None else 2
+    if get_rate_limiter().remaining("Steam") < required_requests:
+        skipped.add("Steam")
+        return False, False
     if app_id is None:
-        if not await _acquire("Steam", skipped):
-            return False, False
         app_id = await steam_service.lookup_app_id(game.slug, game.title)
     if app_id is None:
         return True, False
 
-    if not await _acquire("Steam", skipped):
-        return False, False
     result = await steam_service.get_app_details(app_id)
     if not result:
         return True, False
@@ -416,6 +417,10 @@ async def _refresh_steam_metadata(db: Session, game: Game, skipped: set[str]) ->
         result.cover_url,
     )
     changed = _apply_normalized_game(game, result, trusted=True, prefer_cover=prefer_cover)
+    if game.steam_app_id != app_id:
+        # Persist the resolved id so later refreshes skip the title-search round-trip.
+        game.steam_app_id = app_id
+        changed = True
     upsert_external_id(
         db,
         game.id,
@@ -429,6 +434,8 @@ async def _refresh_steam_metadata(db: Session, game: Game, skipped: set[str]) ->
 
 
 def _steam_app_id(db: Session, game: Game) -> int | None:
+    if game.steam_app_id:
+        return game.steam_app_id
     external = db.scalar(
         select(ExternalId).where(
             ExternalId.game_id == game.id,
@@ -443,7 +450,8 @@ def _steam_app_id(db: Session, game: Game) -> int | None:
 async def _refresh_igdb_metadata(db: Session, game: Game, skipped: set[str]) -> tuple[bool, bool]:
     if not igdb_service.is_configured():
         return False, False
-    if not await _acquire("IGDB", skipped):
+    if get_rate_limiter().remaining("IGDB") <= 0:
+        skipped.add("IGDB")
         return False, False
 
     external = db.scalar(
@@ -458,7 +466,10 @@ async def _refresh_igdb_metadata(db: Session, game: Game, skipped: set[str]) -> 
         result = await igdb_service.get_by_igdb_id(int(external.external_id))
         trusted = result is not None
     if result is None:
-        result = await igdb_service.search_game(game.title)
+        result = await igdb_service.search_game(
+            game.title,
+            release_year=game.release_year if game.release_year > 1970 else None,
+        )
     if not result:
         return True, False
     if not trusted and not _titles_match(game, result):
@@ -513,6 +524,8 @@ async def refresh_game_metadata(db: Session, game: Game) -> dict[str, object]:
 
     if attempted:
         game.metadata_refreshed_at = datetime.now(UTC)
+        from .seo import refresh_game_seo_state
+        refresh_game_seo_state(game, content_updated=changed)
         db.add(game)
         db.commit()
         db.refresh(game)
@@ -531,11 +544,13 @@ async def metadata_backfill_batch(
     *,
     inter_game_delay: float = 0.5,
     use_lock: bool = True,
+    refresh_seo: bool = True,
 ) -> dict[str, object]:
     if not use_lock:
         return await _metadata_backfill_batch_unlocked(
             limit=limit,
             inter_game_delay=inter_game_delay,
+            refresh_seo=refresh_seo,
         )
 
     if METADATA_BACKFILL_LOCK.locked():
@@ -553,6 +568,7 @@ async def metadata_backfill_batch(
         return await _metadata_backfill_batch_unlocked(
             limit=limit,
             inter_game_delay=inter_game_delay,
+            refresh_seo=refresh_seo,
         )
 
 
@@ -560,6 +576,7 @@ async def _metadata_backfill_batch_unlocked(
     *,
     limit: int,
     inter_game_delay: float,
+    refresh_seo: bool,
 ) -> dict[str, object]:
     with SessionLocal() as db:
         candidates = [game.id for game in metadata_backfill_candidates(db, limit=limit)]
@@ -592,6 +609,12 @@ async def _metadata_backfill_batch_unlocked(
                 changed += 1
             for source in result["budget_skipped"]:
                 budget_skipped[source] = budget_skipped.get(source, 0) + 1
+
+    if changed and refresh_seo:
+        with SessionLocal() as db:
+            from .seo import refresh_catalog_seo_states
+            refresh_catalog_seo_states(db)
+            db.commit()
 
     log.info(
         "metadata_backfill_batch done: %d enriched, %d changed, %d skipped, %d failed",

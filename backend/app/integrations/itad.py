@@ -12,26 +12,26 @@ Endpoint summary:
 """
 
 import logging
-import os
 from datetime import UTC, datetime, date
 
 import httpx
 
+from ..config import get_settings
+from .http_retry import DEFAULT_HEADERS
 from .value_score import PriceData, calculate_value_score  # noqa: F401 – re-exported
 
 log = logging.getLogger(__name__)
 
 ITAD_API_BASE = "https://api.isthereanydeal.com"
-ITAD_API_KEY = os.getenv("ITAD_API_KEY", "")
 
 
 def _headers() -> dict[str, str]:
-    return {"ITAD-API-Key": ITAD_API_KEY}
+    return {**DEFAULT_HEADERS, "ITAD-API-Key": get_settings().ITAD_API_KEY}
 
 
 async def lookup_itad_id(title: str) -> str | None:
     """Resolve a game title to its ITAD plain (internal game ID)."""
-    if not ITAD_API_KEY:
+    if not get_settings().itad_configured():
         return None
     try:
         async with httpx.AsyncClient(timeout=10) as client:
@@ -57,7 +57,7 @@ async def get_current_prices(itad_id: str, country: str = "US") -> list[dict]:
     Each item: { store, store_name, url, price_new, price_old, price_cut,
                  currency, is_drm_free, platforms }
     """
-    if not ITAD_API_KEY or not itad_id:
+    if not get_settings().itad_configured() or not itad_id:
         return []
     try:
         async with httpx.AsyncClient(timeout=10) as client:
@@ -83,7 +83,7 @@ async def get_historical_low(itad_id: str, country: str = "US") -> dict | None:
 
     Returns: { price, cut, shop, recorded } or None.
     """
-    if not ITAD_API_KEY or not itad_id:
+    if not get_settings().itad_configured() or not itad_id:
         return None
     try:
         async with httpx.AsyncClient(timeout=10) as client:
@@ -104,7 +104,7 @@ async def get_historical_low(itad_id: str, country: str = "US") -> dict | None:
 
 async def get_subscription_info(itad_id: str) -> list[str]:
     """Return names of subscription services that currently include the game."""
-    if not ITAD_API_KEY or not itad_id:
+    if not get_settings().itad_configured() or not itad_id:
         return []
     try:
         async with httpx.AsyncClient(timeout=10) as client:

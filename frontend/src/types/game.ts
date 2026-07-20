@@ -24,6 +24,7 @@ export interface Game {
   website_url?: string | null
   ratings_refreshed_at?: string | null
   metadata_refreshed_at?: string | null
+  prices_refreshed_at?: string | null
   content_type: string
   live_primary_source_count: number
   applicable_source_count?: number
@@ -36,6 +37,9 @@ export interface Game {
   rank_score: number
   is_rankable: boolean
   rank_exclusion_reason?: string | null
+  seo_indexable: boolean
+  seo_exclusion_reason?: string | null
+  seo_updated_at?: string | null
   critic_score: number
   user_score: number
   genres: string[]
@@ -43,6 +47,8 @@ export interface Game {
   source_scores: SourceScore[]
   developer?: string | null
   publisher?: string | null
+  steam_app_id?: number | null
+  game_modes?: string[]
   playtime_minutes: number
   hltb_id?: number | null
   hltb_url?: string | null
@@ -64,7 +70,7 @@ export interface Game {
   price_snapshots?: PriceSnapshot[]
 }
 
-export type ProtonTier = 'platinum' | 'gold' | 'silver' | 'bronze' | 'borked'
+export type ProtonTier = 'native' | 'platinum' | 'gold' | 'silver' | 'bronze' | 'borked'
 
 export interface SystemRequirement {
   platform: string
@@ -128,7 +134,10 @@ export interface Facets {
   genres: string[]
   years: number[]
   platforms: string[]
+  developers: string[]
 }
+
+export type PlayerMode = 'singleplayer' | 'multiplayer' | 'coop'
 
 export interface ProviderStatus {
   source: string
@@ -166,6 +175,9 @@ export interface GameFilters {
   requireCritic: boolean
   hasAward: boolean
   dealMode: 'all' | 'best' | 'free'
+  playerMode: PlayerMode | ''
+  playtimeMinHours: number | null
+  playtimeMaxHours: number | null
   sort: GameSort
   direction: SortDirection
 }

@@ -1,7 +1,7 @@
 import { ExternalLink } from 'lucide-react'
 import type { Game } from '../../types/game'
 import { steamAppIdFromGame } from '../../utils/steam'
-import { PROTON_TIER_DESCRIPTIONS, PROTON_TIER_LABELS, isProtonTier } from '../../utils/proton'
+import { PROTON_TIER_DESCRIPTIONS, PROTON_TIER_LABELS, formatProtonScore, isProtonTier } from '../../utils/proton'
 
 export function ProtonCompat({ game }: { game: Game }) {
   const tier = game.proton_tier
@@ -9,10 +9,13 @@ export function ProtonCompat({ game }: { game: Game }) {
 
   const steamAppId = steamAppIdFromGame(game)
   const reportUrl = steamAppId ? `https://www.protondb.com/app/${steamAppId}` : null
+  const scoreText = formatProtonScore(game.proton_score)
 
   return (
     <div className="dp-proton" title={PROTON_TIER_DESCRIPTIONS[tier]}>
-      <span className={`dp-proton-badge dp-proton-${tier}`}>{PROTON_TIER_LABELS[tier]}</span>
+      <span className={`dp-proton-badge dp-proton-${tier}`}>
+        {scoreText ? `${PROTON_TIER_LABELS[tier]} · ${scoreText}` : PROTON_TIER_LABELS[tier]}
+      </span>
       <span className="dp-proton-detail">
         <strong>{PROTON_TIER_DESCRIPTIONS[tier]}</strong>
       </span>

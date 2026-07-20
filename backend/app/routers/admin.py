@@ -8,6 +8,7 @@ production deployments should additionally restrict /admin/* at the network/prox
 
 Endpoints:
   GET  /admin/api-health                     — masked health status for all sources
+  GET  /admin/audit-logs                     — admin audit trail (who did what)
   GET  /admin/source-test/{source}?q=title   — live smoke test for one source
   GET  /admin/external-ids/{game_id}         — external IDs for a game
   GET  /admin/rating-snapshots/{game_id}     — rating history for a game
@@ -24,7 +25,6 @@ Endpoints:
 import asyncio
 import dataclasses
 import logging
-from collections import defaultdict
 from datetime import UTC, datetime, timedelta
 from enum import Enum
 
@@ -33,11 +33,12 @@ from sqlalchemy import desc, func, select
 from sqlalchemy.orm import Session
 
 from ..config import get_settings
-from ..database import get_db
+from ..database import SessionLocal, get_db
 from ..heavy_jobs import HEAVY_JOB_LOCK
-from ..models import ExternalId, Game, PriceSnapshot, RatingSnapshot, SourceSnapshot, VisitEvent, infer_content_type_with_parent
+from ..models import AnalyticsEvent, ExternalId, Game, PriceSnapshot, RatingSnapshot, SourceSnapshot, User, VisitEvent, infer_content_type_with_parent
 from ..services.data_fill import data_fill_status, execute_data_fill_run, queue_data_fill_run
-from ..services.deduplication import consolidate_duplicate_games
+from ..services.admin_audit import recent_admin_audit_logs
+from ..services.deduplication import consolidate_duplicate_games, preview_duplicate_groups
 from ..services.primary_score_backfill import primary_score_backfill_batch, primary_score_coverage_status
 from ..integrations.cheapshark_service import cheapshark_service
 from ..integrations.igdb_service import igdb_service
@@ -45,6 +46,7 @@ from ..integrations.itad_service import itad_service
 from ..integrations.opencritic_service import opencritic_service
 from ..integrations.rawg_service import rawg_service
 from ..integrations.steam_service import steam_service
+from ..integrations.title_matching import titles_match
 from ..integrations.types import SourceHealth
 from ..security import require_admin_user
 
@@ -55,6 +57,16 @@ router = APIRouter(
     tags=["admin"],
     dependencies=[Depends(require_admin_user)],
 )
+# Applied to the expensive endpoints below (many-aggregate dashboards, live
+# provider probes, full-catalog jobs). Auth alone is not a throughput bound —
+# a leaked bearer token is valid for the token lifetime.
+_ADMIN_HEAVY_RATE_LIMIT = "30/minute"
+# Health probes make live calls to metered providers (OpenCritic bills for
+# overage), and the dashboard requests them on every mount. A short TTL turned
+# "leaving the admin tab open" into steady quota burn, so the cached result is
+# held far longer; ?force=true still forces a live probe on demand.
+_API_HEALTH_CACHE_TTL = timedelta(minutes=30)
+_api_health_cache: tuple[datetime, dict[str, dict[str, object]]] | None = None
 
 
 class SourceTest(str, Enum):
@@ -70,15 +82,19 @@ class SourceTest(str, Enum):
 
 
 @router.get("/api-health")
-async def api_health() -> dict:
+async def api_health(force: bool = Query(default=False)) -> dict:
     """
     Returns masked health status for every configured API source.
     Keys, tokens, and secrets are NEVER included in the response.
     """
-    cfg = get_settings()
-
-    checks: list[asyncio.Task[SourceHealth]] = []
-    labels: list[str] = []
+    global _api_health_cache
+    now = datetime.now(UTC)
+    if (
+        not force
+        and _api_health_cache is not None
+        and now - _api_health_cache[0] < _API_HEALTH_CACHE_TTL
+    ):
+        return _api_health_cache[1]
 
     async def _safe(label: str, coro) -> SourceHealth:
         try:
@@ -88,7 +104,7 @@ async def api_health() -> dict:
                 source=label,
                 configured=True,
                 working=False,
-                status="failing",
+                status="timeout",
                 message="Health check timed out after 15s",
             )
         except Exception as exc:
@@ -109,7 +125,7 @@ async def api_health() -> dict:
         _safe("cheapshark", cheapshark_service.health_check()),
     )
 
-    return {
+    payload = {
         h.source: {
             "configured": h.configured,
             "working": h.working,
@@ -119,6 +135,8 @@ async def api_health() -> dict:
         }
         for h in results
     }
+    _api_health_cache = (now, payload)
+    return payload
 
 
 # ── Dashboard / traffic analytics ────────────────────────────────────────────
@@ -135,9 +153,15 @@ def dashboard(
 
     total_games = db.scalar(select(func.count(Game.id))) or 0
     rankable_games = db.scalar(select(func.count(Game.id)).where(Game.is_rankable.is_(True))) or 0
+    seo_indexable_games = db.scalar(select(func.count(Game.id)).where(Game.seo_indexable.is_(True))) or 0
     catalog_only_games = db.scalar(select(func.count(Game.id)).where(Game.content_type != "game")) or 0
     rating_snapshots = db.scalar(select(func.count(RatingSnapshot.id))) or 0
     source_snapshots = db.scalar(select(func.count(SourceSnapshot.id))) or 0
+    registered_users = db.scalar(select(func.count(User.id))) or 0
+    verified_users = db.scalar(select(func.count(User.id)).where(User.email_verified_at.is_not(None))) or 0
+    active_users_30d = db.scalar(
+        select(func.count(User.id)).where(User.last_login_at >= now - timedelta(days=30))
+    ) or 0
     total_visits_all_time = db.scalar(select(func.count(VisitEvent.id))) or 0
     total_unique_visitors = db.scalar(
         select(func.count(func.distinct(VisitEvent.visitor_id_hash)))
@@ -177,23 +201,28 @@ def dashboard(
         ).all()
     ]
 
-    daily_counts: dict[str, dict[str, int | set[str]]] = defaultdict(lambda: {"visits": 0, "visitors": set()})
-    for event in db.scalars(select(VisitEvent).where(VisitEvent.created_at >= since)).all():
-        key = event.created_at.date().isoformat()
-        daily_counts[key]["visits"] = int(daily_counts[key]["visits"]) + 1
-        visitors = daily_counts[key]["visitors"]
-        if isinstance(visitors, set):
-            visitors.add(event.visitor_id_hash)
+    visit_day = func.date(VisitEvent.created_at).label("visit_day")
+    daily_counts = {
+        day.isoformat(): {"visits": visits, "visitors": visitors}
+        for day, visits, visitors in db.execute(
+            select(
+                visit_day,
+                func.count(VisitEvent.id),
+                func.count(func.distinct(VisitEvent.visitor_id_hash)),
+            )
+            .where(VisitEvent.created_at >= since)
+            .group_by(visit_day)
+        ).all()
+    }
 
     daily = []
     for i in range(days - 1, -1, -1):
         date_key = (now - timedelta(days=i)).date().isoformat()
-        row = daily_counts.get(date_key, {"visits": 0, "visitors": set()})
-        visitors = row["visitors"]
+        row = daily_counts.get(date_key, {"visits": 0, "visitors": 0})
         daily.append({
             "date": date_key,
             "visits": int(row["visits"]),
-            "visitors": len(visitors) if isinstance(visitors, set) else 0,
+            "visitors": int(row["visitors"]),
         })
 
     recent_visits = [
@@ -214,9 +243,11 @@ def dashboard(
                 if event.screen_width and event.screen_height
                 else None
             ),
+            "account": account_email,
         }
-        for event in db.scalars(
-            select(VisitEvent)
+        for event, account_email in db.execute(
+            select(VisitEvent, User.email)
+            .outerjoin(User, User.id == VisitEvent.user_id)
             .order_by(VisitEvent.created_at.desc())
             .limit(20)
         ).all()
@@ -252,13 +283,94 @@ def dashboard(
 
     cfg = get_settings()
 
+    seo_exclusions = {
+        reason or "indexable": count
+        for reason, count in db.execute(
+            select(Game.seo_exclusion_reason, func.count(Game.id))
+            .group_by(Game.seo_exclusion_reason)
+        ).all()
+    }
+    organic_filter = VisitEvent.referrer.ilike("%google.%")
+    organic_sessions = db.scalar(
+        select(func.count(func.distinct(VisitEvent.session_id_hash))).where(
+            VisitEvent.created_at >= since,
+            organic_filter,
+            VisitEvent.session_id_hash.is_not(None),
+        )
+    ) or 0
+    organic_visitors = db.scalar(
+        select(func.count(func.distinct(VisitEvent.visitor_id_hash))).where(
+            VisitEvent.created_at >= since,
+            organic_filter,
+        )
+    ) or 0
+    organic_visit_count = func.count(VisitEvent.id).label("visits")
+    organic_landing_pages = [
+        {"path": path, "visits": visits}
+        for path, visits in db.execute(
+            select(VisitEvent.path, organic_visit_count)
+            .where(VisitEvent.created_at >= since, organic_filter)
+            .group_by(VisitEvent.path)
+            .order_by(organic_visit_count.desc())
+            .limit(10)
+        ).all()
+    ]
+    event_counts = {
+        event_type: count
+        for event_type, count in db.execute(
+            select(AnalyticsEvent.event_type, func.count(AnalyticsEvent.id))
+            .where(AnalyticsEvent.created_at >= since)
+            .group_by(AnalyticsEvent.event_type)
+        ).all()
+    }
+    repeat_visitors = db.scalar(
+        select(func.count()).select_from(
+            select(VisitEvent.visitor_id_hash)
+            .where(VisitEvent.created_at >= since)
+            .group_by(VisitEvent.visitor_id_hash)
+            .having(func.count(func.distinct(VisitEvent.session_id_hash)) > 1)
+            .subquery()
+        )
+    ) or 0
+    organic_visitor_hashes = (
+        select(VisitEvent.visitor_id_hash)
+        .where(VisitEvent.created_at >= since, organic_filter)
+        .distinct()
+    )
+    organic_signups = db.scalar(
+        select(func.count(AnalyticsEvent.id)).where(
+            AnalyticsEvent.created_at >= since,
+            AnalyticsEvent.event_type == "signup_completed",
+            AnalyticsEvent.visitor_id_hash.in_(organic_visitor_hashes),
+        )
+    ) or 0
+    signup_count = int(event_counts.get("signup_completed", 0))
+
     return {
         "catalog": {
             "total_games": total_games,
             "rankable_games": rankable_games,
+            "seo_indexable_games": seo_indexable_games,
+            "seo_exclusions": seo_exclusions,
             "non_game_rows": catalog_only_games,
             "rating_snapshots": rating_snapshots,
             "source_snapshots": source_snapshots,
+        },
+        "accounts": {
+            "registered": registered_users,
+            "verified": verified_users,
+            "active_30d": active_users_30d,
+        },
+        "acquisition": {
+            "organic_sessions": organic_sessions,
+            "organic_visitors": organic_visitors,
+            "organic_signups": organic_signups,
+            "organic_signup_conversion": round((organic_signups / organic_visitors) * 100, 2) if organic_visitors else 0.0,
+            "signup_conversion": round((signup_count / unique_visitors) * 100, 2) if unique_visitors else 0.0,
+            "outbound_store_clicks": int(event_counts.get("store_outbound", 0)),
+            "organic_landing_pages": organic_landing_pages,
+            "repeat_visitors": repeat_visitors,
+            "events": event_counts,
         },
         "traffic": {
             "days": days,
@@ -297,6 +409,8 @@ async def run_data_fill(
     force: bool = Query(default=False),
     target_total: int = Query(default=10000, ge=1, le=100000),
 ) -> dict[str, object]:
+    if HEAVY_JOB_LOCK.locked():
+        raise HTTPException(status_code=409, detail="Another heavy job is already running.")
     run = queue_data_fill_run(force=force, target_total=target_total)
     background_tasks.add_task(
         execute_data_fill_run,
@@ -317,11 +431,16 @@ async def _execute_primary_scores_run(*, force: bool, limit: int) -> None:
         return
     cfg = get_settings()
     async with HEAVY_JOB_LOCK:
-        await primary_score_backfill_batch(
+        result = await primary_score_backfill_batch(
             limit=limit,
             force=force,
             inter_game_delay=cfg.DATA_FILL_INTER_GAME_DELAY,
         )
+        if int(result.get("refreshed_games", 0)):
+            with SessionLocal() as db:
+                from ..services.seo import refresh_catalog_seo_states
+                refresh_catalog_seo_states(db)
+                db.commit()
 
 
 @router.post("/primary-scores/run")
@@ -447,16 +566,33 @@ async def match_external_ids(
     upserted: list[str] = []
 
     async def _match_igdb():
-        result = await igdb_service.search_game(game.title)
+        release_year = game.release_year if game.release_year > 1970 else None
+        result = await igdb_service.search_game(game.title, release_year=release_year)
         if result:
             _upsert_external_id(db, game_id, "IGDB", result.external_id, result.external_slug, result.external_url, now)
             upserted.append("IGDB")
 
     async def _match_rawg():
-        result = await rawg_service.search_game(game.title)
+        release_year = game.release_year if game.release_year > 1970 else None
+        result = await rawg_service.search_game(game.title, release_year=release_year)
         if result:
             _upsert_external_id(db, game_id, "RAWG", result.external_id, result.external_slug, None, now)
             upserted.append("RAWG")
+
+    async def _match_opencritic():
+        release_year = game.release_year if game.release_year > 1970 else None
+        result = await opencritic_service.search_game(game.title, release_year=release_year)
+        if result:
+            _upsert_external_id(
+                db,
+                game_id,
+                "OpenCritic",
+                result.external_id,
+                result.external_slug,
+                result.external_url,
+                now,
+            )
+            upserted.append("OpenCritic")
 
     async def _match_itad():
         itad_id = await itad_service.lookup_id(game.title)
@@ -474,7 +610,7 @@ async def match_external_ids(
             upserted.append("Steam")
 
     await asyncio.gather(
-        _match_igdb(), _match_rawg(), _match_itad(), _match_steam(),
+        _match_igdb(), _match_rawg(), _match_opencritic(), _match_itad(), _match_steam(),
         return_exceptions=True,
     )
     db.commit()
@@ -580,15 +716,60 @@ def get_source_snapshots(game_id: int = Path(..., ge=1), db: Session = Depends(g
     }
 
 
+# ── Audit trail ───────────────────────────────────────────────────────────────
+
+
+@router.get("/audit-logs")
+def get_audit_logs(
+    limit: int = Query(default=100, ge=1, le=500),
+    action: str | None = Query(default=None, max_length=32),
+    only_failures: bool = Query(default=False),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Who did what: every /admin/* request and login attempt, newest first."""
+    rows = recent_admin_audit_logs(db, limit=limit, action=action, only_failures=only_failures)
+    return {
+        "logs": [
+            {
+                "id": row.id,
+                "username": row.username,
+                "action": row.action,
+                "method": row.method,
+                "path": row.path,
+                "query": row.query,
+                "status_code": row.status_code,
+                "success": row.success,
+                "ip_address": row.ip_address,
+                "user_agent": row.user_agent,
+                "duration_ms": row.duration_ms,
+                "created_at": row.created_at.isoformat(),
+            }
+            for row in rows
+        ],
+    }
+
+
 # ── Deduplication / reclassification ─────────────────────────────────────────
 
 
 @router.post("/consolidate")
-def admin_consolidate(db: Session = Depends(get_db)) -> dict:
+def admin_consolidate(
+    dry_run: bool = Query(default=False, description="Report what would merge without writing."),
+    db: Session = Depends(get_db),
+) -> dict:
     """
     Reclassify all games by inferred content_type (DLC / demo / software …),
     then merge duplicate game rows into a single canonical record.
     """
+    if dry_run:
+        groups = preview_duplicate_groups(db)
+        return {
+            "dry_run": True,
+            "groups": groups,
+            "merged_groups": len(groups),
+            "removed": sum(len(group["duplicates"]) for group in groups),
+        }
+
     reclassified = 0
     all_games = list(db.scalars(select(Game)).all())
     parent_titles = frozenset(g.title.strip().lower() for g in all_games)
@@ -678,8 +859,19 @@ async def import_prices_cheapshark(
     if not deals:
         return {"game_id": game_id, "stored": False, "reason": "No CheapShark deals found"}
 
-    best = min(deals, key=lambda d: float(d.get("salePrice", 9999)))
-    normalized = cheapshark_service.normalize_deal(best)
+    normalized_deals = [cheapshark_service.normalize_deal(deal) for deal in deals]
+    normalized_deals = [
+        deal
+        for deal in normalized_deals
+        if titles_match(game.title, deal.name)
+        and (deal.sale_price is not None or deal.list_price is not None)
+    ]
+    if not normalized_deals:
+        return {"game_id": game_id, "stored": False, "reason": "No matching valid deal found"}
+    normalized = min(
+        normalized_deals,
+        key=lambda deal: deal.sale_price if deal.sale_price is not None else deal.list_price or float("inf"),
+    )
 
     now = datetime.now(UTC)
     snap = PriceSnapshot(

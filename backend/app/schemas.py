@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 GameSort = Literal[
@@ -68,6 +68,7 @@ class GameRead(BaseModel):
     website_url: str | None = None
     ratings_refreshed_at: datetime | None = None
     metadata_refreshed_at: datetime | None = None
+    prices_refreshed_at: datetime | None = None
     content_type: str = "game"
     live_primary_source_count: int = 0
     applicable_source_count: int = 4
@@ -80,6 +81,9 @@ class GameRead(BaseModel):
     rank_score: float = 0.0
     is_rankable: bool = False
     rank_exclusion_reason: str | None = None
+    seo_indexable: bool = False
+    seo_exclusion_reason: str | None = None
+    seo_updated_at: datetime | None = None
     critic_score: float
     user_score: float
     genres: list[str]
@@ -87,6 +91,8 @@ class GameRead(BaseModel):
     source_scores: list[SourceScore]
     developer: str | None = None
     publisher: str | None = None
+    steam_app_id: int | None = None
+    game_modes: list[str] = []
     playtime_minutes: int = 0
     hltb_id: int | None = None
     hltb_url: str | None = None
@@ -127,6 +133,7 @@ class GameListItem(BaseModel):
     website_url: str | None = None
     ratings_refreshed_at: datetime | None = None
     metadata_refreshed_at: datetime | None = None
+    prices_refreshed_at: datetime | None = None
     content_type: str = "game"
     live_primary_source_count: int = 0
     applicable_source_count: int = 4
@@ -139,6 +146,9 @@ class GameListItem(BaseModel):
     rank_score: float = 0.0
     is_rankable: bool = False
     rank_exclusion_reason: str | None = None
+    seo_indexable: bool = False
+    seo_exclusion_reason: str | None = None
+    seo_updated_at: datetime | None = None
     critic_score: float
     user_score: float
     genres: list[str]
@@ -146,6 +156,8 @@ class GameListItem(BaseModel):
     source_scores: list[SourceScore]
     developer: str | None = None
     publisher: str | None = None
+    steam_app_id: int | None = None
+    game_modes: list[str] = []
     playtime_minutes: int = 0
     hltb_id: int | None = None
     hltb_url: str | None = None
@@ -194,6 +206,7 @@ class FacetsResponse(BaseModel):
     genres: list[str]
     years: list[int]
     platforms: list[str]
+    developers: list[str] = []
 
 
 class ProviderStatus(BaseModel):
@@ -218,7 +231,8 @@ class ScoreWeightsResponse(BaseModel):
 
 
 class ScoreWeightsUpdate(BaseModel):
-    weights: dict[str, float]
+    model_config = ConfigDict(extra="forbid")
+    weights: dict[str, float] = Field(min_length=1, max_length=20)
 
 
 class RecalculateResponse(BaseModel):

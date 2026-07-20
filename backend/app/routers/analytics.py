@@ -1,40 +1,102 @@
-from datetime import UTC, datetime, timedelta
+import re
+from datetime import UTC, datetime
 from hashlib import sha256
 from ipaddress import ip_address
+from math import isfinite
+from typing import Literal
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, Request, Response, status
-from pydantic import BaseModel, Field
-from sqlalchemy import update
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy.orm import Session
 
 from ..config import get_settings
+from ..account_security import AccountPrincipal, optional_account_principal, require_same_origin
 from ..database import get_db
-from ..models import VisitEvent
+from ..models import AnalyticsEvent, VisitEvent
 from ..rate_limit import limiter
 
 
 router = APIRouter(prefix="/api/analytics", tags=["analytics"])
-_last_raw_data_cleanup: datetime | None = None
 
 
 class PageViewPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     path: str = Field(min_length=1, max_length=500)
-    visitor_id: str | None = Field(default=None, max_length=128)
+    visitor_id: str | None = Field(default=None, min_length=8, max_length=128, pattern=r"^[A-Za-z0-9._-]+$")
     referrer: str | None = Field(default=None, max_length=500)
     title: str | None = Field(default=None, max_length=200)
     screen_width: int | None = Field(default=None, ge=0, le=10000)
     screen_height: int | None = Field(default=None, ge=0, le=10000)
-    session_id: str | None = Field(default=None, max_length=128)
-    language: str | None = Field(default=None, max_length=35)
-    timezone: str | None = Field(default=None, max_length=64)
+    session_id: str | None = Field(default=None, min_length=8, max_length=128, pattern=r"^[A-Za-z0-9._-]+$")
+    language: str | None = Field(default=None, max_length=35, pattern=r"^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$")
+    timezone: str | None = Field(default=None, max_length=64, pattern=r"^[A-Za-z0-9_+.-]+(?:/[A-Za-z0-9_+.-]+)*$")
+
+
+AnalyticsEventType = Literal[
+    "signup_completed",
+    "login_completed",
+    "wishlist_add",
+    "alert_enabled",
+    "store_outbound",
+    "share",
+]
+
+_SLUG_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+_STORE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 .&'_+-]{0,79}$")
+_EVENT_PROPERTIES: dict[str, frozenset[str]] = {
+    "signup_completed": frozenset({"method"}),
+    "login_completed": frozenset({"method"}),
+    "wishlist_add": frozenset({"game_slug"}),
+    "alert_enabled": frozenset({"kind"}),
+    "store_outbound": frozenset({"game_slug", "store"}),
+    "share": frozenset({"game_slug", "surface"}),
+}
+
+
+class AnalyticsEventPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    event_type: AnalyticsEventType
+    visitor_id: str | None = Field(default=None, min_length=8, max_length=128, pattern=r"^[A-Za-z0-9._-]+$")
+    path: str | None = Field(default=None, max_length=500)
+    properties: dict[str, str | int | float | bool | None] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def validate_properties(self) -> "AnalyticsEventPayload":
+        if len(self.properties) > 10:
+            raise ValueError("Too many analytics properties.")
+        for key, value in self.properties.items():
+            if not key or len(key) > 64:
+                raise ValueError("Analytics property keys must be 1-64 characters.")
+            if isinstance(value, str) and len(value) > 200:
+                raise ValueError("Analytics string properties must be at most 200 characters.")
+            if isinstance(value, float) and not isfinite(value):
+                raise ValueError("Analytics number properties must be finite.")
+        required = _EVENT_PROPERTIES[self.event_type]
+        if set(self.properties) != required:
+            raise ValueError(f"{self.event_type} requires exactly: {', '.join(sorted(required))}.")
+        values = self.properties
+        if self.event_type in {"signup_completed", "login_completed"} and values["method"] not in {"password", "google"}:
+            raise ValueError("Unknown account authentication method.")
+        if "game_slug" in values and (
+            not isinstance(values["game_slug"], str) or not _SLUG_RE.fullmatch(values["game_slug"])
+        ):
+            raise ValueError("Invalid analytics game slug.")
+        if self.event_type == "alert_enabled" and values["kind"] not in {"daily_digest", "deal", "free", "release", "score"}:
+            raise ValueError("Unknown alert kind.")
+        if self.event_type == "store_outbound" and (
+            not isinstance(values["store"], str) or not _STORE_RE.fullmatch(values["store"])
+        ):
+            raise ValueError("Invalid analytics store name.")
+        if self.event_type == "share" and values["surface"] not in {"game_card", "game_detail", "curation"}:
+            raise ValueError("Unknown share surface.")
+        return self
 
 
 def _stable_hash(value: str | None) -> str | None:
     if not value:
         return None
-    salt = get_settings().JWT_SECRET_KEY or "gamemetrix-development-analytics-salt"
-    return sha256(f"{salt}:{value}".encode("utf-8")).hexdigest()
+    return sha256(f"{get_settings().analytics_salt()}:{value}".encode("utf-8")).hexdigest()
 
 
 def _valid_ip(value: str | None) -> str | None:
@@ -48,12 +110,15 @@ def _valid_ip(value: str | None) -> str | None:
 
 
 def _client_ip(request: Request) -> str | None:
-    if get_settings().ANALYTICS_TRUST_PROXY_HEADERS:
-        # Prefer headers that the bundled nginx proxy always overwrites.
-        for header in ("x-real-ip", "x-forwarded-for", "cf-connecting-ip"):
-            parsed = _valid_ip(request.headers.get(header))
-            if parsed:
-                return parsed
+    """
+    Resolved peer address.
+
+    Reads only request.client: uvicorn (--proxy-headers --forwarded-allow-ips)
+    has already applied the forwarded headers when the peer is a trusted proxy,
+    and nginx only honours CF-Connecting-IP from Cloudflare's ranges. Trusting
+    the raw headers here would let any caller forge the address stored against
+    every visit.
+    """
     return _valid_ip(request.client.host if request.client else None)
 
 
@@ -71,9 +136,28 @@ def _clean_path(path: str) -> str:
         value = parsed.path or "/"
     else:
         value = value.split("?", 1)[0]
+    value = value.split("#", 1)[0]
     if not value.startswith("/"):
         value = f"/{value}"
     return value[:500]
+
+
+def _clean_referrer(referrer: str | None) -> str | None:
+    if not referrer:
+        return None
+    parsed = urlparse(referrer.strip())
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        return None
+    try:
+        host = parsed.hostname.encode("idna").decode("ascii")
+        port = parsed.port
+    except (UnicodeError, ValueError):
+        return None
+    if ":" in host:
+        host = f"[{host}]"
+    if port:
+        host = f"{host}:{port}"
+    return f"{parsed.scheme}://{host}{parsed.path or '/'}"[:500]
 
 
 @router.post("/page-view", status_code=status.HTTP_204_NO_CONTENT)
@@ -82,32 +166,22 @@ def record_page_view(
     request: Request,
     payload: PageViewPayload,
     db: Session = Depends(get_db),
+    principal: AccountPrincipal | None = Depends(optional_account_principal),
+    _origin: None = Depends(require_same_origin),
 ) -> Response:
-    global _last_raw_data_cleanup
-
     cfg = get_settings()
     now = datetime.now(UTC)
     ip = _client_ip(request)
     user_agent = request.headers.get("user-agent", "")[:500]
     visitor_source = payload.visitor_id or f"{ip or 'unknown'}:{user_agent or 'unknown'}"
 
-    # Raw network data is optional and automatically redacted after the
-    # configured retention window. Stable hashes remain for aggregate counts.
-    cleanup_due = (
-        _last_raw_data_cleanup is None
-        or now - _last_raw_data_cleanup >= timedelta(hours=24)
-    )
-    if cfg.ANALYTICS_STORE_RAW_IP and cleanup_due:
-        cutoff = now - timedelta(days=cfg.ANALYTICS_RAW_IP_RETENTION_DAYS)
-        db.execute(
-            update(VisitEvent)
-            .where(VisitEvent.created_at < cutoff, VisitEvent.ip_address.is_not(None))
-            .values(ip_address=None, user_agent=None)
-        )
-        _last_raw_data_cleanup = now
-
+    # Retention is enforced by services.background.raw_analytics_retention_loop,
+    # not here: a sweep that only runs inside this handler would stop the moment
+    # traffic stops, and would never purge anything once raw-IP storage is
+    # switched off — leaving already-stored addresses in place indefinitely.
     db.add(
         VisitEvent(
+            user_id=principal.user.id if principal else None,
             visitor_id_hash=_stable_hash(visitor_source) or "",
             session_id_hash=_stable_hash(payload.session_id),
             ip_hash=_stable_hash(ip),
@@ -118,11 +192,40 @@ def record_page_view(
             language=payload.language,
             timezone=payload.timezone,
             path=_clean_path(payload.path),
-            referrer=payload.referrer,
+            referrer=_clean_referrer(payload.referrer),
             title=payload.title,
             screen_width=payload.screen_width,
             screen_height=payload.screen_height,
             created_at=now,
+        )
+    )
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post("/event", status_code=status.HTTP_204_NO_CONTENT)
+@limiter.limit("120/minute")
+def record_event(
+    request: Request,
+    payload: AnalyticsEventPayload,
+    db: Session = Depends(get_db),
+    principal: AccountPrincipal | None = Depends(optional_account_principal),
+    _origin: None = Depends(require_same_origin),
+) -> Response:
+    allowed = _EVENT_PROPERTIES[payload.event_type]
+    properties = {
+        key: value
+        for key, value in payload.properties.items()
+        if key in allowed and len(str(value)) <= 180
+    }
+    db.add(
+        AnalyticsEvent(
+            event_type=payload.event_type,
+            visitor_id_hash=_stable_hash(payload.visitor_id),
+            user_id=principal.user.id if principal else None,
+            path=_clean_path(payload.path) if payload.path else None,
+            properties=properties,
+            created_at=datetime.now(UTC),
         )
     )
     db.commit()

@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import re
 from datetime import UTC, datetime
@@ -8,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from ..config import get_settings
 from ..models import ExternalId, Game, SourceSnapshot
+from .http_retry import DEFAULT_HEADERS, request_with_retry
 from .rate_limiter import get_rate_limiter
 from ..services.rawg_import import (
     apply_rawg_metadata,
@@ -22,6 +24,8 @@ log = logging.getLogger(__name__)
 _RAWG_LIST_URL = "https://api.rawg.io/api/games"
 _HTTP_TIMEOUT = 20
 _DETAIL_TIMEOUT = 15
+_IMPORT_PAGE_DELAY_SECONDS = 0.5
+_MAX_CONSECUTIVE_BARREN_PAGES = 3
 
 
 def _normalize_title(value: str | None) -> str:
@@ -123,7 +127,7 @@ async def _budgeted_rawg_get(
     if not await get_rate_limiter().acquire("RAWG"):
         log.debug("RAWG metadata budget exhausted for %s", url)
         return None
-    return await client.get(url, params=params)
+    return await request_with_retry(client, "GET", url, params=params)
 
 
 async def import_rawg_games(
@@ -139,8 +143,9 @@ async def import_rawg_games(
     imported = 0
     skipped = 0
     page = 1
+    consecutive_barren_pages = 0
 
-    async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT) as client:
+    async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT, headers=DEFAULT_HEADERS) as client:
         while imported < target:
             params: dict[str, str | int] = {
                 "key": cfg.RAWG_API_KEY,
@@ -155,7 +160,12 @@ async def import_rawg_games(
                 log.info("RAWG import stopped: daily request budget exhausted")
                 break
 
-            response = await client.get(
+            if page > 1:
+                await asyncio.sleep(_IMPORT_PAGE_DELAY_SECONDS)
+
+            response = await request_with_retry(
+                client,
+                "GET",
                 _RAWG_LIST_URL,
                 params=params,
             )
@@ -167,6 +177,7 @@ async def import_rawg_games(
             if not results:
                 break
 
+            imported_before_page = imported
             for raw_game in results:
                 game = game_from_rawg_list(raw_game)
                 existing = db.scalar(select(Game).where(Game.slug == game.slug))
@@ -198,6 +209,20 @@ async def import_rawg_games(
 
             db.commit()
             page += 1
+
+            # Once the catalog already holds everything RAWG returns, `imported`
+            # stops growing while the loop keeps paging — burning the whole daily
+            # budget every run for zero new rows. Stop after a few barren pages.
+            if imported == imported_before_page:
+                consecutive_barren_pages += 1
+                if consecutive_barren_pages >= _MAX_CONSECUTIVE_BARREN_PAGES:
+                    log.info(
+                        "RAWG import stopped: %d consecutive pages contained no new games",
+                        consecutive_barren_pages,
+                    )
+                    break
+            else:
+                consecutive_barren_pages = 0
 
     return {"imported": imported, "skipped": skipped}
 
@@ -265,7 +290,7 @@ async def enrich_rawg_game_detail(db: Session, game: Game) -> bool:
         )
         return new_rawg_id
 
-    async with httpx.AsyncClient(timeout=_DETAIL_TIMEOUT) as client:
+    async with httpx.AsyncClient(timeout=_DETAIL_TIMEOUT, headers=DEFAULT_HEADERS) as client:
         if not rawg_id:
             rawg_id = await _search_rawg_id(client)
             if not rawg_id:

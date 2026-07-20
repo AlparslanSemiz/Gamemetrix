@@ -18,7 +18,8 @@ from typing import Annotated, Literal
 
 import httpx
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Path, Query, Request
-from sqlalchemy import Select, asc, desc, exists, func, or_, select, text
+from sqlalchemy import Select, asc, cast, desc, exists, func, or_, select, true
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Session, noload, selectinload
 
 from ..config import get_settings
@@ -49,6 +50,8 @@ from ..services.game_filter import (
     filter_by_max_ratings,
     filter_by_min_ratings,
     filter_by_platform,
+    filter_by_player_mode,
+    filter_by_playtime,
     filter_by_publisher,
     filter_has_award,
     filter_has_critic,
@@ -61,6 +64,7 @@ from ..services.metadata_backfill import game_needs_metadata_backfill, refresh_g
 from ..services.price_backfill import fetch_and_store_prices
 from ..services.rawg_import import apply_rawg_to_game, game_from_rawg_search
 from ..rate_limit import limiter
+from ..integrations.rate_limiter import get_rate_limiter
 from ..security import require_admin_user
 
 router = APIRouter(tags=["games"])
@@ -69,7 +73,8 @@ log = logging.getLogger(__name__)
 _RAWG_SEARCH_TIMEOUT = 15
 ContentTypeFilter = Literal["all", "game", "dlc", "demo", "mod", "software", "soundtrack", "utility"]
 DealFilter = Literal["all", "best", "free"]
-SlugPath = Annotated[str, Path(min_length=1, max_length=180)]
+PlayerModeFilter = Literal["singleplayer", "multiplayer", "coop"]
+SlugPath = Annotated[str, Path(min_length=1, max_length=180, pattern=r"^[a-z0-9]+(?:-[a-z0-9]+)*$")]
 
 
 @router.get("/api/search", response_model=GameRead)
@@ -97,6 +102,8 @@ async def search_game(
         )
 
     search_term = existing.title if existing else q
+    if not await get_rate_limiter().acquire("RAWG"):
+        raise HTTPException(status_code=429, detail="RAWG request budget is exhausted.")
     raw_game = await _fetch_rawg_search(cfg.RAWG_API_KEY, cfg.RAWG_GAMES_URL, search_term)
 
     game = apply_rawg_to_game(existing, raw_game) if existing else game_from_rawg_search(raw_game)
@@ -119,8 +126,10 @@ async def _fetch_rawg_search(api_key: str, base_url: str, query: str) -> dict:
                 params={"key": api_key, "search": query, "page_size": 1},
             )
             resp.raise_for_status()
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(status_code=502, detail=f"RAWG returned HTTP {exc.response.status_code}.") from exc
     except httpx.HTTPError as exc:
-        raise HTTPException(status_code=502, detail=f"RAWG request failed: {exc}") from exc
+        raise HTTPException(status_code=502, detail=f"RAWG request failed ({type(exc).__name__}).") from exc
 
     results = resp.json().get("results", [])
     if not results:
@@ -146,20 +155,27 @@ def list_games(
     publisher: str | None = Query(default=None, max_length=200),
     min_score: float | None = Query(default=None, ge=0, le=100),
     max_score: float | None = Query(default=None, ge=0, le=100),
-    min_ratings: int | None = Query(default=None, ge=0),
-    max_ratings: int | None = Query(default=None, ge=0),
+    min_ratings: int | None = Query(default=None, ge=0, le=2_000_000_000),
+    max_ratings: int | None = Query(default=None, ge=0, le=2_000_000_000),
     min_live_sources: int | None = Query(default=None, ge=0, le=10),
+    player_mode: PlayerModeFilter | None = Query(default=None),
+    playtime_min_hours: float | None = Query(default=None, ge=0, le=1000),
+    playtime_max_hours: float | None = Query(default=None, ge=0, le=1000),
     require_critic: bool = False,
     has_award: bool = False,
     deal: DealFilter = Query(default="all"),
     sort: GameSort = "rank_score",
     direction: SortDirection = "desc",
     limit: int = Query(default=120, ge=1, le=500),
-    offset: int = Query(default=0, ge=0),
+    offset: int = Query(default=0, ge=0, le=1_000_000),
 ) -> GameListResponse:
     base_q = _build_db_query(content_type, q, year_min, year_max, min_score, max_score, deal, sort, direction)
 
-    needs_memory_filter = any([genre, developer, publisher, platform, min_ratings, max_ratings, has_award, min_live_sources, require_critic])
+    needs_memory_filter = any([
+        genre, developer, publisher, platform, min_ratings, max_ratings, has_award,
+        min_live_sources, require_critic, player_mode,
+        playtime_min_hours is not None, playtime_max_hours is not None,
+    ])
     needs_memory_sort = sort in _IN_MEMORY_SORTS
     price_options = selectinload(Game.price_snapshots) if deal != "all" else noload(Game.price_snapshots)
 
@@ -178,6 +194,7 @@ def list_games(
     games = _apply_in_memory_filters(
         games, genre, developer, publisher, platform,
         min_ratings, max_ratings, has_award, min_live_sources, require_critic,
+        player_mode, playtime_min_hours, playtime_max_hours,
     )
     games = sort_in_memory(games, sort, direction)
     games = dedupe_near_duplicates(games)
@@ -241,11 +258,13 @@ def _build_db_query(
 
 
 def _apply_deal_filter(query: Select, deal: str) -> Select:
+    fresh_before = datetime.datetime.now(datetime.UTC) - datetime.timedelta(hours=24)
     if deal == "free":
         free_price = exists(
             select(PriceSnapshot.id).where(
                 PriceSnapshot.game_id == Game.id,
                 PriceSnapshot.is_free.is_(True),
+                PriceSnapshot.fetched_at >= fresh_before,
             )
         )
         return query.where(free_price)
@@ -253,6 +272,7 @@ def _apply_deal_filter(query: Select, deal: str) -> Select:
         discounted_price = exists(
             select(PriceSnapshot.id).where(
                 PriceSnapshot.game_id == Game.id,
+                PriceSnapshot.fetched_at >= fresh_before,
                 or_(
                     PriceSnapshot.is_free.is_(True),
                     PriceSnapshot.discount_percent >= 50,
@@ -301,6 +321,9 @@ def _apply_in_memory_filters(
     has_award: bool,
     min_live_sources: int | None,
     require_critic: bool,
+    player_mode: str | None = None,
+    playtime_min_hours: float | None = None,
+    playtime_max_hours: float | None = None,
 ) -> list[Game]:
     if genre:
         games = filter_by_genre(games, genre)
@@ -310,6 +333,10 @@ def _apply_in_memory_filters(
         games = filter_by_publisher(games, publisher)
     if platform:
         games = filter_by_platform(games, platform)
+    if player_mode:
+        games = filter_by_player_mode(games, player_mode)
+    if playtime_min_hours is not None or playtime_max_hours is not None:
+        games = filter_by_playtime(games, playtime_min_hours, playtime_max_hours)
     if min_ratings:
         games = filter_by_min_ratings(games, min_ratings)
     if max_ratings:
@@ -401,7 +428,7 @@ def get_similar_games(
 @limiter.limit(get_settings().PUBLIC_READ_RATE_LIMIT)
 def get_series_games(
     request: Request,
-    slug: str,
+    slug: SlugPath,
     limit: int = Query(default=8, ge=1, le=20),
     db: Session = Depends(get_db),
 ) -> SeriesResponse:
@@ -426,7 +453,12 @@ async def refresh_game_scores(
     game = db.scalar(select(Game).where(Game.slug == slug))
     if game is None:
         raise HTTPException(status_code=404, detail="Game not found")
-    return await refresh_game_sources(db, game)
+    refreshed = await refresh_game_sources(db, game)
+    from ..services.seo import refresh_catalog_seo_states
+    refresh_catalog_seo_states(db)
+    db.commit()
+    db.refresh(refreshed)
+    return refreshed
 
 
 @router.post("/api/games/{slug}/fetch-screenshots", response_model=GameRead)
@@ -486,6 +518,9 @@ async def fetch_game_prices(
         raise HTTPException(status_code=404, detail="Game not found")
 
     await fetch_and_store_prices(db, game)
+    from ..services.seo import refresh_catalog_seo_states
+    refresh_catalog_seo_states(db)
+    db.commit()
     db.refresh(game)
     return game
 
@@ -510,18 +545,20 @@ async def get_trailer(
 _facets_cache: FacetsResponse | None = None
 _facets_cache_time: float = 0.0
 _FACETS_TTL = 300.0  # 5 minutes
+# Studio dropdown stays usable — the long tail of one-game developers is not offered.
+_FACET_DEVELOPER_LIMIT = 40
 
 
-def _json_array_values_sql(column: str, dialect_name: str) -> str:
-    if dialect_name == "postgresql":
-        return (
-            f"SELECT DISTINCT TRIM(value) FROM games, "
-            f"LATERAL jsonb_array_elements_text(games.{column}::jsonb) AS value"
-            " WHERE games.content_type = 'game' AND TRIM(value) != ''"
-        )
+def _json_array_values_statement(column):
+    values = func.jsonb_array_elements_text(cast(column, JSONB)).table_valued("value").lateral()
+    trimmed = func.trim(values.c.value).label("value")
     return (
-        f"SELECT DISTINCT TRIM(j.value) FROM games, json_each(games.{column}) j"
-        " WHERE games.content_type = 'game' AND TRIM(j.value) != ''"
+        select(trimmed)
+        .distinct()
+        .select_from(Game)
+        .join(values, true())
+        .where(Game.content_type == "game", trimmed != "")
+        .order_by(trimmed)
     )
 
 
@@ -537,33 +574,32 @@ def get_facets(
         return _facets_cache
 
     current_year = datetime.date.today().year
-    dialect_name = db.bind.dialect.name if db.bind is not None else ""
-
-    # Use json_each to expand JSON arrays at SQL level — no ORM object loading.
+    # Expand JSON arrays at SQL level without loading ORM objects.
     # TRIM collapses variants like " MMORPG" / "MMORPG" into one facet entry.
-    genre_rows = db.execute(
-        text(f"{_json_array_values_sql('genres', dialect_name)} ORDER BY 1")
-    ).fetchall()
-    genres = [r[0] for r in genre_rows]
+    genres = list(db.scalars(_json_array_values_statement(Game.genres)).all())
 
-    year_rows = db.execute(
-        text(
-            "SELECT DISTINCT release_year FROM games"
-            " WHERE content_type = 'game' AND release_year <= :yr ORDER BY release_year DESC"
-        ),
-        {"yr": current_year},
-    ).fetchall()
-    years = [r[0] for r in year_rows]
+    years = list(db.scalars(
+        select(Game.release_year)
+        .where(Game.content_type == "game", Game.release_year <= current_year)
+        .distinct()
+        .order_by(Game.release_year.desc())
+    ).all())
 
-    platform_rows = db.execute(
-        text(_json_array_values_sql("platforms", dialect_name))
-    ).fetchall()
-    raw_platforms = {r[0] for r in platform_rows}
+    raw_platforms = set(db.scalars(_json_array_values_statement(Game.platforms)).all())
+
+    developers = list(db.scalars(
+        select(Game.developer)
+        .where(Game.content_type == "game", Game.developer.is_not(None), Game.developer != "")
+        .group_by(Game.developer)
+        .order_by(func.count(Game.id).desc(), Game.developer.asc())
+        .limit(_FACET_DEVELOPER_LIMIT)
+    ).all())
 
     result = FacetsResponse(
         genres=genres,
         years=years,
         platforms=sorted(_build_platform_filters(raw_platforms)),
+        developers=developers,
     )
     _facets_cache = result
     _facets_cache_time = now

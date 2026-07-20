@@ -1,6 +1,6 @@
 import { type Dispatch, type SetStateAction, useState } from 'react'
 import { ChevronDown, RotateCcw } from 'lucide-react'
-import type { Facets, GameFilters } from '../types/game'
+import type { Facets, GameFilters, PlayerMode } from '../types/game'
 
 interface FilterBarProps {
   facets: Facets
@@ -24,6 +24,21 @@ const QUALITY_OPTIONS = [
   { label: 'Critic score', minSources: 1, critic: true },
   { label: '2+ primary', minSources: 2, critic: false },
   { label: 'Critic + 2 src', minSources: 2, critic: true },
+]
+
+const PLAYER_MODE_OPTIONS: Array<{ label: string; value: PlayerMode | '' }> = [
+  { label: 'Any player mode', value: '' },
+  { label: 'Single-player', value: 'singleplayer' },
+  { label: 'Multiplayer', value: 'multiplayer' },
+  { label: 'Co-op', value: 'coop' },
+]
+
+const PLAYTIME_OPTIONS: Array<{ label: string; min: number | null; max: number | null }> = [
+  { label: 'Any playtime', min: null, max: null },
+  { label: 'Under 10 hours', min: null, max: 10 },
+  { label: '10–30 hours', min: 10, max: 30 },
+  { label: '30–80 hours', min: 30, max: 80 },
+  { label: '80+ hours', min: 80, max: null },
 ]
 
 interface DualRangeProps {
@@ -104,6 +119,9 @@ export function FilterBar({ facets, filters, onChange, onApply }: FilterBarProps
       requireCritic: false,
       hasAward: false,
       dealMode: 'all',
+      playerMode: '',
+      playtimeMinHours: null,
+      playtimeMaxHours: null,
       sort: 'rank_score',
       direction: 'desc',
     })
@@ -125,6 +143,13 @@ export function FilterBar({ facets, filters, onChange, onApply }: FilterBarProps
   ) ?? QUALITY_OPTIONS[0]
 
   const qualityIndex = QUALITY_OPTIONS.indexOf(activeQuality)
+
+  const playtimeIndex = Math.max(
+    0,
+    PLAYTIME_OPTIONS.findIndex(
+      (o) => o.min === filters.playtimeMinHours && o.max === filters.playtimeMaxHours,
+    ),
+  )
 
   return (
     <form className="filters" onSubmit={(e) => { e.preventDefault(); handleApply() }}>
@@ -234,25 +259,38 @@ export function FilterBar({ facets, filters, onChange, onApply }: FilterBarProps
 
       {showMore ? (
         <div className="advanced-filters">
-          <select aria-label="Player mode">
-            <option>Any player mode</option>
-            <option>Single-player</option>
-            <option>Multiplayer</option>
-            <option>Co-op</option>
+          <select
+            aria-label="Player mode"
+            value={filters.playerMode}
+            onChange={(e) => onChange((c) => ({ ...c, playerMode: e.target.value as PlayerMode | '' }))}
+          >
+            {PLAYER_MODE_OPTIONS.map((o) => (
+              <option value={o.value} key={o.value || 'any'}>{o.label}</option>
+            ))}
           </select>
-          <select aria-label="Studio">
-            <option>Any studio</option>
-            <option>FromSoftware</option>
-            <option>Larian Studios</option>
-            <option>Supergiant Games</option>
-            <option>Remedy Entertainment</option>
+
+          <select
+            aria-label="Studio"
+            value={filters.developer}
+            onChange={(e) => onChange((c) => ({ ...c, developer: e.target.value }))}
+          >
+            <option value="">Any studio</option>
+            {facets.developers.map((d) => <option value={d} key={d}>{d}</option>)}
           </select>
-          <select aria-label="Playtime">
-            <option>Any playtime</option>
-            <option>Under 10 hours</option>
-            <option>10–30 hours</option>
-            <option>30–80 hours</option>
-            <option>80+ hours</option>
+
+          <select
+            aria-label="Playtime"
+            value={playtimeIndex}
+            onChange={(e) => {
+              const opt = PLAYTIME_OPTIONS[Number(e.target.value)]
+              if (opt) {
+                onChange((c) => ({ ...c, playtimeMinHours: opt.min, playtimeMaxHours: opt.max }))
+              }
+            }}
+          >
+            {PLAYTIME_OPTIONS.map((o, i) => (
+              <option value={i} key={o.label}>{o.label}</option>
+            ))}
           </select>
         </div>
       ) : null}

@@ -1,6 +1,6 @@
 /* eslint-disable react-hooks/set-state-in-effect */
 import { type CSSProperties, useEffect, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { ExternalLink } from 'lucide-react'
 import {
   getGameBySlug,
@@ -13,7 +13,8 @@ import { TrailerModal } from '../components/TrailerModal'
 import { scoreColor, scoreColorRgb, sourceScoreColor } from '../utils/scoreColors'
 import { steamAppIdFromGame } from '../utils/steam'
 import { safeExternalUrl } from '../utils/url'
-import { PROTON_TIER_LABELS, isProtonTier } from '../utils/proton'
+import { PROTON_TIER_LABELS, formatProtonScore, isProtonTier } from '../utils/proton'
+import { currentPriceSnapshots } from '../utils/prices'
 import type { Game, SourceScore } from '../types/game'
 import { DlcSection } from './detail/DlcSection'
 import { Gallery } from './detail/Gallery'
@@ -45,12 +46,13 @@ function sourceExternalUrl(source: string, game: Game): string | null {
   }
 }
 
-function SourceRow({ s, game, filler = false }: { s: SourceScore; game: Game; filler?: boolean }) {
+function SourceRow({ s, game, secondary = false }: { s: SourceScore; game: Game; secondary?: boolean }) {
   const url = sourceExternalUrl(s.source, game)
   const pct = Math.max(0, Math.min(s.score, 100))
-  const isPrimary = !filler && (PRIMARY_4 as readonly string[]).includes(s.source)
+  const unavailable = s.status !== 'live' || s.score <= 0
+  const isPrimary = !secondary && (PRIMARY_4 as readonly string[]).includes(s.source)
   const nameEl = url ? (
-    <a href={url} target="_blank" rel="noopener noreferrer" className={`dp-src-name dp-src-link${filler ? ' dp-src-secondary' : ''}`}>
+    <a href={url} target="_blank" rel="noopener noreferrer" className={`dp-src-name dp-src-link${secondary ? ' dp-src-secondary' : ''}`}>
       {s.source} <ExternalLink size={9} />
     </a>
   ) : (
@@ -58,13 +60,13 @@ function SourceRow({ s, game, filler = false }: { s: SourceScore; game: Game; fi
   )
   return (
     <div
-      className={`dp-src-row${filler ? ' dp-src-row-secondary' : ''}`}
+      className={`dp-src-row${secondary ? ' dp-src-row-secondary' : ''}${unavailable ? ' dp-src-row-unavailable' : ''}`}
       title={s.detail ?? s.source}
       style={{ '--source-color': sourceScoreColor(pct) } as CSSProperties}
     >
       {nameEl}
-      <div className="dp-src-bar"><span className="dp-src-fill" style={{ width: `${pct}%` }} /></div>
-      <strong className="dp-src-score">{Math.round(s.score)}</strong>
+      <div className="dp-src-bar"><span className="dp-src-fill" style={{ width: unavailable ? '0%' : `${pct}%` }} /></div>
+      <strong className="dp-src-score">{unavailable ? '—' : Math.round(s.score)}</strong>
       {s.review_count ? (
         <span className="dp-src-count">{s.review_count.toLocaleString()}</span>
       ) : null}
@@ -72,18 +74,17 @@ function SourceRow({ s, game, filler = false }: { s: SourceScore; game: Game; fi
   )
 }
 
-function reliabilityCopy(game: Game, livePrimaryCount: number, rawgFillsSlot: boolean) {
+function reliabilityCopy(game: Game, livePrimaryCount: number) {
   const applicableCount = game.applicable_source_count ?? 4
   const missing = Math.max(0, applicableCount - livePrimaryCount)
-  const rawgNote = rawgFillsSlot ? ' RAWG is filling one missing source slot at reduced weight.' : ''
   if (game.confidence_level === 'Strong') {
     return `${livePrimaryCount}/${applicableCount} primary sources, critic and player signal covered.`
   }
   if (game.confidence_level === 'Solid') {
-    return `${livePrimaryCount}/${applicableCount} primary sources. Good signal, still missing ${missing}.${rawgNote}`
+    return `${livePrimaryCount}/${applicableCount} primary sources. Good signal, still missing ${missing}.`
   }
   if (game.confidence_level === 'Limited') {
-    return `${livePrimaryCount}/${applicableCount} primary sources. Score is uncertainty-adjusted.${rawgNote}`
+    return `${livePrimaryCount}/${applicableCount} primary sources. Score is uncertainty-adjusted.`
   }
   return 'Catalog entry. Live rating data has not been collected yet.'
 }
@@ -114,7 +115,21 @@ function formatHours(minutes: number): string {
 
 function protonLabel(game: Game): string | null {
   const tier = game.proton_tier
-  return tier && isProtonTier(tier) ? PROTON_TIER_LABELS[tier] : null
+  if (!tier || !isProtonTier(tier)) return null
+  const scoreText = formatProtonScore(game.proton_score)
+  return scoreText ? `${PROTON_TIER_LABELS[tier]} · ${scoreText}` : PROTON_TIER_LABELS[tier]
+}
+
+function latestGameUpdate(game: Game): string | null {
+  const candidates = [
+    game.ratings_refreshed_at,
+    game.metadata_refreshed_at,
+    game.prices_refreshed_at,
+    game.hltb_refreshed_at,
+    game.seo_updated_at,
+    ...(game.price_snapshots ?? []).map((price) => price.fetched_at),
+  ].filter((value): value is string => Boolean(value) && !Number.isNaN(Date.parse(value as string)))
+  return candidates.sort((left, right) => Date.parse(right) - Date.parse(left))[0] ?? null
 }
 
 function buildAboutParagraphs(game: Game): string[] {
@@ -137,10 +152,10 @@ function buildAboutParagraphs(game: Game): string[] {
   return paragraphs
 }
 
-export function GameDetailPage() {
+export function GameDetailPage({ initialGame }: { initialGame?: Game }) {
   const { slug } = useParams<{ slug: string }>()
   const navigate = useNavigate()
-  const [game, setGame] = useState<Game | null>(null)
+  const [game, setGame] = useState<Game | null>(initialGame ?? null)
   const [similarCatalogGames, setSimilarCatalogGames] = useState<Game[]>([])
   const [similarLoading, setSimilarLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -158,15 +173,14 @@ export function GameDetailPage() {
   }, [slug])
 
   useEffect(() => {
-    if (!game) return
-    const previousTitle = document.title
-    document.title = `${game.title} — GameMetrix`
-    return () => { document.title = previousTitle }
-  }, [game])
-
-  useEffect(() => {
     if (!slug) return
     let active = true
+
+    if (initialGame?.slug === slug) {
+      setGame(initialGame)
+      setError(null)
+      return
+    }
 
     setGame(null)
     setSimilarCatalogGames([])
@@ -182,7 +196,7 @@ export function GameDetailPage() {
     return () => {
       active = false
     }
-  }, [slug])
+  }, [initialGame, slug])
 
   useEffect(() => {
     if (!slug) return
@@ -247,29 +261,25 @@ export function GameDetailPage() {
     .map((src) => scoreBySource.get(src))
     .filter((s): s is SourceScore => s !== undefined && s.status === 'live' && s.score > 0)
 
-  // Fill missing primary slots with best extra sources
-  const fillerCount = Math.max(0, 4 - livePrimary4.length)
-  const fillerScores = liveExtra.slice(0, fillerCount)
-  const fillerNames = new Set(fillerScores.map((s) => s.source))
-
-  // Primary tab = top 4 + fillers; Extra tab = remaining extras
-  const primaryTabScores = [...livePrimary4, ...fillerScores]
-  const extraTabScores = liveExtra.filter((s) => !fillerNames.has(s.source))
+  const primaryTabScores: SourceScore[] = PRIMARY_4.map((source) => {
+    const score = scoreBySource.get(source)
+    return score?.status === 'live' && score.score > 0
+      ? score
+      : { source, score: 0, scale: 100, status: 'unavailable', detail: 'No live score has been collected yet.' }
+  })
+  const extraTabScores = liveExtra
 
   // Source average is shown as context; GameMetrix Score itself is adjusted by backend reliability.
-  const sourceAverage = primaryTabScores.length > 0
-    ? Math.round(primaryTabScores.reduce((sum, s) => sum + s.score, 0) / primaryTabScores.length)
+  const sourceAverage = livePrimary4.length > 0
+    ? Math.round(livePrimary4.reduce((sum, s) => sum + s.score, 0) / livePrimary4.length)
     : Math.round(game.metrix_score)
   const displayScore = Math.round(game.metrix_score)
 
-  const totalReviews = primaryTabScores.reduce((n, s) => n + (s.review_count ?? 0), 0)
+  const totalReviews = livePrimary4.reduce((n, s) => n + (s.review_count ?? 0), 0)
   const confidenceLower = (game.confidence_level ?? 'limited').toLowerCase()
   const livePrimaryCount = game.live_primary_source_count ?? livePrimary4.length
   const applicableCount = game.applicable_source_count ?? 4
-  const rawgFillsSlot = fillerScores.some((s) => s.source === 'RAWG')
-  const coverageLabel = rawgFillsSlot
-    ? `${livePrimaryCount}/${applicableCount} + RAWG`
-    : `${livePrimaryCount}/${applicableCount}`
+  const coverageLabel = `${livePrimaryCount}/${applicableCount}`
   const popularity = popularitySummary(game)
   const rankStatus = game.is_rankable ? 'Ranked' : 'Unranked'
   const rankDetail = game.is_rankable
@@ -295,14 +305,15 @@ export function GameDetailPage() {
     ['HLTB avg', game.hltb_all_styles_minutes],
   ].filter(([, minutes]) => Number(minutes) > 0)
   const aboutParagraphs = buildAboutParagraphs(game)
-  const priceSnapshots = game.price_snapshots ?? []
+  const priceSnapshots = currentPriceSnapshots(game.price_snapshots ?? [])
+  const dataUpdatedAt = latestGameUpdate(game)
   const detailStyle = {
     '--score-color': scoreColor(displayScore),
     '--score-rgb': scoreColorRgb(displayScore),
   } as CSSProperties
 
   return (
-    <div className="dp-shell" style={detailStyle}>
+    <main className="dp-shell" style={detailStyle}>
       {/* Blurred background */}
       {bgImage && (
         <div className="dp-bg" style={{ backgroundImage: `url("${bgImage}")` }} />
@@ -311,10 +322,12 @@ export function GameDetailPage() {
 
       <div className="dp-inner">
         {/* Breadcrumb */}
+        {/* Real anchors, not buttons: a crawler follows these and they pass link
+            equity, which the previous onClick-only version did neither of. */}
         <nav className="dp-breadcrumb">
-          <button type="button" className="dp-bc-item dp-bc-link" onClick={goBackToCatalog}>Home</button>
+          <Link to="/" className="dp-bc-item dp-bc-link" onClick={goBackToCatalog}>Home</Link>
           <span className="dp-bc-sep">/</span>
-          <button type="button" className="dp-bc-item dp-bc-link" onClick={goBackToCatalog}>Games</button>
+          <Link to="/" className="dp-bc-item dp-bc-link" onClick={goBackToCatalog}>Games</Link>
           <span className="dp-bc-sep">/</span>
           <span className="dp-bc-item dp-bc-current">{game.title}</span>
         </nav>
@@ -391,7 +404,7 @@ export function GameDetailPage() {
               <div className={`dp-signal-card dp-signal-${confidenceLower}`}>
                 <span>Data reliability</span>
                 <strong>{game.confidence_level}</strong>
-                <small>{reliabilityCopy(game, livePrimaryCount, rawgFillsSlot)}</small>
+                <small>{reliabilityCopy(game, livePrimaryCount)}</small>
               </div>
               <div className="dp-signal-card">
                 <span>Popularity</span>
@@ -406,8 +419,7 @@ export function GameDetailPage() {
             </div>
 
             {/* Ratings with tabs */}
-            {(primaryTabScores.length > 0 || extraTabScores.length > 0) && (
-              <div className="dp-section">
+            <div className="dp-section">
                 <div className="dp-ratings-tabs">
                   <button
                     type="button"
@@ -433,23 +445,18 @@ export function GameDetailPage() {
                           key={s.source}
                           s={s}
                           game={game}
-                          filler={fillerNames.has(s.source)}
                         />
                       ))
                     : extraTabScores.map((s) => (
-                        <SourceRow key={s.source} s={s} game={game} />
+                        <SourceRow key={s.source} s={s} game={game} secondary />
                       ))
                   }
-                  {ratingsTab === 'primary' && primaryTabScores.length === 0 && (
-                    <p className="dp-no-scores">No live scores yet.</p>
-                  )}
                 </div>
               </div>
-            )}
 
             {/* About */}
             <div className="dp-section">
-              <h3 className="dp-section-title">About</h3>
+              <h2 className="dp-section-title">About</h2>
               <div className="dp-description">
                 {aboutParagraphs.map((paragraph) => (
                   <p key={paragraph}>{paragraph}</p>
@@ -560,19 +567,32 @@ export function GameDetailPage() {
                     <span className="dp-info-val">{game.popularity_label} · {popularity.detail}</span>
                   </div>
                 )}
+                {dataUpdatedAt && (
+                  <div className="dp-info-row">
+                    <span className="dp-info-key">Data updated</span>
+                    <span className="dp-info-val">{formatDate(dataUpdatedAt)}</span>
+                  </div>
+                )}
+                <div className="dp-info-row">
+                  <span className="dp-info-key">Supplementary data</span>
+                  <span className="dp-info-val">
+                    Metadata and imagery may include attributed data from{' '}
+                    <a className="dp-info-link" href="https://rawg.io/" target="_blank" rel="noopener noreferrer">RAWG</a>.
+                  </span>
+                </div>
               </div>
             </div>
 
             {game.proton_tier && (
               <div className="dp-section">
-                <h3 className="dp-section-title">Linux / Steam Deck compatibility</h3>
+                <h2 className="dp-section-title">Linux / Steam Deck compatibility</h2>
                 <ProtonCompat game={game} />
               </div>
             )}
 
             {priceSnapshots.length > 0 && (
               <div className="dp-section">
-                <h3 className="dp-section-title">Price & availability</h3>
+                <h2 className="dp-section-title">Price & availability</h2>
                 <PricePanel prices={priceSnapshots} game={game} />
               </div>
             )}
@@ -582,7 +602,7 @@ export function GameDetailPage() {
               <div className="dp-section">
                 {game.system_requirements.map((req) => (
                   <div key={req.platform}>
-                    <h3 className="dp-section-title">System requirements for {req.platform}</h3>
+                    <h2 className="dp-section-title">System requirements for {req.platform}</h2>
                     <SysReqBlock req={req} />
                   </div>
                 ))}
@@ -618,6 +638,6 @@ export function GameDetailPage() {
           onClose={() => { setTrailerOpen(false); setTrailerVideoId(null) }}
         />
       )}
-    </div>
+    </main>
   )
 }

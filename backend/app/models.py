@@ -1,4 +1,5 @@
 from datetime import date, datetime
+from math import isfinite
 import re
 
 from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Integer, JSON, String, Text, UniqueConstraint
@@ -25,6 +26,26 @@ _POPULARITY_VERY_HIGH = 100_000
 _POPULARITY_HIGH = 25_000
 _POPULARITY_MEDIUM = 5_000
 _POPULARITY_LOW = 500
+
+
+def _valid_score(row: object) -> bool:
+    if not isinstance(row, dict) or row.get("status") != "live":
+        return False
+    try:
+        value = float(row.get("score", 0) or 0)
+    except (TypeError, ValueError):
+        return False
+    return isfinite(value) and 0 < value <= 100
+
+
+def _safe_review_count(row: object) -> int:
+    if not isinstance(row, dict):
+        return 0
+    try:
+        value = int(row.get("review_count", 0) or 0)
+    except (TypeError, ValueError, OverflowError):
+        return 0
+    return value if 0 <= value <= 2_000_000_000 else 0
 
 SOFTWARE_GENRE_TERMS = {
     "animation",
@@ -85,10 +106,14 @@ class Game(Base):
     website_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     ratings_refreshed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     metadata_refreshed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    prices_refreshed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     content_type: Mapped[str] = mapped_column(String(40), nullable=False, default="game")
     metrix_score: Mapped[float] = mapped_column(Float, nullable=False, index=True)
     rank_score: Mapped[float] = mapped_column(Float, nullable=False, default=0.0, index=True)
     is_rankable: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    seo_indexable: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, index=True)
+    seo_exclusion_reason: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    seo_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     critic_score: Mapped[float] = mapped_column(Float, nullable=False)
     user_score: Mapped[float] = mapped_column(Float, nullable=False)
     genres: Mapped[list[str]] = mapped_column(JSON, nullable=False)
@@ -99,6 +124,11 @@ class Game(Base):
     )
     developer: Mapped[str | None] = mapped_column(String(200), nullable=True)
     publisher: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    # Authoritative Steam App ID. Without it the app had to scrape the id back out
+    # of the cover URL, which silently failed for any game whose art came from
+    # IGDB/GOG/PlayStation rather than Steam.
+    steam_app_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    game_modes: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
     playtime_minutes: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     hltb_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     hltb_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
@@ -122,11 +152,11 @@ class Game(Base):
 
     @property
     def is_pc_applicable(self) -> bool:
-        return any(p.lower() in PC_PLATFORM_KEYS for p in self.platforms)
+        return any(p.lower() in PC_PLATFORM_KEYS for p in self.platforms if isinstance(p, str))
 
     @property
     def applicable_primary_sources(self) -> frozenset[str]:
-        return applicable_for_game(self.platforms)
+        return applicable_for_game([p for p in self.platforms if isinstance(p, str)])
 
     @property
     def applicable_sources(self) -> list[str]:
@@ -141,10 +171,10 @@ class Game(Base):
         applicable = self.applicable_primary_sources
         return sum(
             1
-            for score in self.source_scores
-            if score.get("source") in applicable
-            and score.get("status") == "live"
-            and float(score.get("score", 0)) > 0
+            for score in (self.source_scores or [])
+            if isinstance(score, dict)
+            and score.get("source") in applicable
+            and _valid_score(score)
         )
 
     @property
@@ -153,9 +183,9 @@ class Game(Base):
         applicable_user = applicable & USER_RATING_SOURCES
 
         live_rating_entries = [
-            s for s in self.source_scores
-            if s.get("status") == "live"
-            and float(s.get("score", 0)) > 0
+            s for s in (self.source_scores or [])
+            if isinstance(s, dict)
+            and _valid_score(s)
             and str(s.get("source")) in RATING_SOURCES
         ]
         live_sources: set[str] = {str(s.get("source")) for s in live_rating_entries}
@@ -163,7 +193,7 @@ class Game(Base):
         live_critic = live_primary & CRITIC_SOURCES
         live_user = live_primary & applicable_user
         total_reviews = sum(
-            int(s.get("review_count", 0))
+            _safe_review_count(s)
             for s in live_rating_entries
         )
 
@@ -207,9 +237,9 @@ class Game(Base):
     def score_profile(self) -> str:
         live_sources = {
             str(s.get("source"))
-            for s in self.source_scores
-            if s.get("status") == "live"
-            and float(s.get("score", 0)) > 0
+            for s in (self.source_scores or [])
+            if isinstance(s, dict)
+            and _valid_score(s)
             and str(s.get("source")) in RATING_SOURCES
         }
         has_critic = bool(live_sources & CRITIC_SOURCES)
@@ -225,9 +255,10 @@ class Game(Base):
     @property
     def popularity_label(self) -> str | None:
         count = sum(
-            int(s.get("review_count", 0))
-            for s in self.source_scores
-            if s.get("status") == "live"
+            _safe_review_count(s)
+            for s in (self.source_scores or [])
+            if isinstance(s, dict)
+            and _valid_score(s)
             and str(s.get("source")) in RATING_SOURCES
         )
         if count >= _POPULARITY_PHENOMENON:
@@ -309,6 +340,9 @@ class VisitEvent(Base):
     __tablename__ = "visit_events"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     visitor_id_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     session_id_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     ip_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
@@ -323,6 +357,126 @@ class VisitEvent(Base):
     title: Mapped[str | None] = mapped_column(String(200), nullable=True)
     screen_width: Mapped[int | None] = mapped_column(Integer, nullable=True)
     screen_height: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+
+
+class User(Base):
+    """Normal product account. Admin credentials intentionally live outside this table."""
+
+    __tablename__ = "users"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    email: Mapped[str] = mapped_column(String(320), nullable=False, unique=True, index=True)
+    display_name: Mapped[str] = mapped_column(String(80), nullable=False)
+    password_hash: Mapped[str | None] = mapped_column(Text, nullable=True)
+    email_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class OAuthIdentity(Base):
+    __tablename__ = "oauth_identities"
+    __table_args__ = (
+        UniqueConstraint("provider", "provider_subject", name="uq_oauth_provider_subject"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    provider: Mapped[str] = mapped_column(String(32), nullable=False)
+    provider_subject: Mapped[str] = mapped_column(String(255), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class AccountSession(Base):
+    __tablename__ = "account_sessions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    csrf_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    ip_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    user_agent_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class AccountToken(Base):
+    __tablename__ = "account_tokens"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    purpose: Mapped[str] = mapped_column(String(24), nullable=False, index=True)
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class UserCollection(Base):
+    __tablename__ = "user_collections"
+    __table_args__ = (
+        UniqueConstraint("user_id", "game_id", "collection_type", name="uq_user_collection_game_type"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    game_id: Mapped[int] = mapped_column(Integer, ForeignKey("games.id", ondelete="CASCADE"), nullable=False, index=True)
+    collection_type: Mapped[str] = mapped_column(String(24), nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class UserPreference(Base):
+    __tablename__ = "user_preferences"
+
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    alert_min_discount: Mapped[int] = mapped_column(Integer, nullable=False, default=20)
+    alert_min_score: Mapped[int] = mapped_column(Integer, nullable=False, default=80)
+    alert_upcoming_days: Mapped[int] = mapped_column(Integer, nullable=False, default=45)
+    email_digest_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    marketing_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    settings: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class UserAlertState(Base):
+    __tablename__ = "user_alert_states"
+    __table_args__ = (
+        UniqueConstraint("user_id", "alert_key", name="uq_user_alert_state_key"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    alert_key: Mapped[str] = mapped_column(String(240), nullable=False)
+    state: Mapped[str] = mapped_column(String(16), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class NotificationDelivery(Base):
+    __tablename__ = "notification_deliveries"
+    __table_args__ = (
+        UniqueConstraint("user_id", "fingerprint", name="uq_notification_delivery_fingerprint"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    channel: Mapped[str] = mapped_column(String(16), nullable=False, default="email")
+    delivered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class AnalyticsEvent(Base):
+    __tablename__ = "analytics_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    event_type: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
+    visitor_id_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    user_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    path: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    properties: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
 
 
@@ -371,6 +525,43 @@ class ApiRequestBudget(Base):
     request_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     daily_limit: Mapped[int] = mapped_column(Integer, nullable=False, default=100)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class ApiRequestWindow(Base):
+    """Persistent provider quota counter for non-daily fixed windows."""
+
+    __tablename__ = "api_request_windows"
+    __table_args__ = (
+        UniqueConstraint("source", "window_kind", "window_start", name="uq_api_request_window"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    source: Mapped[str] = mapped_column(String(60), nullable=False, index=True)
+    window_kind: Mapped[str] = mapped_column(String(24), nullable=False)
+    window_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    window_seconds: Mapped[int] = mapped_column(Integer, nullable=False)
+    request_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    request_limit: Mapped[int] = mapped_column(Integer, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class AdminAuditLog(Base):
+    """Who did what on the admin surface: every /admin/* request plus login attempts."""
+
+    __tablename__ = "admin_audit_logs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    username: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    action: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    method: Mapped[str] = mapped_column(String(8), nullable=False)
+    path: Mapped[str] = mapped_column(String(500), nullable=False, index=True)
+    query: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    status_code: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    success: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, index=True)
+    ip_address: Mapped[str | None] = mapped_column(String(45), nullable=True)
+    user_agent: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
 
 
 class DataFillRun(Base):

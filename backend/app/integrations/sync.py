@@ -13,8 +13,9 @@ Internal helpers (prefixed _):
 
 import asyncio
 import logging
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from datetime import UTC, datetime, timedelta
+from math import isfinite
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -40,7 +41,7 @@ SOURCE_WEIGHTS: dict[str, float] = {
     "OpenCritic": 0.28,
     "Steam": 0.25,
     "IGDB": 0.15,
-    "RAWG": 0.04,
+    "RAWG": 0.0,
     "SteamSpy": 0.03,
     "CheapShark": 0.02,
     "FreeToGame": 0.01,
@@ -62,18 +63,33 @@ CRITIC_RATING_SOURCES = {"Metacritic", "OpenCritic"}
 USER_RATING_SOURCES = {"IGDB", "Steam"}
 CACHE_TTL = timedelta(hours=24)
 RAWG_CACHE_TTL = timedelta(days=30)
+_DEFAULT_BUDGET_SOURCE = object()
 
-# Equal-weight scoring: 4 primary slots; RAWG fills at lower weight when a primary is absent.
-# SteamSpy, CheapShark, FreeToGame are support sources — never enter the score.
+# Four named primary slots. RAWG and support sources never enter the score.
 _SCORE_PRIMARIES = ("Metacritic", "OpenCritic", "Steam", "IGDB")
-_SCORE_EXTRAS = ("RAWG",)
 _SCORE_BASELINE = 70.0
 
 # ── Rank score constants ────────────────────────────────────────────────────────
 _RANK_GLOBAL_MEAN = 70.0  # shrinkage target: neutral baseline
-_RATING_SRC  = frozenset({"Metacritic", "OpenCritic", "Steam", "IGDB", "RAWG"})
+_RATING_SRC  = frozenset({"Metacritic", "OpenCritic", "Steam", "IGDB"})
 _CRITIC_SRC  = frozenset({"Metacritic", "OpenCritic"})
 _USER_SRC    = frozenset({"Steam", "IGDB"})
+
+
+def _score_value(row: Mapping[str, object]) -> float | None:
+    try:
+        value = float(row.get("score", 0) or 0)
+    except (TypeError, ValueError):
+        return None
+    return value if isfinite(value) and 0 < value <= 100 else None
+
+
+def _review_count(row: Mapping[str, object]) -> int:
+    try:
+        value = int(row.get("review_count", 0) or 0)
+    except (TypeError, ValueError, OverflowError):
+        return 0
+    return value if 0 <= value <= 2_000_000_000 else 0
 
 
 # ── Score serialization ────────────────────────────────────────────────────────
@@ -116,38 +132,31 @@ def _merge_source_scores(
 
 def calculate_metrix_score(source_scores: list[dict[str, object]]) -> float:
     """
-    Reliability-adjusted weighted average of up to 4 sources.
+    Reliability-adjusted weighted average of the four primary sources.
 
-    Primaries: Metacritic, OpenCritic, Steam, IGDB (each defaults to weight 1.0 = 25%).
-    Any missing primary slot is filled by the next available extra source.
-    Weights are configurable via SCORE_WEIGHT_<SOURCE> env vars (relative, not absolute).
+    Primaries: Metacritic, OpenCritic, Steam, IGDB. Admin weights provide the
+    editorial baseline and SCORE_WEIGHT_<SOURCE> env values act as relative
+    deployment-level multipliers.
     Sparse source coverage shrinks high scores toward a neutral baseline and applies a
     small uncertainty penalty, so a 95 from one source cannot rank like a 95 from four.
     """
     cfg = get_settings()
-    weights: dict[str, float] = {
+    modifiers: dict[str, float] = {
         "Metacritic": cfg.SCORE_WEIGHT_METACRITIC,
         "OpenCritic": cfg.SCORE_WEIGHT_OPENCRITIC,
-        "Steam":      cfg.SCORE_WEIGHT_STEAM,
-        "IGDB":       cfg.SCORE_WEIGHT_IGDB,
-        "RAWG":       cfg.SCORE_WEIGHT_RAWG,
-        "SteamSpy":   cfg.SCORE_WEIGHT_STEAMSPY,
-        "CheapShark": cfg.SCORE_WEIGHT_CHEAPSHARK,
-        "FreeToGame": cfg.SCORE_WEIGHT_FREETOGAME,
+        "Steam": cfg.SCORE_WEIGHT_STEAM,
+        "IGDB": cfg.SCORE_WEIGHT_IGDB,
+    }
+    weights: dict[str, float] = {
+        source: max(0.0, SOURCE_WEIGHTS[source] * modifiers[source])
+        for source in _SCORE_PRIMARIES
     }
     live = {
-        str(s.get("source")): float(s.get("score", 0))
+        str(s.get("source")): value
         for s in source_scores
-        if s.get("status") == "live" and float(s.get("score", 0)) > 0
+        if s.get("status") == "live" and (value := _score_value(s)) is not None
     }
     selected: list[tuple[str, float]] = [(src, live[src]) for src in _SCORE_PRIMARIES if src in live]
-    needed = 4 - len(selected)
-    for src in _SCORE_EXTRAS:
-        if needed <= 0:
-            break
-        if src in live:
-            selected.append((src, live[src]))
-            needed -= 1
     if not selected:
         return 0.0
     total_weight = sum(weights.get(src, 1.0) for src, _ in selected)
@@ -166,11 +175,10 @@ def _score_reliability_factor(
 ) -> float:
     selected_sources = {source for source, _ in selected}
     primary_count = len(selected_sources & set(_SCORE_PRIMARIES))
-    has_rawg_fallback = "RAWG" in selected_sources
     has_critic = bool(selected_sources & _CRITIC_SRC)
     has_user = bool(selected_sources & _USER_SRC)
     total_reviews = sum(
-        int(s.get("review_count", 0))
+        _review_count(s)
         for s in source_scores
         if s.get("status") == "live" and str(s.get("source")) in _RATING_SRC
     )
@@ -178,27 +186,15 @@ def _score_reliability_factor(
     if primary_count >= 4:
         coverage_factor = 1.00
         max_reliability = 1.00
-    elif primary_count == 3 and has_rawg_fallback:
-        coverage_factor = 0.93
-        max_reliability = 0.965
     elif primary_count == 3:
         coverage_factor = 0.90
         max_reliability = 0.94
-    elif primary_count == 2 and has_rawg_fallback:
-        coverage_factor = 0.82
-        max_reliability = 0.87
     elif primary_count == 2:
         coverage_factor = 0.78
         max_reliability = 0.84
-    elif primary_count == 1 and has_rawg_fallback:
-        coverage_factor = 0.66
-        max_reliability = 0.72
     elif primary_count == 1:
         coverage_factor = 0.62
         max_reliability = 0.68
-    elif has_rawg_fallback:
-        coverage_factor = 0.46
-        max_reliability = 0.50
     else:
         coverage_factor = 0.40
         max_reliability = 0.46
@@ -223,9 +219,6 @@ def _score_reliability_factor(
     else:
         volume_adjust = -0.02
 
-    if selected_sources == {"RAWG"}:
-        return 0.46
-
     return max(0.46, min(max_reliability, coverage_factor + balance_adjust + volume_adjust))
 
 
@@ -242,10 +235,11 @@ def _weighted_source_average(
         source = str(s.get("source", ""))
         if source not in sources:
             continue
-        if s.get("status") != "live" or float(s.get("score", 0)) <= 0:
+        score = _score_value(s)
+        if s.get("status") != "live" or score is None:
             continue
         weight = SOURCE_WEIGHTS.get(source, 0.05)
-        weighted_total += float(s.get("score", 0)) * weight
+        weighted_total += score * weight
         total_weight += weight
     return round(weighted_total / total_weight, 1) if total_weight else 0.0
 
@@ -268,22 +262,27 @@ def _cached_score(
         if not isinstance(refreshed_at, str):
             continue
         status = str(s.get("status", "live"))
-        score = float(s.get("score", 0) or 0)
-        if live_only and (status != "live" or score <= 0):
+        score = _score_value(s)
+        if status == "unavailable" and not live_only:
+            score = 0.0
+        if score is None or (live_only and status != "live"):
             continue
         try:
             refreshed_time = datetime.fromisoformat(refreshed_at)
         except ValueError:
             continue
         if datetime.now(UTC) - refreshed_time <= effective_ttl:
-            return ExternalScore(
-                source=source_name,
-                score=score,
-                scale=int(s.get("scale", 100)),
-                status=status,  # type: ignore[arg-type]
-                detail=str(s.get("detail", "Cached score")),
-                review_count=int(s.get("review_count", 0)),
-            )
+            try:
+                return ExternalScore(
+                    source=source_name,
+                    score=score,
+                    scale=int(s.get("scale", 100)),
+                    status=status,  # type: ignore[arg-type]
+                    detail=str(s.get("detail", "Cached score"))[:1000],
+                    review_count=_review_count(s),
+                )
+            except (TypeError, ValueError, OverflowError):
+                continue
     return None
 
 
@@ -299,7 +298,7 @@ def game_needs_rating_refresh(game: Game, now: datetime | None = None) -> bool:
     live = {
         str(s.get("source"))
         for s in game.source_scores
-        if s.get("status") == "live" and float(s.get("score", 0) or 0) > 0
+        if s.get("status") == "live" and _score_value(s) is not None
     }
     return any(src not in live for src in game.applicable_primary_sources)
 
@@ -312,11 +311,12 @@ async def _resolve_score(
     cached: ExternalScore | None,
     fetch: Callable[[], Awaitable[ExternalScore]],
     *,
-    budget_source: str | None = None,
+    budget_source: str | None | object = _DEFAULT_BUDGET_SOURCE,
+    required_requests: int | None = None,
 ) -> ExternalScore:
     if cached:
         return cached
-    if budget_source is None:
+    if budget_source is _DEFAULT_BUDGET_SOURCE:
         budget_source = source
     if budget_source is not None and not _source_configured(source):
         return ExternalScore(
@@ -324,6 +324,18 @@ async def _resolve_score(
             score=0,
             status="unavailable",
             detail=f"{source} is not configured.",
+        )
+    if required_requests is None:
+        required_requests = 2 if source == "OpenCritic" else 1
+    if (
+        budget_source is not None
+        and get_rate_limiter().remaining(budget_source) < required_requests
+    ):
+        return ExternalScore(
+            source=source,
+            score=0,
+            status="unavailable",
+            detail=f"{source} request budget is too low for a complete lookup.",
         )
     if budget_source is not None and not await get_rate_limiter().acquire(budget_source):
         return ExternalScore(
@@ -339,7 +351,7 @@ async def _resolve_score(
             source=source,
             score=0,
             status="unavailable",
-            detail=f"{source} request failed: {error}",
+            detail=f"{source} request failed ({type(error).__name__}).",
         )
 
 
@@ -357,6 +369,7 @@ def _source_configured(source: str) -> bool:
 def _build_fetch_tasks(
     game: Game,
     *,
+    external_ids: Mapping[str, str] | None = None,
     sources: Sequence[str] | None = None,
     force: bool = False,
     include_support: bool = True,
@@ -364,6 +377,12 @@ def _build_fetch_tasks(
 ) -> list[Awaitable[ExternalScore]]:
     requested = set(sources) if sources is not None else None
     live_only_cache = requested is not None
+    external_ids = external_ids or {}
+    release_year = game.release_year if game.release_year and game.release_year > 1970 else None
+
+    def numeric_external_id(source: str) -> int | None:
+        value = external_ids.get(source, "")
+        return int(value) if value.isdigit() and int(value) > 0 else None
 
     def wants(source: str) -> bool:
         return requested is None or source in requested
@@ -378,30 +397,50 @@ def _build_fetch_tasks(
         tasks.append(_resolve_score(
             "Metacritic",
             cached("Metacritic", RAWG_CACHE_TTL),
-            lambda: get_rawg_metacritic_score(game.title, cached_value=game.metacritic_score),
+            lambda: get_rawg_metacritic_score(
+                game.title,
+                cached_value=game.metacritic_score,
+                release_year=release_year,
+            ),
             budget_source=None if game.metacritic_score is not None else "Metacritic",
         ))
     if wants("OpenCritic"):
         tasks.append(_resolve_score(
             "OpenCritic",
             cached("OpenCritic"),
-            lambda: get_opencritic_score(game.title),
+            lambda: get_opencritic_score(
+                game.title,
+                release_year=release_year,
+                opencritic_id=external_ids.get("OpenCritic"),
+            ),
+            # The search leg draws from OpenCritic's separate search bucket, so
+            # this budget only ever covers the single detail request.
+            required_requests=1,
         ))
     if wants("IGDB"):
         tasks.append(_resolve_score(
             "IGDB",
             cached("IGDB"),
-            lambda: get_igdb_score(game.title),
+            lambda: get_igdb_score(
+                game.title,
+                release_year=release_year,
+                igdb_id=numeric_external_id("IGDB"),
+            ),
         ))
 
     steam_requested = wants("Steam") and (game.is_pc_applicable or requested is not None)
     if steam_requested:
-        app_id = extract_steam_app_id(game.slug, game.cover_url, game.image_url)
+        app_id = numeric_external_id("Steam") or extract_steam_app_id(
+            game.slug,
+            game.cover_url,
+            game.image_url,
+        )
         tasks.append(
             _resolve_score(
                 "Steam",
                 cached("Steam"),
                 lambda: get_steam_score(game.slug, game.title, steam_app_id=app_id),
+                required_requests=1 if app_id is not None else 2,
             )
         )
         if include_support and app_id is not None and wants("SteamSpy"):
@@ -416,7 +455,7 @@ def _build_fetch_tasks(
         str(s.get("source"))
         for s in game.source_scores
         if s.get("status") == "live"
-        and float(s.get("score", 0) or 0) > 0
+        and _score_value(s) is not None
         and str(s.get("source")) in game.applicable_primary_sources
     }
     if include_rawg_fallback and wants("RAWG") and len(live_primary) < len(game.applicable_primary_sources):
@@ -424,7 +463,7 @@ def _build_fetch_tasks(
             _resolve_score(
                 "RAWG",
                 cached("RAWG", RAWG_CACHE_TTL),
-                lambda: get_rawg_rating_score(game.title),
+                lambda: get_rawg_rating_score(game.title, release_year=release_year),
             )
         )
     return tasks
@@ -434,7 +473,7 @@ def _live_rating_entries(game: Game) -> list[dict[str, object]]:
     return [
         s for s in game.source_scores
         if s.get("status") == "live"
-        and float(s.get("score", 0)) > 0
+        and _score_value(s) is not None
         and str(s.get("source")) in _RATING_SRC
     ]
 
@@ -445,8 +484,7 @@ def _confidence_factor(game: Game) -> float:
     1.0 = full confidence (both critic & user, high volume).
     0.0 = no rating data (catalog only).
 
-    Inputs considered: applicable primary counts, critic/user balance,
-    review volume, and whether only a secondary source (RAWG) is present.
+    Inputs considered: applicable primary counts, critic/user balance, and review volume.
     """
     live = _live_rating_entries(game)
     if not live:
@@ -462,19 +500,15 @@ def _confidence_factor(game: Game) -> float:
     n_critic  = len(live_critic)
     n_user    = len(live_user)
 
-    total_reviews  = sum(int(s.get("review_count", 0)) for s in live)
+    total_reviews  = sum(_review_count(s) for s in live)
     critic_reviews = sum(
-        int(s.get("review_count", 0)) for s in live
+        _review_count(s) for s in live
         if str(s.get("source")) in _CRITIC_SRC
     )
     user_reviews = sum(
-        int(s.get("review_count", 0)) for s in live
+        _review_count(s) for s in live
         if str(s.get("source")) in _USER_SRC
     )
-
-    # No applicable primary → secondary-only (RAWG)
-    if n_primary == 0:
-        return 0.48 if total_reviews >= 10_000 else 0.40
 
     # Both critic AND user coverage
     if n_critic >= 1 and n_user >= 1:
@@ -555,7 +589,7 @@ def _update_derived_scores(game: Game, fresh_scores: list[ExternalScore]) -> Non
             game.metacritic_score = round(score.score)
             break
 
-    live = [s for s in game.source_scores if s.get("status") == "live" and float(s.get("score", 0)) > 0]
+    live = [s for s in game.source_scores if s.get("status") == "live" and _score_value(s) is not None]
     if live:
         critic = _weighted_source_average(game.source_scores, CRITIC_RATING_SOURCES)
         user   = _weighted_source_average(game.source_scores, USER_RATING_SOURCES)
@@ -672,15 +706,20 @@ def backfill_current_source_records(db: Session, game: Game) -> int:
         )
         if exists:
             continue
-        scores.append(ExternalScore(
-            source=source,
-            score=float(row.get("score", 0) or 0),
-            scale=int(row.get("scale", 100) or 100),
-            status=str(row.get("status", "live")),  # type: ignore[arg-type]
-            detail=str(row.get("detail", "")) or None,
-            review_count=int(row.get("review_count", 0) or 0),
-            raw={"source_score": row},
-        ))
+        status = str(row.get("status", "live"))
+        score = _score_value(row) or 0.0
+        try:
+            scores.append(ExternalScore(
+                source=source,
+                score=score,
+                scale=int(row.get("scale", 100) or 100),
+                status=status,  # type: ignore[arg-type]
+                detail=(str(row.get("detail", "")) or None),
+                review_count=_review_count(row),
+                raw={"source_score": row},
+            ))
+        except (TypeError, ValueError, OverflowError):
+            continue
     if not scores:
         return 0
     _persist_source_records(db, game, scores)
@@ -697,8 +736,22 @@ async def refresh_game_sources(
     include_rawg_fallback: bool = True,
     refresh_metadata: bool = True,
 ) -> Game:
+    external_rows = db.scalars(
+        select(ExternalId)
+        .where(
+            ExternalId.game_id == game.id,
+            ExternalId.is_primary.is_(True),
+            ExternalId.confidence >= 0.8,
+        )
+        .order_by(ExternalId.confidence.desc(), ExternalId.updated_at.desc())
+    ).all()
+    external_ids: dict[str, str] = {}
+    for row in external_rows:
+        external_ids.setdefault(row.source, row.external_id)
+
     fresh_scores = await asyncio.gather(*_build_fetch_tasks(
         game,
+        external_ids=external_ids,
         sources=sources,
         force=force,
         include_support=include_support,
@@ -714,6 +767,8 @@ async def refresh_game_sources(
     game.ratings_refreshed_at = datetime.now(UTC)
     _update_derived_scores(game, list(fresh_scores))
     _persist_source_records(db, game, list(fresh_scores))
+    from ..services.seo import refresh_game_seo_state
+    refresh_game_seo_state(game, content_updated=True)
 
     db.add(game)
     db.commit()

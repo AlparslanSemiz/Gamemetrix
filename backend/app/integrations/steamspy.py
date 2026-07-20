@@ -1,3 +1,4 @@
+import asyncio
 from datetime import date
 
 import httpx
@@ -6,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from ..models import Game, infer_content_type
 from ..services.deduplication import find_existing_duplicate, merge_game_data
+from .http_retry import DEFAULT_HEADERS, request_with_retry
 from .rate_limiter import get_rate_limiter
 from .types import ExternalScore
 
@@ -14,6 +16,9 @@ STEAMSPY_URL = "https://steamspy.com/api.php"
 
 _HTTP_TIMEOUT = 30
 _SINGLE_TIMEOUT = 10
+# SteamSpy documents ~1 request/minute for the paged "all" endpoint; going
+# faster gets the client throttled and eventually blocked.
+_IMPORT_PAGE_DELAY_SECONDS = 60.0
 _DEFAULT_SCORE_FLOOR = 60.0
 _SCORE_POPULAR_GENRE = 72.0
 _SCORE_DEFAULT = 68.0
@@ -23,10 +28,11 @@ async def get_steamspy_score(app_id: int) -> ExternalScore:
     """Fetch positive/negative vote counts for a single Steam app and return a 0-100 score."""
     try:
         async with httpx.AsyncClient(timeout=_SINGLE_TIMEOUT) as client:
-            response = await client.get(
+            response = await request_with_retry(
+                client,
+                "GET",
                 STEAMSPY_URL,
                 params={"request": "appdetails", "appid": app_id},
-                headers={"User-Agent": "GameMetrix/0.1"},
             )
             response.raise_for_status()
         data = response.json()
@@ -140,13 +146,16 @@ async def import_steamspy_games(db: Session, target: int = 2000) -> dict[str, in
     imported = 0
     skipped = 0
     page = 0
-    headers = {"User-Agent": "GameMetrix/0.1 (local-development)"}
 
-    async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT, headers=headers) as client:
+    async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT, headers=DEFAULT_HEADERS) as client:
         while imported < target:
             if not await get_rate_limiter().acquire("SteamSpy"):
                 break
-            response = await client.get(
+            if page:
+                await asyncio.sleep(_IMPORT_PAGE_DELAY_SECONDS)
+            response = await request_with_retry(
+                client,
+                "GET",
                 STEAMSPY_URL,
                 params={"request": "all", "page": page},
             )

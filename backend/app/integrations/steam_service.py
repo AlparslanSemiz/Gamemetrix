@@ -18,8 +18,8 @@ import time
 
 import httpx
 
-from ..config import get_settings
-from .steam import STEAM_APP_IDS, _clean_requirement_block, _lookup_steam_app_id  # reuse existing helpers
+from .rate_limiter import get_rate_limiter
+from .steam import _clean_requirement_block, _lookup_steam_app_id  # reuse existing helpers
 from .types import NormalizedGame, SourceHealth
 
 log = logging.getLogger(__name__)
@@ -36,24 +36,31 @@ class SteamService:
         return True  # Store search needs no key; Web API key used for extended endpoints
 
     async def health_check(self) -> SourceHealth:
+        if get_rate_limiter().remaining("Steam") <= 0:
+            return SourceHealth(
+                source="steam",
+                configured=True,
+                working=False,
+                status="rate_limited",
+                message="Configured Steam request budget is exhausted",
+            )
         try:
             t0 = time.monotonic()
-            slug, title, expected_id = SMOKE_TEST_TITLES[0]
-            app_id = await self.lookup_app_id(slug, title)
+            _slug, title, expected_id = SMOKE_TEST_TITLES[0]
+            game = await self.get_app_details(expected_id)
             latency = int((time.monotonic() - t0) * 1000)
-            if app_id:
-                match = app_id == expected_id
+            if game:
                 return SourceHealth(
                     source="steam",
-                    configured=get_settings().steam_configured(),
+                    configured=True,
                     working=True,
                     status="ok",
-                    message=f"App ID lookup: {app_id} ({'correct' if match else f'expected {expected_id}'})",
+                    message=f"Steam app details returned {game.name}",
                     latency_ms=latency,
                 )
             return SourceHealth(
                 source="steam",
-                configured=get_settings().steam_configured(),
+                configured=True,
                 working=False,
                 status="failing",
                 message=f"Could not find app ID for test title '{title}'",
@@ -62,24 +69,24 @@ class SteamService:
         except Exception as exc:
             return SourceHealth(
                 source="steam",
-                configured=get_settings().steam_configured(),
+                configured=True,
                 working=False,
                 status="failing",
                 message=f"Steam request failed: {type(exc).__name__}",
             )
 
     async def lookup_app_id(self, slug: str, title: str) -> int | None:
-        # 1. Check hardcoded map first (zero-cost)
-        if slug in STEAM_APP_IDS:
-            return STEAM_APP_IDS[slug]
-
-        # 2. Try to parse from cover_url or slug string
+        # Callers should pass games.steam_app_id when it is set; this resolves the
+        # id for rows that do not have one yet.
+        # 1. Parse it out of the slug if it embeds one (zero-cost)
         for value in (slug,):
             m = _STEAM_APP_ID_RE.search(value)
             if m:
                 return int(m.group(1))
 
         # 3. Store search API
+        if not await get_rate_limiter().acquire("Steam"):
+            return None
         try:
             async with httpx.AsyncClient(timeout=10) as client:
                 return await _lookup_steam_app_id(title, client)
@@ -88,6 +95,8 @@ class SteamService:
             return None
 
     async def get_app_details(self, app_id: int) -> NormalizedGame | None:
+        if not await get_rate_limiter().acquire("Steam"):
+            return None
         try:
             async with httpx.AsyncClient(timeout=12) as client:
                 resp = await client.get(
@@ -112,28 +121,48 @@ class SteamService:
     def _normalize(self, app_id: int, raw: dict) -> NormalizedGame:
         from datetime import date as _date
         release_date: _date | None = None
-        rd = (raw.get("release_date") or {}).get("date")
+        release_data = raw.get("release_date")
+        rd = release_data.get("date") if isinstance(release_data, dict) else None
         if rd:
             from .steam import _parse_steam_release_date
             release_date = _parse_steam_release_date(rd)
 
         platforms = []
-        if raw.get("platforms", {}).get("windows"):
+        platform_data = raw.get("platforms") if isinstance(raw.get("platforms"), dict) else {}
+        if platform_data.get("windows"):
             platforms.append("PC")
-        if raw.get("platforms", {}).get("mac"):
+        if platform_data.get("mac"):
             platforms.append("macOS")
-        if raw.get("platforms", {}).get("linux"):
+        if platform_data.get("linux"):
             platforms.append("Linux")
 
-        developers = raw.get("developers") or []
-        publishers = raw.get("publishers") or []
+        raw_developers = raw.get("developers")
+        raw_publishers = raw.get("publishers")
+        developers = [
+            str(value)[:200]
+            for value in raw_developers
+            if value
+        ] if isinstance(raw_developers, list) else []
+        publishers = [
+            str(value)[:200]
+            for value in raw_publishers
+            if value
+        ] if isinstance(raw_publishers, list) else []
 
-        genres = [g["description"] for g in raw.get("genres") or [] if isinstance(g, dict)]
-        categories = [c["description"] for c in raw.get("categories") or [] if isinstance(c, dict)]
+        genres = [
+            str(genre["description"])[:100]
+            for genre in raw.get("genres") or []
+            if isinstance(genre, dict) and genre.get("description")
+        ]
+        categories = [
+            str(category["description"])[:100]
+            for category in raw.get("categories") or []
+            if isinstance(category, dict) and category.get("description")
+        ]
         screenshots = [
-            s["path_full"]
+            str(screenshot["path_full"])[:500]
             for s in raw.get("screenshots") or []
-            if isinstance(s, dict) and s.get("path_full")
+            if isinstance(screenshot, dict) and screenshot.get("path_full")
         ]
         system_requirements: list[dict[str, str]] = []
         for key, platform in (
@@ -156,19 +185,25 @@ class SteamService:
                     "minimum": minimum,
                     "recommended": recommended,
                 })
+        raw_dlc = raw.get("dlc")
+        dlc_ids = [
+            int(item)
+            for item in raw_dlc
+            if str(item).isdigit()
+        ] if isinstance(raw_dlc, list) else []
 
         return NormalizedGame(
             source="Steam",
             external_id=str(app_id),
-            name=raw.get("name", ""),
+            name=str(raw.get("name") or "")[:500],
             external_url=self.store_url(app_id),
             release_date=release_date,
             platforms=platforms,
             genres=genres,
             developer=developers[0] if developers else None,
             publisher=publishers[0] if publishers else None,
-            summary=raw.get("short_description"),
-            cover_url=raw.get("header_image"),
+            summary=str(raw["short_description"])[:20_000] if raw.get("short_description") else None,
+            cover_url=str(raw["header_image"])[:500] if raw.get("header_image") else None,
             raw={
                 "steam_app_id": app_id,
                 "required_age": raw.get("required_age"),
@@ -179,11 +214,7 @@ class SteamService:
                 "website": raw.get("website"),
                 "screenshots": screenshots,
                 "system_requirements": system_requirements,
-                "dlc_ids": [
-                    int(item)
-                    for item in raw.get("dlc") or []
-                    if str(item).isdigit()
-                ],
+                "dlc_ids": dlc_ids,
             },
         )
 

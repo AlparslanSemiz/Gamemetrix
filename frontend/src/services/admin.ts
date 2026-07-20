@@ -20,6 +20,8 @@ export interface AdminDashboard {
   catalog: {
     total_games: number
     rankable_games: number
+    seo_indexable_games: number
+    seo_exclusions: Record<string, number>
     non_game_rows: number
     rating_snapshots: number
     source_snapshots: number
@@ -49,6 +51,7 @@ export interface AdminDashboard {
       user_agent?: string | null
       referrer?: string | null
       screen?: string | null
+      account?: string | null
     }>
     recent_ips: Array<{
       ip?: string | null
@@ -63,6 +66,22 @@ export interface AdminDashboard {
       trusted_proxy_headers: boolean
       raw_ip_retention_days: number
     }
+  }
+  accounts: {
+    registered: number
+    verified: number
+    active_30d: number
+  }
+  acquisition: {
+    organic_sessions: number
+    organic_visitors: number
+    organic_signups: number
+    organic_signup_conversion: number
+    signup_conversion: number
+    outbound_store_clicks: number
+    organic_landing_pages: Array<{ path: string; visits: number }>
+    repeat_visitors: number
+    events: Record<string, number>
   }
 }
 
@@ -106,6 +125,21 @@ export interface DataFillStatus {
   primary_scores: PrimaryScoreCoverage
   rate_limits: Record<string, { remaining: number; limit: number }>
   last_run?: DataFillRun | null
+}
+
+export interface AdminAuditLog {
+  id: number
+  username?: string | null
+  action: string
+  method: string
+  path: string
+  query?: string | null
+  status_code: number
+  success: boolean
+  ip_address?: string | null
+  user_agent?: string | null
+  duration_ms?: number | null
+  created_at: string
 }
 
 export class AdminApiError extends Error {
@@ -162,6 +196,22 @@ export async function getAdminApiHealth(token: string): Promise<AdminApiHealth> 
   })
   if (!response.ok) throw await parseError(response)
   return response.json()
+}
+
+export async function getAdminAuditLogs(
+  token: string,
+  options: { limit?: number; onlyFailures?: boolean } = {},
+): Promise<AdminAuditLog[]> {
+  const params = new URLSearchParams()
+  if (options.limit) params.set('limit', String(options.limit))
+  if (options.onlyFailures) params.set('only_failures', 'true')
+  const query = params.toString()
+  const response = await fetch(`${API_BASE_URL}/admin/audit-logs${query ? `?${query}` : ''}`, {
+    headers: adminHeaders(token),
+  })
+  if (!response.ok) throw await parseError(response)
+  const body: { logs: AdminAuditLog[] } = await response.json()
+  return body.logs
 }
 
 export async function getDataFillStatus(token: string): Promise<DataFillStatus> {

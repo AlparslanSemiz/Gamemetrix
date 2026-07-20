@@ -13,6 +13,8 @@ Public API:
   filter_by_developer             -> list[Game]
   filter_by_publisher             -> list[Game]
   filter_by_platform              -> list[Game]
+  filter_by_player_mode           -> list[Game]
+  filter_by_playtime              -> list[Game]
   filter_by_min_ratings           -> list[Game]
   filter_by_max_ratings           -> list[Game]
   filter_has_award                -> list[Game]
@@ -21,7 +23,7 @@ Public API:
   sort_in_memory(games, sort, dir)-> list[Game]
 """
 
-from ..models import Game
+from ..models import Game, _safe_review_count, _valid_score
 from ..integrations.source_registry import CRITIC_SOURCES
 from .deduplication import (
     canonical_title,
@@ -32,6 +34,15 @@ from .deduplication import (
 
 
 LIKE_ESCAPE_CHAR = "\\"
+_MINUTES_PER_HOUR = 60
+
+# Catalogs that predate the game_modes column still carry the signal in their
+# genre tags, so a mode filter also accepts these equivalents.
+_PLAYER_MODE_GENRE_ALIASES: dict[str, frozenset[str]] = {
+    "multiplayer": frozenset({"massively multiplayer", "mmo", "mmorpg", "mmoarpg", "multiplayer", "pvp", "online co-op"}),
+    "coop": frozenset({"co-op", "coop", "online co-op", "local co-op"}),
+    "singleplayer": frozenset({"single player", "singleplayer"}),
+}
 
 
 def escape_like(value: str) -> str:
@@ -49,15 +60,15 @@ def _total_review_count(game: Game) -> int:
 
 def _live_review_count(game: Game) -> int:
     return sum(
-        int(s.get("review_count", 0))
-        for s in game.source_scores
-        if s.get("status") == "live"
+        _safe_review_count(s)
+        for s in (game.source_scores or [])
+        if isinstance(s, dict) and _valid_score(s)
     )
 
 
 def _source_score(game: Game, source_name: str) -> float:
-    for s in game.source_scores:
-        if str(s.get("source", "")).lower() == source_name.lower():
+    for s in (game.source_scores or []):
+        if isinstance(s, dict) and _valid_score(s) and str(s.get("source", "")).lower() == source_name.lower():
             return float(s.get("score", 0))
     return 0.0
 
@@ -70,7 +81,7 @@ def filter_by_genre(games: list[Game], genre: str) -> list[Game]:
     wanted = genre.strip().lower()
     return [
         g for g in games
-        if any(stored.strip().lower() == wanted for stored in g.genres)
+        if any(stored.strip().lower() == wanted for stored in g.genres if isinstance(stored, str))
     ]
 
 
@@ -88,8 +99,39 @@ def filter_by_platform(games: list[Game], platform: str) -> list[Game]:
         terms.append("pc")
     return [
         g for g in games
-        if any(term in stored.lower() for stored in g.platforms for term in terms)
+        if any(term in stored.lower() for stored in g.platforms if isinstance(stored, str) for term in terms)
     ]
+
+
+def filter_by_player_mode(games: list[Game], player_mode: str) -> list[Game]:
+    wanted = player_mode.strip().lower()
+    genre_aliases = _PLAYER_MODE_GENRE_ALIASES.get(wanted, frozenset())
+    return [
+        g for g in games
+        if wanted in {str(mode).strip().lower() for mode in (g.game_modes or [])}
+        or any(str(stored).strip().lower() in genre_aliases for stored in (g.genres or []))
+    ]
+
+
+def filter_by_playtime(
+    games: list[Game],
+    min_hours: float | None,
+    max_hours: float | None,
+) -> list[Game]:
+    """Games with no recorded playtime are excluded — an unknown length cannot satisfy a range."""
+    min_minutes = min_hours * _MINUTES_PER_HOUR if min_hours is not None else None
+    max_minutes = max_hours * _MINUTES_PER_HOUR if max_hours is not None else None
+    result = []
+    for game in games:
+        minutes = game.playtime_minutes or 0
+        if minutes <= 0:
+            continue
+        if min_minutes is not None and minutes < min_minutes:
+            continue
+        if max_minutes is not None and minutes > max_minutes:
+            continue
+        result.append(game)
+    return result
 
 
 def filter_by_min_ratings(games: list[Game], min_ratings: int) -> list[Game]:
@@ -109,9 +151,9 @@ def filter_has_critic(games: list[Game]) -> list[Game]:
         g for g in games
         if any(
             str(s.get("source")) in CRITIC_SOURCES
-            and s.get("status") == "live"
-            and float(s.get("score", 0)) > 0
-            for s in g.source_scores
+            and _valid_score(s)
+            for s in (g.source_scores or [])
+            if isinstance(s, dict)
         )
     ]
 

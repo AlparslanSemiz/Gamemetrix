@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore, type FormEvent } from 'react'
 import {
   Activity,
   Database,
@@ -6,6 +6,7 @@ import {
   KeyRound,
   LogOut,
   RefreshCw,
+  ScrollText,
   Server,
   ShieldCheck,
   Users,
@@ -13,12 +14,14 @@ import {
 import {
   AdminApiError,
   getAdminApiHealth,
+  getAdminAuditLogs,
   getAdminDashboard,
   getDataFillStatus,
   loginAdmin,
   runDataFill,
   runPrimaryScores,
   type AdminApiHealth,
+  type AdminAuditLog,
   type AdminDashboard,
   type DataFillStatus,
 } from '../services/admin'
@@ -26,10 +29,43 @@ import { RefreshAllPanel } from '../components/RefreshAllPanel'
 import { ScoreWeightSettings } from '../components/ScoreWeightSettings'
 import './AdminPage.css'
 
+// sessionStorage (not localStorage): the admin token survives a reload but dies
+// with the tab, so it is not left at rest for an XSS payload to read later.
 const ADMIN_TOKEN_KEY = 'gamemetrix.adminToken.v1'
-const ADMIN_TOKEN_STORAGE = window.sessionStorage
 const ADMIN_USERNAME_MAX_LENGTH = 64
 const ADMIN_PASSWORD_MAX_LENGTH = 128
+const AUDIT_LOG_LIMIT = 100
+
+function readStoredToken(): string {
+  if (typeof window === 'undefined') return ''
+  try {
+    return window.sessionStorage.getItem(ADMIN_TOKEN_KEY) ?? ''
+  } catch {
+    return ''
+  }
+}
+
+function persistToken(token: string): void {
+  if (typeof window === 'undefined') return
+  try {
+    if (token) window.sessionStorage.setItem(ADMIN_TOKEN_KEY, token)
+    else window.sessionStorage.removeItem(ADMIN_TOKEN_KEY)
+  } catch {
+    // Private mode or quota failure — the session simply will not survive a reload.
+  }
+}
+
+// sessionStorage is external state, so it is read through useSyncExternalStore:
+// the server snapshot is always empty and the client adopts the stored token
+// after hydration, which avoids the server-renders-login / client-renders-dashboard
+// mismatch that reading it during render would cause.
+function subscribeToStoredToken(onChange: () => void): () => void {
+  if (typeof window === 'undefined') return () => {}
+  window.addEventListener('storage', onChange)
+  return () => window.removeEventListener('storage', onChange)
+}
+
+const EMPTY_SERVER_TOKEN = ''
 const TRAFFIC_DAY_OPTIONS = [7, 14, 30] as const
 // Past this range, per-bar labels no longer fit — the chart switches to tooltips only.
 const DENSE_TRAFFIC_THRESHOLD = 10
@@ -53,12 +89,22 @@ function healthClass(status: AdminApiHealth[string]): string {
 }
 
 export function AdminPage() {
-  const [token, setToken] = useState(() => ADMIN_TOKEN_STORAGE.getItem(ADMIN_TOKEN_KEY) ?? '')
+  const storedToken = useSyncExternalStore(
+    subscribeToStoredToken,
+    readStoredToken,
+    () => EMPTY_SERVER_TOKEN,
+  )
+  // Null until this session explicitly signs in or out; until then the stored
+  // token wins, so a reload keeps the admin signed in.
+  const [sessionToken, setSessionToken] = useState<string | null>(null)
+  const token = sessionToken ?? storedToken
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [dashboard, setDashboard] = useState<AdminDashboard | null>(null)
   const [health, setHealth] = useState<AdminApiHealth>({})
   const [dataFill, setDataFill] = useState<DataFillStatus | null>(null)
+  const [auditLogs, setAuditLogs] = useState<AdminAuditLog[]>([])
+  const [auditOnlyFailures, setAuditOnlyFailures] = useState(false)
   const [trafficDays, setTrafficDays] = useState<number>(TRAFFIC_DAY_OPTIONS[0])
   const [isLoading, setIsLoading] = useState(false)
   const [isSigningIn, setIsSigningIn] = useState(false)
@@ -66,34 +112,57 @@ export function AdminPage() {
   const [isStartingPrimaryScores, setIsStartingPrimaryScores] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  const signOutExpiredSession = useCallback(() => {
+    persistToken('')
+    setSessionToken('')
+    setDashboard(null)
+    setHealth({})
+    setDataFill(null)
+    setAuditLogs([])
+    setError('Session expired. Please sign in again.')
+  }, [])
+
   const loadDashboard = useCallback(async () => {
     if (!token) return
     setIsLoading(true)
     setError(null)
-    try {
-      const [dashboardResponse, healthResponse, dataFillResponse] = await Promise.all([
-        getAdminDashboard(token, trafficDays),
-        getAdminApiHealth(token),
-        getDataFillStatus(token),
-      ])
-      setDashboard(dashboardResponse)
-      setHealth(healthResponse)
-      setDataFill(dataFillResponse)
-    } catch (err) {
-      if (err instanceof AdminApiError && err.status === 401) {
-        ADMIN_TOKEN_STORAGE.removeItem(ADMIN_TOKEN_KEY)
-        setToken('')
-        setDashboard(null)
-        setHealth({})
-        setDataFill(null)
-        setError('Session expired. Please sign in again.')
-        return
-      }
-      setError(err instanceof Error ? err.message : 'Admin dashboard could not be loaded.')
-    } finally {
-      setIsLoading(false)
+
+    // allSettled, not all: these four panels are independent, and a single
+    // failing endpoint (a pending migration, a slow provider health check) must
+    // not blank the entire dashboard.
+    const [dashboardResult, healthResult, dataFillResult, auditResult] = await Promise.allSettled([
+      getAdminDashboard(token, trafficDays),
+      getAdminApiHealth(token),
+      getDataFillStatus(token),
+      getAdminAuditLogs(token, { limit: AUDIT_LOG_LIMIT, onlyFailures: auditOnlyFailures }),
+    ])
+    setIsLoading(false)
+
+    const results = [dashboardResult, healthResult, dataFillResult, auditResult]
+    if (results.some((r) => r.status === 'rejected' && r.reason instanceof AdminApiError && r.reason.status === 401)) {
+      signOutExpiredSession()
+      return
     }
-  }, [token, trafficDays])
+
+    if (dashboardResult.status === 'fulfilled') setDashboard(dashboardResult.value)
+    if (healthResult.status === 'fulfilled') setHealth(healthResult.value)
+    if (dataFillResult.status === 'fulfilled') setDataFill(dataFillResult.value)
+    if (auditResult.status === 'fulfilled') setAuditLogs(auditResult.value)
+
+    const failures = [
+      ['Dashboard', dashboardResult],
+      ['API health', healthResult],
+      ['Data fill', dataFillResult],
+      ['Audit log', auditResult],
+    ] as const
+    const messages = failures
+      .filter(([, result]) => result.status === 'rejected')
+      .map(([label, result]) => {
+        const reason = (result as PromiseRejectedResult).reason
+        return `${label}: ${reason instanceof Error ? reason.message : 'request failed'}`
+      })
+    setError(messages.length ? messages.join(' · ') : null)
+  }, [token, trafficDays, auditOnlyFailures, signOutExpiredSession])
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -136,8 +205,8 @@ export function AdminPage() {
     setError(null)
     try {
       const response = await loginAdmin(username.trim(), password)
-      ADMIN_TOKEN_STORAGE.setItem(ADMIN_TOKEN_KEY, response.access_token)
-      setToken(response.access_token)
+      persistToken(response.access_token)
+      setSessionToken(response.access_token)
       setPassword('')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed.')
@@ -147,11 +216,12 @@ export function AdminPage() {
   }
 
   function handleLogout() {
-    ADMIN_TOKEN_STORAGE.removeItem(ADMIN_TOKEN_KEY)
-    setToken('')
+    persistToken('')
+    setSessionToken('')
     setDashboard(null)
     setHealth({})
     setDataFill(null)
+    setAuditLogs([])
   }
 
   async function handleStartDataFill() {
@@ -265,6 +335,21 @@ export function AdminPage() {
           <span>Visits today</span>
           <strong>{formatNumber(dashboard?.traffic.visits_today ?? 0)}</strong>
         </article>
+        <article className="admin-metric">
+          <Users size={18} aria-hidden="true" />
+          <span>Registered accounts</span>
+          <strong>{formatNumber(dashboard?.accounts.registered ?? 0)}</strong>
+        </article>
+        <article className="admin-metric">
+          <Database size={18} aria-hidden="true" />
+          <span>SEO pages ready</span>
+          <strong>{formatNumber(dashboard?.catalog.seo_indexable_games ?? 0)}</strong>
+        </article>
+        <article className="admin-metric">
+          <Eye size={18} aria-hidden="true" />
+          <span>Google sessions</span>
+          <strong>{formatNumber(dashboard?.acquisition.organic_sessions ?? 0)}</strong>
+        </article>
       </section>
 
       <section className="admin-grid">
@@ -335,6 +420,42 @@ export function AdminPage() {
                 </div>
                 {status.latency_ms ? <em>{Math.round(status.latency_ms)}ms</em> : null}
               </div>
+            ))}
+          </div>
+        </article>
+
+        <article className="admin-panel">
+          <div className="admin-panel-head"><h2>Accounts</h2></div>
+          <div className="admin-row-list">
+            <div className="admin-row"><span>Registered</span><strong>{formatNumber(dashboard?.accounts.registered ?? 0)}</strong></div>
+            <div className="admin-row"><span>Verified</span><strong>{formatNumber(dashboard?.accounts.verified ?? 0)}</strong></div>
+            <div className="admin-row"><span>Active in 30 days</span><strong>{formatNumber(dashboard?.accounts.active_30d ?? 0)}</strong></div>
+            <div className="admin-row"><span>Signup conversion</span><strong>{(dashboard?.acquisition.signup_conversion ?? 0).toFixed(2)}%</strong></div>
+            <div className="admin-row"><span>Store outbound</span><strong>{formatNumber(dashboard?.acquisition.outbound_store_clicks ?? 0)}</strong></div>
+            {Object.entries(dashboard?.acquisition.events ?? {}).map(([event, count]) => (
+              <div className="admin-row" key={event}><span>{event.replaceAll('_', ' ')}</span><strong>{formatNumber(count)}</strong></div>
+            ))}
+          </div>
+        </article>
+
+        <article className="admin-panel">
+          <div className="admin-panel-head"><h2>Organic Landing Pages</h2></div>
+          <div className="admin-row-list">
+            {dashboard?.acquisition.organic_landing_pages.length ? dashboard.acquisition.organic_landing_pages.map((page) => (
+              <div className="admin-row" key={page.path}><span title={page.path}>{page.path}</span><strong>{formatNumber(page.visits)}</strong></div>
+            )) : <p className="admin-empty">No Google referrals in this range.</p>}
+            <div className="admin-row"><span>Repeat visitors</span><strong>{formatNumber(dashboard?.acquisition.repeat_visitors ?? 0)}</strong></div>
+            <div className="admin-row"><span>Google visitors</span><strong>{formatNumber(dashboard?.acquisition.organic_visitors ?? 0)}</strong></div>
+            <div className="admin-row"><span>Google signups</span><strong>{formatNumber(dashboard?.acquisition.organic_signups ?? 0)}</strong></div>
+            <div className="admin-row"><span>Google conversion</span><strong>{(dashboard?.acquisition.organic_signup_conversion ?? 0).toFixed(2)}%</strong></div>
+          </div>
+        </article>
+
+        <article className="admin-panel">
+          <div className="admin-panel-head"><h2>SEO Exclusions</h2></div>
+          <div className="admin-row-list">
+            {Object.entries(dashboard?.catalog.seo_exclusions ?? {}).sort(([, left], [, right]) => right - left).map(([reason, count]) => (
+              <div className="admin-row" key={reason}><span>{reason.replaceAll('_', ' ')}</span><strong>{formatNumber(count)}</strong></div>
             ))}
           </div>
         </article>
@@ -451,7 +572,9 @@ export function AdminPage() {
                 <span>{formatDateTime(visit.created_at)}</span>
                 <strong title={visit.path}>{visit.path}</strong>
                 <em>{visit.ip ?? `#${visit.ip_fingerprint ?? 'unknown'}`}</em>
-                <small>{visit.country ?? visit.timezone ?? visit.language ?? visit.screen ?? 'unknown'}</small>
+                <small title={visit.account ?? undefined}>
+                  {visit.account ?? visit.country ?? visit.timezone ?? visit.language ?? visit.screen ?? 'anonymous'}
+                </small>
               </div>
             )) : <p className="admin-empty">No visits recorded.</p>}
           </div>
@@ -476,6 +599,38 @@ export function AdminPage() {
                 <small>{formatDateTime(entry.last_seen)}</small>
               </div>
             )) : <p className="admin-empty">No visitor IPs recorded.</p>}
+          </div>
+        </article>
+
+        <article className="admin-panel admin-panel-full">
+          <div className="admin-panel-head">
+            <h2>Admin Activity</h2>
+            <button
+              type="button"
+              className={auditOnlyFailures ? 'admin-audit-filter is-active' : 'admin-audit-filter'}
+              onClick={() => setAuditOnlyFailures((previous) => !previous)}
+            >
+              <ScrollText size={14} aria-hidden="true" />
+              <span>{auditOnlyFailures ? 'Failures only' : 'All requests'}</span>
+            </button>
+          </div>
+          <div className="admin-audit-table">
+            {auditLogs.length ? auditLogs.map((entry) => (
+              <div
+                className={entry.success ? 'admin-audit-row' : 'admin-audit-row is-failure'}
+                key={entry.id}
+                title={entry.user_agent ?? undefined}
+              >
+                <span>{formatDateTime(entry.created_at)}</span>
+                <strong>{entry.username ?? 'anonymous'}</strong>
+                <em>{entry.action === 'login' ? 'login' : entry.method}</em>
+                <small title={entry.query ? `${entry.path}?${entry.query}` : entry.path}>
+                  {entry.path}
+                </small>
+                <span className="admin-audit-status">{entry.status_code}</span>
+                <small>{entry.ip_address ?? 'unknown'}</small>
+              </div>
+            )) : <p className="admin-empty">No admin activity recorded.</p>}
           </div>
         </article>
       </section>

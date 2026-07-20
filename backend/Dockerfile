@@ -21,4 +21,8 @@ EXPOSE 8000
 # --limit-concurrency 100: once 100 requests are in flight, uvicorn returns 503
 #   to new ones immediately instead of queuing them — bounds worst-case memory
 #   under a traffic spike or load test instead of degrading into swap thrash.
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1", "--limit-concurrency", "100", "--proxy-headers", "--forwarded-allow-ips", "*"]
+# --forwarded-allow-ips: trust X-Forwarded-* only from the compose network, where
+#   nginx is the sole peer. '*' would let anything that reaches this port dictate
+#   its own client IP and bypass the auth rate limiter. The port is `expose`d, not
+#   published, so the docker bridge range is the full trust boundary.
+CMD ["sh", "-c", "alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1 --limit-concurrency 100 --proxy-headers --forwarded-allow-ips \"${FORWARDED_ALLOW_IPS:-172.16.0.0/12}\""]

@@ -8,19 +8,23 @@ Public API:
   fix_year_batch(limit)                        -> Awaitable[dict[str, int]]
   daily_refresh_loop()                         -> Awaitable[None]  (runs forever; cancel to stop)
   metadata_backfill_loop()                     -> Awaitable[None]  (runs forever; cancel to stop)
+  hltb_backfill_loop()                         -> Awaitable[None]  (runs forever; cancel to stop)
+  purge_expired_raw_analytics(db)              -> int
+  raw_analytics_retention_loop()               -> Awaitable[None]  (runs forever; cancel to stop)
 """
 
 import asyncio
 import logging
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import asc, desc, select
+from sqlalchemy import asc, desc, select, update
 from sqlalchemy.orm import Session
 
 from ..config import get_settings
 from ..database import SessionLocal
 from ..heavy_jobs import HEAVY_JOB_LOCK
-from ..models import Game
+from ..models import Game, VisitEvent
+from ..integrations.hltb import backfill_hltb_playtimes
 from ..integrations.sync import game_needs_rating_refresh, refresh_game_sources
 from ..integrations.steam import extract_steam_app_id, get_steam_release_dates
 from .metadata import fix_game_year
@@ -28,6 +32,9 @@ from .metadata_backfill import metadata_backfill_batch
 
 
 log = logging.getLogger(__name__)
+
+_RETENTION_STARTUP_DELAY_SECONDS = 120
+_RETENTION_INTERVAL_SECONDS = 6 * 60 * 60
 
 
 def rating_refresh_candidates(db: Session) -> list[Game]:
@@ -111,6 +118,12 @@ async def refresh_all_games(
             else:
                 skipped += 1
 
+        if enriched:
+            with SessionLocal() as db:
+                from .seo import refresh_catalog_seo_states
+                refresh_catalog_seo_states(db)
+                db.commit()
+
         log.info("refresh_all_games done: %d refreshed, %d skipped", enriched, skipped)
         return {"enriched": enriched, "skipped": skipped}
 
@@ -127,6 +140,10 @@ async def refresh_rating_batch(limit: int) -> dict[str, int]:
                 continue
             await refresh_game_sources(db, game)
             enriched += 1
+        if enriched:
+            from .seo import refresh_catalog_seo_states
+            refresh_catalog_seo_states(db)
+            db.commit()
     return {"enriched": enriched, "skipped": skipped}
 
 
@@ -252,3 +269,66 @@ async def metadata_backfill_loop() -> None:
             await metadata_backfill_batch(limit=limit, inter_game_delay=delay)
         except Exception:
             log.exception("Periodic metadata backfill failed")
+
+
+def purge_expired_raw_analytics(db: Session) -> int:
+    """Redact raw IP/user-agent past the retention window. Hashes are kept."""
+    cfg = get_settings()
+    cutoff = datetime.now(UTC) - timedelta(days=cfg.ANALYTICS_RAW_IP_RETENTION_DAYS)
+    result = db.execute(
+        update(VisitEvent)
+        .where(VisitEvent.created_at < cutoff, VisitEvent.ip_address.is_not(None))
+        .values(ip_address=None, user_agent=None)
+    )
+    db.commit()
+    return int(result.rowcount or 0)
+
+
+async def raw_analytics_retention_loop() -> None:
+    """
+    Enforces the raw-IP retention window on a schedule.
+
+    Runs unconditionally — including when raw-IP storage is switched off, which
+    is exactly when previously stored addresses still need purging.
+    """
+    await asyncio.sleep(_RETENTION_STARTUP_DELAY_SECONDS)
+    while True:
+        try:
+            with SessionLocal() as db:
+                redacted = purge_expired_raw_analytics(db)
+            if redacted:
+                log.info("Redacted raw network data on %d visit events", redacted)
+        except Exception:
+            log.exception("Raw analytics retention sweep failed")
+        await asyncio.sleep(_RETENTION_INTERVAL_SECONDS)
+
+
+async def hltb_backfill_loop() -> None:
+    """
+    Fills HowLongToBeat playtimes in small periodic batches.
+
+    Playtime is the one catalog field no rating source provides, so without this
+    loop the playtime filter has almost nothing to match against. HLTB is scraped
+    rather than an official API, hence the deliberately unhurried pacing.
+    """
+    cfg = get_settings()
+    await asyncio.sleep(90)
+
+    interval_seconds = max(60, int(cfg.HLTB_BACKFILL_INTERVAL_MINUTES * 60))
+    while True:
+        try:
+            with SessionLocal() as db:
+                result = await backfill_hltb_playtimes(
+                    db,
+                    target=cfg.HLTB_BACKFILL_BATCH_SIZE,
+                    delay_seconds=cfg.HLTB_BACKFILL_INTER_GAME_DELAY,
+                )
+            log.info(
+                "HLTB backfill: %s imported, %s skipped, %s covers repaired",
+                result["imported"],
+                result["skipped"],
+                result["repaired_covers"],
+            )
+        except Exception:
+            log.exception("Periodic HLTB backfill failed")
+        await asyncio.sleep(interval_seconds)

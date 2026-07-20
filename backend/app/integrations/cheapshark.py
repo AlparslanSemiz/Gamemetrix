@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from ..models import Game, infer_content_type
 from ..services.deduplication import find_existing_duplicate, merge_game_data
+from .http_retry import DEFAULT_HEADERS
 from .rate_limiter import get_rate_limiter
 from .sync import calculate_metrix_score
 
@@ -135,9 +136,8 @@ async def import_cheapshark_deals(
     skipped = 0
     page = 0
     seen_slugs: set[str] = set()
-    headers = {"User-Agent": "GameMetrix/0.1 (local-development)"}
 
-    async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT, headers=headers) as client:
+    async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT, headers=DEFAULT_HEADERS) as client:
         while imported < target:
             if not await get_rate_limiter().acquire("CheapShark"):
                 break

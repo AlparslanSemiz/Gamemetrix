@@ -16,6 +16,7 @@ from urllib.parse import urlparse
 
 from ..models import Game, infer_content_type
 from ..integrations.sync import calculate_metrix_score
+from ..integrations.types import normalize_game_modes
 from .metadata import clean_game_summary, summary_needs_enrichment
 
 
@@ -65,6 +66,16 @@ def _extract_genres(raw_game: dict) -> list[str]:
         for g in raw_game.get("genres", [])
         if isinstance(g, dict) and g.get("name")
     ]
+
+
+def _extract_game_modes(raw_game: dict) -> list[str]:
+    """RAWG has no game_modes field — the signal lives in its tags."""
+    labels = [
+        tag["name"]
+        for tag in raw_game.get("tags", [])
+        if isinstance(tag, dict) and tag.get("name")
+    ]
+    return list(normalize_game_modes(labels))
 
 
 def _extract_platforms_raw(raw_game: dict) -> list[str]:
@@ -236,6 +247,11 @@ def apply_rawg_metadata(game: Game, raw_game: dict) -> bool:
     genres = _extract_genres(raw_game)
     if genres and (not game.genres or game.genres in (["Steam"], ["Uncategorized"], ["Deal", "PC"])):
         game.genres = genres[:4]
+        changed = True
+
+    game_modes = _extract_game_modes(raw_game)
+    if game_modes and not game.game_modes:
+        game.game_modes = game_modes
         changed = True
 
     platforms = _extract_platforms_normalized(raw_game)

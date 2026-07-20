@@ -8,38 +8,42 @@ import {
   Compass,
   Gift,
   Grid2X2,
+  Home,
   Info,
   List,
   LogIn,
+  MoreHorizontal,
   Search,
   Settings,
+  Shield,
   SlidersHorizontal,
   Tag,
+  UserRound,
 } from 'lucide-react'
-import { BrowserRouter, Route, Routes, useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import './App.css'
 import { AlertsPanel } from './components/AlertsPanel'
 import { FilterBar } from './components/FilterBar'
 import { GameCard } from './components/GameCard'
-import { PageViewTracker } from './components/PageViewTracker'
 import { RatingExplainer } from './components/RatingExplainer'
 import { TrailerModal } from './components/TrailerModal'
-import { AdminPage } from './pages/AdminPage'
-import { GameDetailPage } from './pages/GameDetailPage'
 import {
   getFacets,
   getGameTrailer,
   getGames,
   getIntegrationStatus,
 } from './services/games'
-import { CollectionsProvider } from './state/CollectionsProvider'
 import type { CollectionKey } from './state/collections'
+import { trackProductEvent } from './services/analytics'
+import { useAccount } from './state/useAccount'
 import { useCollections } from './state/useCollections'
 import type { Facets, Game, GameFilters, GameSort, ProviderStatus } from './types/game'
 
 type MainPage = 'catalog' | 'watchlist' | 'playing' | 'seen' | 'completed' | 'liked' | 'favorites' | 'suggestions'
-type UtilityPage = 'alerts' | 'settings' | 'about'
+export type UtilityPage = 'alerts' | 'settings' | 'about'
 type ActivePage = MainPage | UtilityPage
+
+const ROUTABLE_MAIN_PAGES = new Set<MainPage>(['watchlist', 'suggestions'])
 
 const CURRENT_YEAR = new Date().getFullYear()
 const PAGE_SIZE = 24
@@ -126,6 +130,9 @@ const DEFAULT_FILTERS: GameFilters = {
   requireCritic: false,
   hasAward: false,
   dealMode: 'all',
+  playerMode: '',
+  playtimeMinHours: null,
+  playtimeMaxHours: null,
   sort: 'rank_score',
   direction: 'desc',
 }
@@ -149,8 +156,10 @@ declare global {
 // are still within the first moments of the page's time origin — a late
 // capture (HMR module re-eval in a long-lived tab) must not re-trigger it.
 const RELOAD_CAPTURE_WINDOW_MS = 10_000
+const useIsomorphicLayoutEffect = typeof window === 'undefined' ? useEffect : useLayoutEffect
 
 function consumeCatalogReload(): boolean {
+  if (typeof window === 'undefined') return false
   if (window.__gmReloadedPathAtLoad === undefined) {
     const [entry] = performance.getEntriesByType('navigation') as PerformanceNavigationTiming[]
     window.__gmReloadedPathAtLoad =
@@ -167,6 +176,7 @@ function consumeCatalogReload(): boolean {
 }
 
 function readCatalogSnapshot(): CatalogSnapshot | null {
+  if (typeof window === 'undefined') return null
   try {
     if (consumeCatalogReload()) {
       window.sessionStorage.removeItem(CATALOG_SNAPSHOT_KEY)
@@ -276,24 +286,22 @@ function writeCatalogSnapshot(snapshot: CatalogSnapshot | null) {
 }
 
 const mainNavItems: Array<{ id: MainPage; label: string; icon: typeof Search }> = [
-  { id: 'catalog', label: 'Search', icon: Search },
+  { id: 'catalog', label: 'Home', icon: Home },
   { id: 'watchlist', label: 'Wishlist', icon: CheckCircle2 },
   { id: 'suggestions', label: 'For You', icon: Compass },
 ]
 
-const utilityNavItems: Array<{ id: UtilityPage | 'login'; label: string; icon: typeof Search }> = [
-  { id: 'login', label: 'Login', icon: LogIn },
-  { id: 'settings', label: 'Settings', icon: Settings },
+const utilityNavItems: Array<{ id: UtilityPage; label: string; icon: typeof Search }> = [
   { id: 'alerts', label: 'Alerts', icon: Bell },
+  { id: 'settings', label: 'Settings', icon: Settings },
   { id: 'about', label: 'About', icon: Info },
 ]
 
-const mobileNavItems: Array<{ id: ActivePage; label: string; icon: typeof Search }> = [
-  { id: 'catalog', label: 'Search', icon: Search },
+const mobileNavItems: Array<{ id: MainPage | 'alerts'; label: string; icon: typeof Search }> = [
+  { id: 'catalog', label: 'Home', icon: Home },
   { id: 'watchlist', label: 'Wishlist', icon: CheckCircle2 },
   { id: 'suggestions', label: 'For You', icon: Compass },
   { id: 'alerts', label: 'Alerts', icon: Bell },
-  { id: 'settings', label: 'Settings', icon: Settings },
 ]
 
 const collectionLabels: Record<CollectionKey, string> = {
@@ -332,55 +340,108 @@ function formatRoundedThousands(value: number): string {
   return new Intl.NumberFormat('en-US').format(value)
 }
 
-function AppContent() {
+interface AppContentProps {
+  initialGames?: Game[]
+  initialTotal?: number
+  initialPage?: UtilityPage
+}
+
+function catalogFilterSignature(filters: GameFilters, pendingApply: number): string {
+  return JSON.stringify([
+    filters.q,
+    filters.genre,
+    filters.platform,
+    filters.developer,
+    filters.publisher,
+    filters.minRatings,
+    filters.minLiveSources,
+    filters.requireCritic,
+    filters.sort,
+    filters.direction,
+    pendingApply,
+  ])
+}
+
+export function AppContent({ initialGames = [], initialTotal = 0, initialPage }: AppContentProps) {
   const navigate = useNavigate()
-  const [restoredSnapshot] = useState<CatalogSnapshot | null>(readCatalogSnapshot)
-  const restoredWithGames = Boolean(restoredSnapshot?.games.length)
-  const [activePage, setActivePage] = useState<ActivePage>(restoredSnapshot?.activePage ?? 'catalog')
-  const [games, setGames] = useState<Game[]>(restoredSnapshot?.games ?? [])
-  const [facets, setFacets] = useState<Facets>({ genres: [], years: [], platforms: [] })
-  const [filters, setFilters] = useState<GameFilters>(restoredSnapshot?.filters ?? DEFAULT_FILTERS)
+  const location = useLocation()
+  const requestedView = new URLSearchParams(location.search).get('view') as MainPage | null
+  const routeInitialPage: ActivePage = initialPage
+    ?? (requestedView && ROUTABLE_MAIN_PAGES.has(requestedView) ? requestedView : 'catalog')
+  const [restoredSnapshot, setRestoredSnapshot] = useState<CatalogSnapshot | null>(null)
+  const [activePage, setActivePage] = useState<ActivePage>(routeInitialPage)
+  const [games, setGames] = useState<Game[]>(initialGames)
+  const [facets, setFacets] = useState<Facets>({ genres: [], years: [], platforms: [], developers: [] })
+  const [filters, setFilters] = useState<GameFilters>(DEFAULT_FILTERS)
   const [pendingApply, setPendingApply] = useState(0)
   const { collections, toggleCollection } = useCollections()
+  const { account, syncCollection } = useAccount()
   const [providerStatuses, setProviderStatuses] = useState<ProviderStatus[]>([])
-  const [catalogTotal, setCatalogTotal] = useState(restoredSnapshot?.catalogTotal ?? 0)
-  const [libraryTotal, setLibraryTotal] = useState(restoredSnapshot?.libraryTotal ?? 0)
-  const [isLoading, setIsLoading] = useState(!restoredWithGames)
+  const [catalogTotal, setCatalogTotal] = useState(initialTotal)
+  const [libraryTotal, setLibraryTotal] = useState(initialTotal)
+  const [isLoading, setIsLoading] = useState(initialGames.length === 0)
   const [trailerGame, setTrailerGame] = useState<Game | null>(null)
   const [trailerVideoId, setTrailerVideoId] = useState<string | null>(null)
   const [isTrailerLoading, setIsTrailerLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [viewMode, setViewMode] = useState<'list' | 'grid'>(restoredSnapshot?.viewMode ?? 'list')
-  const [filtersOpen, setFiltersOpen] = useState(restoredSnapshot?.filtersOpen ?? false)
-  const [activePreset, setActivePreset] = useState<string | null>(restoredSnapshot?.activePreset ?? null)
-  const [mastheadVisible, setMastheadVisible] = useState(restoredSnapshot?.mastheadVisible ?? true)
+  const [viewMode, setViewMode] = useState<'list' | 'grid'>('list')
+  const [filtersOpen, setFiltersOpen] = useState(false)
+  const [activePreset, setActivePreset] = useState<string | null>(null)
+  const [mobileMoreOpen, setMobileMoreOpen] = useState(false)
+  const [mastheadVisible, setMastheadVisible] = useState(true)
   const [fetchKey, setFetchKey] = useState(0)
-  const [offset, setOffset] = useState(restoredSnapshot?.offset ?? 0)
-  const [hasMore, setHasMore] = useState(restoredSnapshot?.hasMore ?? true)
+  const [offset, setOffset] = useState(0)
+  const [hasMore, setHasMore] = useState(initialGames.length < initialTotal)
   const [isLoadingMore, setIsLoadingMore] = useState(false)
   const loaderRef = useRef<HTMLDivElement>(null)
   const mastheadRef = useRef<HTMLElement>(null)
-  const lastScrollYRef = useRef(restoredSnapshot?.scrollY ?? 0)
-  const mastheadVisibleRef = useRef(restoredSnapshot?.mastheadVisible ?? true)
+  const lastScrollYRef = useRef(0)
+  const mastheadVisibleRef = useRef(true)
   const scrollDirectionRef = useRef<{ sign: -1 | 0 | 1; distance: number }>({ sign: 0, distance: 0 })
   const scrollFrameRef = useRef<number | null>(null)
   const topScrollFrameRef = useRef<number | null>(null)
   const topScrollCleanupRef = useRef<(() => void) | null>(null)
   const latestCatalogRef = useRef<CatalogSnapshot | null>(null)
-  const snapshotAnchorRef = useRef<{ slug: string; viewportTop: number } | null>(
-    restoredSnapshot?.focusedGameSlug && typeof restoredSnapshot.focusedGameViewportTop === 'number'
-      ? { slug: restoredSnapshot.focusedGameSlug, viewportTop: restoredSnapshot.focusedGameViewportTop }
-      : null,
-  )
+  const snapshotAnchorRef = useRef<{ slug: string; viewportTop: number } | null>(null)
   // Holds the `${fetchKey}:${offset}` pair the games list currently reflects;
   // pre-seeded on snapshot restore so the mount run keeps the restored list.
   const lastFetchSignatureRef = useRef<string | null>(
-    restoredWithGames ? `0:${restoredSnapshot?.offset ?? 0}` : null,
+    initialGames.length ? '0:0' : null,
   )
   // Always up to date with latest filters without being a dep of the load effect
   const filtersRef = useRef(filters)
+  const lastFilterResetSignatureRef = useRef(catalogFilterSignature(filters, pendingApply))
   // Prefetch cache: holds the already-fetched next page so scroll is instant
   const prefetchRef = useRef<{ offset: number; games: Game[]; total: number } | null>(null)
+
+  useIsomorphicLayoutEffect(() => {
+    if (routeInitialPage !== 'catalog') return
+    const snapshot = readCatalogSnapshot()
+    if (!snapshot?.games.length) return
+
+    filtersRef.current = snapshot.filters
+    lastFilterResetSignatureRef.current = catalogFilterSignature(snapshot.filters, pendingApply)
+    lastFetchSignatureRef.current = `0:${snapshot.offset}`
+    lastScrollYRef.current = snapshot.scrollY
+    mastheadVisibleRef.current = snapshot.mastheadVisible
+    snapshotAnchorRef.current = snapshot.focusedGameSlug && typeof snapshot.focusedGameViewportTop === 'number'
+      ? { slug: snapshot.focusedGameSlug, viewportTop: snapshot.focusedGameViewportTop }
+      : null
+
+    setActivePage(snapshot.activePage)
+    setActivePreset(snapshot.activePreset)
+    setFilters(snapshot.filters)
+    setGames(snapshot.games)
+    setCatalogTotal(snapshot.catalogTotal)
+    setLibraryTotal(snapshot.libraryTotal)
+    setViewMode(snapshot.viewMode)
+    setFiltersOpen(snapshot.filtersOpen)
+    setOffset(snapshot.offset)
+    setHasMore(snapshot.hasMore)
+    setMastheadVisible(snapshot.mastheadVisible)
+    setIsLoading(false)
+    setRestoredSnapshot(snapshot)
+  }, [routeInitialPage])
 
   useEffect(() => {
     filtersRef.current = filters
@@ -465,7 +526,7 @@ function AppContent() {
   // `scroll-behavior: smooth` (index.css) must be suspended here too,
   // otherwise the jump itself animates over ~300ms and reproduces the
   // same flash.
-  useLayoutEffect(() => {
+  useIsomorphicLayoutEffect(() => {
     const snapshot = restoredSnapshot
     if (!snapshot?.games.length) return
     mastheadVisibleRef.current = snapshot.mastheadVisible
@@ -527,20 +588,7 @@ function AppContent() {
   // the dependency values actually differ from the last run it acted on, so
   // the mount run (fresh or snapshot-restored) and StrictMode's replay are
   // both no-ops without poisoning later, genuine dependency changes.
-  const filterResetSignature = JSON.stringify([
-    filters.q,
-    filters.genre,
-    filters.platform,
-    filters.developer,
-    filters.publisher,
-    filters.minRatings,
-    filters.minLiveSources,
-    filters.requireCritic,
-    filters.sort,
-    filters.direction,
-    pendingApply,
-  ])
-  const lastFilterResetSignatureRef = useRef(filterResetSignature)
+  const filterResetSignature = catalogFilterSignature(filters, pendingApply)
   useEffect(() => {
     if (lastFilterResetSignatureRef.current === filterResetSignature) return
     lastFilterResetSignatureRef.current = filterResetSignature
@@ -715,6 +763,17 @@ function AppContent() {
     favorites: new Set(collections.favorites),
   }), [collections])
 
+  const handleToggleCollection = useCallback((collection: CollectionKey, slug: string) => {
+    const enabled = !collectionSets[collection].has(slug)
+    toggleCollection(collection, slug)
+    void syncCollection(collection, slug, enabled).catch(() => {
+      setError('This collection change is saved locally, but account sync is temporarily unavailable.')
+    })
+    if (collection === 'watchlist' && enabled) {
+      trackProductEvent('wishlist_add', { game_slug: slug })
+    }
+  }, [collectionSets, syncCollection, toggleCollection])
+
   const visibleGames = useMemo(() => {
     if (activePage === 'suggestions') {
       const excluded = new Set([
@@ -845,6 +904,7 @@ function AppContent() {
   }, [cancelTopScroll])
 
   const goHome = () => {
+    if (location.pathname !== '/' || location.search) navigate('/')
     scrollCatalogToTop()
     setActivePage('catalog')
     setFilters(DEFAULT_FILTERS)
@@ -863,6 +923,18 @@ function AppContent() {
     setPendingApply((n) => n + 1)
   }
 
+  const openPreset = (preset: CuratedPreset) => {
+    if (preset.id === 'best-deals') {
+      navigate('/deals')
+      return
+    }
+    if (preset.id === 'free-games') {
+      navigate('/best/free-pc-games')
+      return
+    }
+    applyPreset(preset)
+  }
+
   const selectBestOfYear = (year: number) => {
     setFilters((prev) => ({ ...prev, yearMin: year, yearMax: year }))
     setPendingApply((n) => n + 1)
@@ -870,6 +942,18 @@ function AppContent() {
 
   const clearFilter = (key: 'developer' | 'publisher' | 'genre' | 'platform') => {
     setFilters((current) => ({ ...current, [key]: '' }))
+  }
+
+  const openMainPage = (id: MainPage) => {
+    setActivePage(id)
+    setActivePreset(null)
+    const target = id === 'catalog' ? '/' : `/?view=${encodeURIComponent(id)}`
+    if (`${location.pathname}${location.search}` !== target) navigate(target)
+  }
+
+  const openUtilityPage = (id: UtilityPage) => {
+    setMobileMoreOpen(false)
+    if (location.pathname !== `/${id}`) navigate(`/${id}`)
   }
 
   const isUtilityPage = utilityNavItems.some((item) => item.id === activePage)
@@ -885,7 +969,7 @@ function AppContent() {
                 className={activePage === id && activePreset === null ? 'is-active' : ''}
                 key={id}
                 title={label}
-                onClick={() => { setActivePage(id); setActivePreset(null) }}
+                onClick={() => openMainPage(id)}
               >
                 <Icon size={22} aria-hidden="true" />
                 <span>{label}</span>
@@ -905,7 +989,7 @@ function AppContent() {
                       className={activePreset === preset.id ? 'is-active' : ''}
                       key={preset.id}
                       title={preset.label}
-                      onClick={() => applyPreset(preset)}
+                      onClick={() => openPreset(preset)}
                     >
                       <Icon size={18} aria-hidden="true" />
                       <span>{preset.label}</span>
@@ -916,25 +1000,27 @@ function AppContent() {
             </div>
           ))}
         </div>
-        <div className="rail-group">
+        <div className="rail-group rail-utility-group">
+          <button type="button" title={account ? 'Account' : 'Login'} onClick={() => navigate(account ? '/account' : '/login')}>
+            {account ? <UserRound size={22} aria-hidden="true" /> : <LogIn size={22} aria-hidden="true" />}
+            <span>{account ? 'Account' : 'Login'}</span>
+          </button>
           {utilityNavItems.map(({ icon: Icon, id, label }) => (
             <button
               type="button"
               className={activePage === id ? 'is-active' : ''}
               key={id}
               title={label}
-              onClick={() => {
-                if (id === 'login') {
-                  navigate('/admin')
-                  return
-                }
-                setActivePage(id)
-              }}
+              onClick={() => openUtilityPage(id)}
             >
               <Icon size={22} aria-hidden="true" />
               <span>{label}</span>
             </button>
           ))}
+          <button type="button" title="Admin" onClick={() => navigate('/admin')}>
+            <Shield size={22} aria-hidden="true" />
+            <span>Admin</span>
+          </button>
         </div>
       </aside>
 
@@ -945,14 +1031,28 @@ function AppContent() {
             className={activePage === id && (id !== 'catalog' || activePreset === null) ? 'is-active' : ''}
             key={id}
             onClick={() => {
-              setActivePage(id)
-              setActivePreset(null)
+              if (id === 'alerts') openUtilityPage(id)
+              else openMainPage(id)
             }}
           >
             <Icon size={20} aria-hidden="true" />
             <span>{label}</span>
           </button>
         ))}
+        <button type="button" className={mobileMoreOpen ? 'is-active' : ''} onClick={() => setMobileMoreOpen((open) => !open)} aria-expanded={mobileMoreOpen}>
+          <MoreHorizontal size={20} aria-hidden="true" />
+          <span>More</span>
+        </button>
+        {mobileMoreOpen ? (
+          <div className="mobile-more-menu">
+            <button type="button" onClick={() => navigate(account ? '/account' : '/login')}>
+              {account ? <UserRound size={18} /> : <LogIn size={18} />}{account ? 'Account' : 'Login'}
+            </button>
+            <button type="button" onClick={() => openUtilityPage('settings')}><Settings size={18} />Settings</button>
+            <button type="button" onClick={() => openUtilityPage('about')}><Info size={18} />About</button>
+            <button type="button" onClick={() => navigate('/admin')}><Shield size={18} />Admin</button>
+          </div>
+        ) : null}
       </nav>
 
       <section className={`workspace ${mastheadVisible ? 'masthead-open' : 'masthead-collapsed'}`}>
@@ -967,6 +1067,7 @@ function AppContent() {
             <input
               type="search"
               placeholder="Title Search"
+              maxLength={120}
               value={filters.q}
               onFocus={() => {
                 mastheadVisibleRef.current = true
@@ -1044,6 +1145,12 @@ function AppContent() {
           </section>
         ) : (
           <section className="catalog" id="catalog">
+            {activePage === 'catalog' && activePreset === null ? (
+              <div className="page-heading page-heading-catalog">
+                <h1>Game rankings</h1>
+                <p>Four-source ratings with current compatibility, playtime and price context.</p>
+              </div>
+            ) : null}
             {(activePage !== 'catalog' || activePreset !== null) && (
               <div className="page-heading">
                 <h1>
@@ -1256,7 +1363,7 @@ function AppContent() {
                   onFilterDeveloper={handleFilterDeveloper}
                   onFilterGenre={handleFilterGenre}
                   onFilterPublisher={handleFilterPublisher}
-                  onToggleCollection={toggleCollection}
+                  onToggleCollection={handleToggleCollection}
                 />
               ))}
             </div>
@@ -1266,6 +1373,12 @@ function AppContent() {
           </section>
         )}
       </section>
+
+      <footer className="catalog-attribution">
+        Supplementary catalog metadata and imagery may be provided by{' '}
+        <a href="https://rawg.io/" target="_blank" rel="noopener noreferrer">RAWG</a>.
+        Rating and store sources are named and linked on each game.
+      </footer>
 
       {trailerGame ? (
         <TrailerModal
@@ -1281,20 +1394,3 @@ function AppContent() {
     </main>
   )
 }
-
-function App() {
-  return (
-    <BrowserRouter>
-      <PageViewTracker />
-      <CollectionsProvider>
-        <Routes>
-          <Route path="/admin" element={<AdminPage />} />
-          <Route path="/game/:slug" element={<GameDetailPage />} />
-          <Route path="*" element={<AppContent />} />
-        </Routes>
-      </CollectionsProvider>
-    </BrowserRouter>
-  )
-}
-
-export default App

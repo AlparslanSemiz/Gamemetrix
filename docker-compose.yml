@@ -12,6 +12,11 @@ services:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
     # postgres:15-alpine idles ~20-25MB; 160m covers connection/autovacuum
     # bursts without letting a runaway query eat the whole 1GB host.
     mem_limit: 160m
@@ -38,7 +43,8 @@ services:
     expose:
       - "8000"
     depends_on:
-      - db # Veri tabanı ayağa kalkmadan backend başlamasın
+      db:
+        condition: service_healthy
     # Single uvicorn worker (see Dockerfile CMD) is I/O-bound most of the time;
     # 400m gives headroom for RAWG import / refresh-all batches without
     # letting a leak or traffic spike take down the whole VM.
@@ -59,12 +65,16 @@ services:
       dockerfile: Dockerfile
     container_name: gamemetrix-frontend
     restart: always
+    environment:
+      INTERNAL_API_BASE_URL: http://backend:8000
+      PORT: "3000"
     expose:
       - "3000"
-    # Static nginx serving a prebuilt SPA bundle — a few MB is normal.
-    mem_limit: 48m
-    mem_reservation: 16m
-    cpus: 0.25
+    depends_on:
+      - backend
+    mem_limit: 192m
+    mem_reservation: 64m
+    cpus: 0.5
     logging:
       driver: json-file
       options:

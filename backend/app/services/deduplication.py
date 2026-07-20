@@ -4,7 +4,7 @@ from collections import defaultdict
 from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session
 
-from ..models import ExternalId, Game, PriceSnapshot, RatingSnapshot
+from ..models import ExternalId, Game, PriceSnapshot, RatingSnapshot, _safe_review_count, _valid_score
 
 
 _SAME_TITLE_YEAR_TOLERANCE = 4
@@ -100,6 +100,11 @@ def _slug_stem(slug: str) -> str:
     return re.sub(r"-\d{3,}$", "", slug.lower())
 
 
+def _slug_key(slug: str) -> str:
+    """Slug stem normalized like a title, so everquest-ii and everquest-2 compare equal."""
+    return normalized_title(_slug_stem(slug))
+
+
 def games_are_duplicates(left: Game, right: Game) -> bool:
     left_norm, left_canon, left_base = _duplicate_key(left)
     right_norm, right_canon, right_base = _duplicate_key(right)
@@ -108,7 +113,7 @@ def games_are_duplicates(left: Game, right: Game) -> bool:
     if left_norm and left_norm == right_norm:
         if left.title.strip().casefold() == right.title.strip().casefold():
             return True
-        if _slug_stem(left.slug) == _slug_stem(right.slug):
+        if _slug_key(left.slug) == _slug_key(right.slug):
             return True
         return _years_match(left.release_year, right.release_year, _SAME_TITLE_YEAR_TOLERANCE)
 
@@ -136,7 +141,7 @@ def games_are_duplicates(left: Game, right: Game) -> bool:
 
 
 def total_review_count(game: Game) -> int:
-    return sum(int(s.get("review_count", 0)) for s in game.source_scores or [])
+    return sum(_safe_review_count(s) for s in game.source_scores or [])
 
 
 def duplicate_quality_key(game: Game) -> tuple[int, int, int, int, int, float, int]:
@@ -208,6 +213,8 @@ def _merge_unique_strings(left: list[str] | None, right: list[str] | None) -> li
     result: list[str] = []
     seen: set[str] = set()
     for item in [*(left or []), *(right or [])]:
+        if not isinstance(item, str):
+            continue
         key = item.lower()
         if key not in seen:
             result.append(item)
@@ -217,15 +224,17 @@ def _merge_unique_strings(left: list[str] | None, right: list[str] | None) -> li
 
 def _score_entry_key(score: dict) -> tuple[int, int, float]:
     return (
-        1 if score.get("status") == "live" else 0,
-        int(score.get("review_count") or 0),
-        float(score.get("score") or 0),
+        1 if _valid_score(score) else 0,
+        _safe_review_count(score),
+        float(score.get("score") or 0) if _valid_score(score) else 0.0,
     )
 
 
 def _merge_source_scores(left: list[dict] | None, right: list[dict] | None) -> list[dict]:
     by_source: dict[str, dict] = {}
     for score in [*(left or []), *(right or [])]:
+        if not isinstance(score, dict):
+            continue
         source = str(score.get("source") or "")
         if not source:
             continue
@@ -333,7 +342,8 @@ def _build_external_id_groups(db: Session) -> dict[int, set[int]]:
     return groups
 
 
-def consolidate_duplicate_games(db: Session) -> dict[str, int]:
+def find_duplicate_groups(db: Session) -> list[list[Game]]:
+    """Detect duplicate clusters without modifying anything. Each group has 2+ games."""
     games = list(db.scalars(select(Game).order_by(Game.id)).all())
     games_by_id = {game.id: game for game in games}
     ids_by_key: dict[str, set[int]] = defaultdict(set)
@@ -344,8 +354,7 @@ def consolidate_duplicate_games(db: Session) -> dict[str, int]:
 
     ext_id_groups = _build_external_id_groups(db)
 
-    removed = 0
-    merged_groups = 0
+    found: list[list[Game]] = []
     visited: set[int] = set()
 
     for game in games:
@@ -366,9 +375,37 @@ def consolidate_duplicate_games(db: Session) -> dict[str, int]:
             if games_are_duplicates(game, candidate):
                 group.append(candidate)
                 visited.add(candidate.id)
-        if len(group) < 2:
-            continue
+        if len(group) >= 2:
+            found.append(group)
 
+    return found
+
+
+def preview_duplicate_groups(db: Session) -> list[dict[str, object]]:
+    """Read-only report of what consolidate_duplicate_games would merge."""
+    def describe(game: Game) -> dict[str, object]:
+        return {
+            "id": game.id,
+            "title": game.title,
+            "slug": game.slug,
+            "release_year": game.release_year,
+        }
+
+    preview: list[dict[str, object]] = []
+    for group in find_duplicate_groups(db):
+        keeper = max(group, key=duplicate_quality_key)
+        preview.append({
+            "keeper": describe(keeper),
+            "duplicates": [describe(item) for item in group if item.id != keeper.id],
+        })
+    return preview
+
+
+def consolidate_duplicate_games(db: Session) -> dict[str, int]:
+    removed = 0
+    merged_groups = 0
+
+    for group in find_duplicate_groups(db):
         keeper = max(group, key=duplicate_quality_key)
         duplicates = [item for item in group if item.id != keeper.id]
         for duplicate in duplicates:

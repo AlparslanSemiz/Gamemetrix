@@ -5,12 +5,15 @@ from .config import get_settings
 
 
 def get_client_ip(request: Request) -> str:
-    forwarded_for = request.headers.get("x-forwarded-for", "")
-    if forwarded_for:
-        return forwarded_for.split(",", 1)[0].strip()
-    real_ip = request.headers.get("x-real-ip")
-    if real_ip:
-        return real_ip.strip()
+    """
+    Resolved peer address, used as the rate-limit key.
+
+    Deliberately reads only request.client — never X-Forwarded-For / X-Real-IP
+    directly. Uvicorn runs with --proxy-headers --forwarded-allow-ips and has
+    already applied those headers *if and only if* the peer is a trusted proxy.
+    Re-parsing them here would restore the spoof: anyone able to reach the app
+    could set their own key and get unlimited attempts against the auth endpoints.
+    """
     return request.client.host if request.client else "unknown"
 
 
