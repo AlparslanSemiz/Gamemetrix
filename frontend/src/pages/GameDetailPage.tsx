@@ -116,9 +116,27 @@ function popularityColor(label: string | null | undefined): string {
   return POPULARITY_TIERS.find((tier) => tier.label === label)?.color ?? '#9ca3af'
 }
 
-// Catalog deep links: land on the homepage filtered by developer / genre / year.
-function catalogFilterHref(param: 'developer' | 'genre' | 'year', value: string | number): string {
+// Catalog deep links: land on the homepage filtered by developer / publisher / genre / year.
+function catalogFilterHref(param: 'developer' | 'publisher' | 'genre' | 'year', value: string | number): string {
   return `/?${param}=${encodeURIComponent(String(value))}`
+}
+
+// Renders a release date string with only its year as a catalog link.
+function ReleaseValue({ label, year }: { label: string; year: number }) {
+  const yearStr = String(year)
+  const idx = year > 1970 ? label.indexOf(yearStr) : -1
+  if (idx === -1) return <>{label}</>
+  return (
+    <>
+      {label.slice(0, idx)}
+      <Link className="dp-info-link" to={catalogFilterHref('year', year)}>{yearStr}</Link>
+      {label.slice(idx + yearStr.length)}
+    </>
+  )
+}
+
+function formatGameMode(mode: string): string {
+  return mode.charAt(0).toUpperCase() + mode.slice(1)
 }
 
 function websiteLabel(url: string): string {
@@ -140,36 +158,15 @@ function protonLabel(game: Game): string | null {
   return scoreText ? `${PROTON_TIER_LABELS[tier]} · ${scoreText}` : PROTON_TIER_LABELS[tier]
 }
 
-function latestGameUpdate(game: Game): string | null {
-  const candidates = [
-    game.ratings_refreshed_at,
-    game.metadata_refreshed_at,
-    game.prices_refreshed_at,
-    game.hltb_refreshed_at,
-    game.seo_updated_at,
-    ...(game.price_snapshots ?? []).map((price) => price.fetched_at),
-  ].filter((value): value is string => Boolean(value) && !Number.isNaN(Date.parse(value as string)))
-  return candidates.sort((left, right) => Date.parse(right) - Date.parse(left))[0] ?? null
-}
-
+// The real game description, split into paragraphs. The metadata already lives in
+// the info table, so About stays the summary only — no auto-generated recap text.
 function buildAboutParagraphs(game: Game): string[] {
-  const paragraphs = [game.summary].filter(Boolean)
-  const release = game.release_year > 1970 ? `released in ${game.release_year}` : 'released at an unknown date'
-  const developer = game.developer ? ` developed by ${game.developer}` : ''
-  const publisher = game.publisher && game.publisher !== game.developer ? ` and published by ${game.publisher}` : ''
-  const genres = game.genres.length ? ` It sits across ${game.genres.slice(0, 4).join(', ')}.` : ''
-  const platforms = game.platforms.length ? ` Current platform coverage includes ${game.platforms.join(', ')}.` : ''
-  paragraphs.push(`${game.title} was ${release}${developer}${publisher}.${genres}${platforms}`)
-
-  if (game.playtime_minutes > 0 || game.goty_year || game.award_count > 0) {
-    const notes: string[] = []
-    if (game.playtime_minutes > 0) notes.push(`average tracked playtime is around ${Math.round(game.playtime_minutes / 60)} hours`)
-    if (game.goty_year) notes.push(`it was a Game of the Year winner in ${game.goty_year}`)
-    else if (game.award_count > 0) notes.push(`it has ${game.award_count} major award signals`)
-    paragraphs.push(`For catalog context, ${notes.join(', ')}.`)
-  }
-
-  return paragraphs
+  const summary = (game.summary ?? '').trim()
+  if (!summary) return []
+  return summary
+    .split(/\n{2,}/)
+    .map((paragraph) => paragraph.trim())
+    .filter(Boolean)
 }
 
 export function GameDetailPage({ initialGame }: { initialGame?: Game }) {
@@ -314,9 +311,9 @@ export function GameDetailPage({ initialGame }: { initialGame?: Game }) {
   const earlyAccessLabel = formatDate(game.early_access_date)
   const officialReleaseLabel = formatDate(game.official_release_date ?? game.release_date)
   const primaryReleaseLabel = officialReleaseLabel !== 'Not tracked' ? officialReleaseLabel : releaseLabel
-  const releaseLine = earlyAccessLabel !== 'Not tracked' && earlyAccessLabel !== primaryReleaseLabel
-    ? `${primaryReleaseLabel} · Early access ${earlyAccessLabel}`
-    : primaryReleaseLabel
+  const earlyAccessSuffix = earlyAccessLabel !== 'Not tracked' && earlyAccessLabel !== primaryReleaseLabel
+    ? ` · Early access ${earlyAccessLabel}`
+    : ''
   const websiteUrl = safeExternalUrl(game.website_url)
   const steamAppId = steamAppIdFromGame(game)
   const protonText = protonLabel(game)
@@ -336,7 +333,7 @@ export function GameDetailPage({ initialGame }: { initialGame?: Game }) {
   const hasHltb = hltbPrimaryMinutes > 0 || hltbDetail.length > 0
   const aboutParagraphs = buildAboutParagraphs(game)
   const priceSnapshots = currentPriceSnapshots(game.price_snapshots ?? [])
-  const dataUpdatedAt = latestGameUpdate(game)
+  const gameModes = (game.game_modes ?? []).filter(Boolean)
   const detailStyle = {
     '--score-color': scoreColor(displayScore),
     '--score-rgb': scoreColorRgb(displayScore),
@@ -499,18 +496,28 @@ export function GameDetailPage({ initialGame }: { initialGame?: Game }) {
               </div>
 
             {/* About */}
-            <div className="dp-section">
-              <h2 className="dp-section-title">About</h2>
-              <div className="dp-description">
-                {aboutParagraphs.map((paragraph) => (
-                  <p key={paragraph}>{paragraph}</p>
-                ))}
+            {aboutParagraphs.length > 0 && (
+              <div className="dp-section">
+                <h2 className="dp-section-title">About</h2>
+                <div className="dp-description">
+                  {aboutParagraphs.map((paragraph) => (
+                    <p key={paragraph}>{paragraph}</p>
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
 
             {/* Info table */}
             <div className="dp-section">
               <div className="dp-info-table">
+                {game.platforms.length > 0 && (
+                  <div className="dp-info-row">
+                    <span className="dp-info-key">Platforms</span>
+                    <span className="dp-info-val">
+                      <PlatformIcons platforms={game.platforms} mode="detail" game={game} />
+                    </span>
+                  </div>
+                )}
                 {game.developer && (
                   <div className="dp-info-row">
                     <span className="dp-info-key">Developer</span>
@@ -522,7 +529,9 @@ export function GameDetailPage({ initialGame }: { initialGame?: Game }) {
                 {game.publisher && game.publisher !== game.developer && (
                   <div className="dp-info-row">
                     <span className="dp-info-key">Publisher</span>
-                    <span className="dp-info-val">{game.publisher}</span>
+                    <span className="dp-info-val">
+                      <Link className="dp-info-link" to={catalogFilterHref('publisher', game.publisher)}>{game.publisher}</Link>
+                    </span>
                   </div>
                 )}
                 {game.genres.length > 0 && (
@@ -538,28 +547,23 @@ export function GameDetailPage({ initialGame }: { initialGame?: Game }) {
                     </span>
                   </div>
                 )}
-                {game.platforms.length > 0 && (
+                {game.franchise && (
                   <div className="dp-info-row">
-                    <span className="dp-info-key">Platforms</span>
-                    <span className="dp-info-val">
-                      <PlatformIcons platforms={game.platforms} mode="detail" game={game} />
-                    </span>
+                    <span className="dp-info-key">Series</span>
+                    <span className="dp-info-val">{game.franchise}</span>
                   </div>
                 )}
                 <div className="dp-info-row">
                   <span className="dp-info-key">Release date</span>
                   <span className="dp-info-val">
-                    {game.release_year > 1970 ? (
-                      <Link className="dp-info-link" to={catalogFilterHref('year', game.release_year)}>{releaseLine}</Link>
-                    ) : releaseLine}
+                    <ReleaseValue label={primaryReleaseLabel} year={game.release_year} />
+                    {earlyAccessSuffix}
                   </span>
                 </div>
-                {game.goty_year && (
+                {gameModes.length > 0 && (
                   <div className="dp-info-row">
-                    <span className="dp-info-key">GOTY</span>
-                    <span className="dp-info-val">
-                      <Link className="dp-info-link" to={catalogFilterHref('year', game.goty_year)}>{game.goty_year}</Link>
-                    </span>
+                    <span className="dp-info-key">Game modes</span>
+                    <span className="dp-info-val">{gameModes.map(formatGameMode).join(', ')}</span>
                   </div>
                 )}
                 {(endless || hasHltb) && (
@@ -600,6 +604,14 @@ export function GameDetailPage({ initialGame }: { initialGame?: Game }) {
                     </span>
                   </div>
                 )}
+                {game.goty_year && (
+                  <div className="dp-info-row">
+                    <span className="dp-info-key">GOTY</span>
+                    <span className="dp-info-val">
+                      <Link className="dp-info-link" to={catalogFilterHref('year', game.goty_year)}>{game.goty_year}</Link>
+                    </span>
+                  </div>
+                )}
                 {protonText && (
                   <div className="dp-info-row">
                     <span className="dp-info-key">ProtonDB</span>
@@ -616,10 +628,6 @@ export function GameDetailPage({ initialGame }: { initialGame?: Game }) {
                     </span>
                   </div>
                 )}
-                <div className="dp-info-row">
-                  <span className="dp-info-key">Score profile</span>
-                  <span className="dp-info-val">{game.score_profile}</span>
-                </div>
                 {game.popularity_label && (
                   <div className="dp-info-row">
                     <span className="dp-info-key">Popularity</span>
@@ -649,20 +657,11 @@ export function GameDetailPage({ initialGame }: { initialGame?: Game }) {
                     </span>
                   </div>
                 )}
-                {dataUpdatedAt && (
-                  <div className="dp-info-row">
-                    <span className="dp-info-key">Data updated</span>
-                    <span className="dp-info-val">{formatDate(dataUpdatedAt)}</span>
-                  </div>
-                )}
-                <div className="dp-info-row">
-                  <span className="dp-info-key">Supplementary data</span>
-                  <span className="dp-info-val">
-                    Metadata and imagery may include attributed data from{' '}
-                    <a className="dp-info-link" href="https://rawg.io/" target="_blank" rel="noopener noreferrer">RAWG</a>.
-                  </span>
-                </div>
               </div>
+              <p className="dp-attribution">
+                Metadata and imagery may include attributed data from{' '}
+                <a href="https://rawg.io/" target="_blank" rel="noopener noreferrer">RAWG</a>.
+              </p>
             </div>
 
             {priceSnapshots.length > 0 && (

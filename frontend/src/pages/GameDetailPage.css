@@ -207,6 +207,24 @@
   gap: 1rem;
 }
 .dp-score-ring-wrap { flex-shrink: 0; }
+
+/* ScoreRing styles live in App.css, which the /game/:slug route does not load —
+   colocate them here so the detail-page ring renders as a proper badge. */
+.dp-score-ring-wrap .score-ring {
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: #fff;
+  font-weight: 900;
+  line-height: 1;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
+  box-shadow:
+    inset 0 -3px 8px rgba(0, 0, 0, 0.18),
+    0 8px 22px rgba(var(--score-rgb, 76, 196, 88), 0.22);
+}
+.dp-score-ring-wrap .score-ring-lg { width: 92px; height: 92px; font-size: 38px; }
+.dp-score-ring-wrap .score-ring-md { width: 58px; height: 58px; font-size: 24px; }
+.dp-score-ring-wrap .score-ring-sm { width: 44px; height: 44px; font-size: 18px; }
 .dp-score-meta {
   display: flex;
   flex-direction: column;
@@ -454,24 +472,38 @@
   display: flex;
   flex-direction: column;
   gap: 0;
-  border-top: 1px solid rgba(255, 255, 255, 0.055);
+  border-top: 1px solid rgba(255, 255, 255, 0.14);
 }
 .dp-info-row {
   display: grid;
-  grid-template-columns: 130px 1fr;
-  gap: 12px;
-  padding: 8px 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-  font-size: 0.82rem;
+  grid-template-columns: 170px 1fr;
+  gap: 18px;
+  padding: 13px 2px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.11);
+  font-size: 0.95rem;
+  align-items: center;
 }
 .dp-info-row:last-child { border-bottom: none; }
 .dp-info-key {
-  color: #9ca3af;
-  font-weight: 500;
+  color: #d6dbe8;
+  font-weight: 800;
+  font-size: 0.92rem;
+  letter-spacing: 0.01em;
 }
 .dp-info-val {
   color: #c4c9d6;
+  font-size: 0.92rem;
 }
+.dp-attribution {
+  margin: 14px 2px 0;
+  font-size: 0.72rem;
+  color: #565c6b;
+}
+.dp-attribution a {
+  color: #868ea1;
+  text-decoration: none;
+}
+.dp-attribution a:hover { color: #c4c9d6; }
 .dp-pop {
   display: inline-flex;
   align-items: center;

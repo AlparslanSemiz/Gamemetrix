@@ -150,9 +150,11 @@ function readUrlFilters(search: string): Partial<GameFilters> {
   const next: Partial<GameFilters> = {}
   const genre = params.get('genre')?.trim()
   const developer = params.get('developer')?.trim()
+  const publisher = params.get('publisher')?.trim()
   const year = Number(params.get('year'))
   if (genre) next.genre = genre
   if (developer) next.developer = developer
+  if (publisher) next.publisher = publisher
   if (Number.isInteger(year) && year > 1970 && year <= CURRENT_YEAR) {
     next.yearMin = year
     next.yearMax = year

@@ -126,7 +126,7 @@ html { font-size: 16px; }
 /* My Lists — each collection list gets its own accent (icon + active bar) */
 .side-rail button[data-collection="watchlist"] { --list-color: #2dd4bf; }  /* teal */
 .side-rail button[data-collection="playing"] { --list-color: #a855f7; }  /* purple */
-.side-rail button[data-collection="seen"] { --list-color: #60a5fa; }  /* blue */
+.side-rail button[data-collection="seen"] { --list-color: #3b82f6; }  /* blue */
 .side-rail button[data-collection="completed"] { --list-color: #4ade80; }  /* green */
 .side-rail button[data-collection="liked"] { --list-color: #fb7185; }  /* rose */
 .side-rail button[data-collection="favorites"] { --list-color: #fbbf24; }  /* gold */
@@ -2036,7 +2036,7 @@ a.source-name-link:hover {
 .action-column button[data-action="playing"],
 .compact-actions button[data-action="playing"] { --act-color: 168, 85, 247; }  /* purple */
 .action-column button[data-action="seen"],
-.compact-actions button[data-action="seen"] { --act-color: 96, 165, 250; }  /* blue */
+.compact-actions button[data-action="seen"] { --act-color: 59, 130, 246; }  /* blue */
 .action-column button[data-action="completed"],
 .compact-actions button[data-action="completed"] { --act-color: 74, 222, 128; }  /* green */
 .action-column button[data-action="liked"],
@@ -2044,7 +2044,7 @@ a.source-name-link:hover {
 .action-column button[data-action="favorites"],
 .compact-actions button[data-action="favorites"] { --act-color: 251, 191, 36; }  /* gold */
 .action-column button[data-action="share"],
-.compact-actions button[data-action="share"] { --act-color: 34, 211, 238; }  /* cyan */
+.compact-actions button[data-action="share"] { --act-color: 232, 121, 249; }  /* fuchsia */
 
 /* ─── Status messages ─────────────────────────────────────────────── */
 .status {
