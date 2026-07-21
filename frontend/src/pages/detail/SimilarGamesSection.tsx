@@ -1,6 +1,5 @@
 import type { CSSProperties } from 'react'
 import { Link } from 'react-router-dom'
-import { PlatformIcons } from '../../components/PlatformIcons'
 import type { Game } from '../../types/game'
 import { scoreColor } from '../../utils/scoreColors'
 import { safeExternalUrl } from '../../utils/url'
@@ -63,7 +62,6 @@ export function SimilarGamesSection({
               </span>
             </div>
             <div className="dp-similar-body">
-              <PlatformIcons platforms={item.platforms} mode="compact" maxVisible={5} />
               <strong>{item.title}</strong>
               <span>{item.release_year > 1970 ? item.release_year : 'TBA'}</span>
             </div>

@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom'
 import type { Game } from '../../types/game'
 import { fallbackCoverUrl, galleryImages, looksLikePlaceholderImage } from '../../utils/coverImage'
 
-const GALLERY_INLINE_LIMIT = 10
+const GALLERY_INLINE_LIMIT = 14
 
 export function Gallery({ game }: { game: Game }) {
   const images = galleryImages(game)

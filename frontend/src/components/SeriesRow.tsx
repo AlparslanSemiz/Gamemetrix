@@ -4,6 +4,7 @@ import type { SeriesGameItem } from '../types/game'
 import { getSeriesGames } from '../services/games'
 import { scoreColor } from '../utils/scoreColors'
 import { fallbackCoverUrl, isPlaceholderImageUrl } from '../utils/coverImage'
+import './SeriesRow.css'
 
 // Self-fetching "More from this series" strip. Renders nothing while loading
 // or when the game has no franchise siblings, so it can be dropped into any

@@ -136,6 +136,23 @@ const DEFAULT_FILTERS: GameFilters = {
   direction: 'desc',
 }
 
+// Deep-link support: developer / genre / year passed as URL query params on the
+// catalog land on a pre-filtered homepage (used by the game detail page links).
+function readUrlFilters(search: string): Partial<GameFilters> {
+  const params = new URLSearchParams(search)
+  const next: Partial<GameFilters> = {}
+  const genre = params.get('genre')?.trim()
+  const developer = params.get('developer')?.trim()
+  const year = Number(params.get('year'))
+  if (genre) next.genre = genre
+  if (developer) next.developer = developer
+  if (Number.isInteger(year) && year > 1970 && year <= CURRENT_YEAR) {
+    next.yearMin = year
+    next.yearMax = year
+  }
+  return next
+}
+
 // performance.getEntriesByType('navigation') reflects the browser's real
 // page load (reload vs. navigate) and stays fixed for the entire tab
 // lifetime — it does NOT change when React Router does an in-app route
@@ -367,18 +384,22 @@ export function AppContent({ initialGames = [], initialTotal = 0, initialPage }:
   const requestedView = new URLSearchParams(location.search).get('view') as MainPage | null
   const routeInitialPage: ActivePage = initialPage
     ?? (requestedView && ROUTABLE_MAIN_PAGES.has(requestedView) ? requestedView : 'catalog')
+  // Seeded once at mount: a deep link like /?developer=Larian arrives from a
+  // detail-page link and must apply its filter instead of the curated home list.
+  const urlFilters = readUrlFilters(location.search)
+  const hasUrlFilters = Object.keys(urlFilters).length > 0
   const [restoredSnapshot, setRestoredSnapshot] = useState<CatalogSnapshot | null>(null)
   const [activePage, setActivePage] = useState<ActivePage>(routeInitialPage)
-  const [games, setGames] = useState<Game[]>(initialGames)
+  const [games, setGames] = useState<Game[]>(hasUrlFilters ? [] : initialGames)
   const [facets, setFacets] = useState<Facets>({ genres: [], years: [], platforms: [], developers: [] })
-  const [filters, setFilters] = useState<GameFilters>(DEFAULT_FILTERS)
+  const [filters, setFilters] = useState<GameFilters>(() => ({ ...DEFAULT_FILTERS, ...urlFilters }))
   const [pendingApply, setPendingApply] = useState(0)
   const { collections, toggleCollection } = useCollections()
   const { account, syncCollection } = useAccount()
   const [providerStatuses, setProviderStatuses] = useState<ProviderStatus[]>([])
   const [catalogTotal, setCatalogTotal] = useState(initialTotal)
   const [libraryTotal, setLibraryTotal] = useState(initialTotal)
-  const [isLoading, setIsLoading] = useState(initialGames.length === 0)
+  const [isLoading, setIsLoading] = useState(hasUrlFilters || initialGames.length === 0)
   const [trailerGame, setTrailerGame] = useState<Game | null>(null)
   const [trailerVideoId, setTrailerVideoId] = useState<string | null>(null)
   const [isTrailerLoading, setIsTrailerLoading] = useState(false)
@@ -390,7 +411,7 @@ export function AppContent({ initialGames = [], initialTotal = 0, initialPage }:
   const [mastheadVisible, setMastheadVisible] = useState(true)
   const [fetchKey, setFetchKey] = useState(0)
   const [offset, setOffset] = useState(0)
-  const [hasMore, setHasMore] = useState(initialGames.length < initialTotal)
+  const [hasMore, setHasMore] = useState(!hasUrlFilters && initialGames.length < initialTotal)
   const [isLoadingMore, setIsLoadingMore] = useState(false)
   const loaderRef = useRef<HTMLDivElement>(null)
   const mastheadRef = useRef<HTMLElement>(null)
@@ -405,7 +426,7 @@ export function AppContent({ initialGames = [], initialTotal = 0, initialPage }:
   // Holds the `${fetchKey}:${offset}` pair the games list currently reflects;
   // pre-seeded on snapshot restore so the mount run keeps the restored list.
   const lastFetchSignatureRef = useRef<string | null>(
-    initialGames.length ? '0:0' : null,
+    initialGames.length && !hasUrlFilters ? '0:0' : null,
   )
   // Always up to date with latest filters without being a dep of the load effect
   const filtersRef = useRef(filters)
@@ -415,6 +436,8 @@ export function AppContent({ initialGames = [], initialTotal = 0, initialPage }:
 
   useIsomorphicLayoutEffect(() => {
     if (routeInitialPage !== 'catalog') return
+    // A URL filter deep link (/?genre=…) must win over a stale catalog snapshot.
+    if (hasUrlFilters) return
     const snapshot = readCatalogSnapshot()
     if (!snapshot?.games.length) return
 

@@ -21,7 +21,6 @@ import type { Game, SourceScore } from '../types/game'
 import { DlcSection } from './detail/DlcSection'
 import { Gallery } from './detail/Gallery'
 import { PricePanel } from './detail/PricePanel'
-import { ProtonCompat } from './detail/ProtonCompat'
 import { SimilarGamesSection, SIMILAR_DISPLAY_LIMIT } from './detail/SimilarGamesSection'
 import { SeriesRow } from '../components/SeriesRow'
 import { SysReqBlock } from './detail/SysReqBlock'
@@ -101,6 +100,25 @@ function popularitySummary(game: Game) {
     count: reviewCount,
     detail: reviewCount > 0 ? `${formatCompactCount(reviewCount)} tracked reviews` : 'No reliable volume signal yet',
   }
+}
+
+// Popularity tiers mirror the backend thresholds in models.py (total reviews
+// across rating sources). Highest tier first for the hover legend.
+const POPULARITY_TIERS: { label: string; threshold: string; color: string }[] = [
+  { label: 'Phenomenon', threshold: '500K+ reviews', color: '#f472b6' },
+  { label: 'Very High', threshold: '100K+ reviews', color: '#c084fc' },
+  { label: 'High', threshold: '25K+ reviews', color: '#60a5fa' },
+  { label: 'Medium', threshold: '5K+ reviews', color: '#4ade80' },
+  { label: 'Niche', threshold: '500+ reviews', color: '#e0b341' },
+]
+
+function popularityColor(label: string | null | undefined): string {
+  return POPULARITY_TIERS.find((tier) => tier.label === label)?.color ?? '#9ca3af'
+}
+
+// Catalog deep links: land on the homepage filtered by developer / genre / year.
+function catalogFilterHref(param: 'developer' | 'genre' | 'year', value: string | number): string {
+  return `/?${param}=${encodeURIComponent(String(value))}`
 }
 
 function websiteLabel(url: string): string {
@@ -295,6 +313,10 @@ export function GameDetailPage({ initialGame }: { initialGame?: Game }) {
     : 'Unknown'
   const earlyAccessLabel = formatDate(game.early_access_date)
   const officialReleaseLabel = formatDate(game.official_release_date ?? game.release_date)
+  const primaryReleaseLabel = officialReleaseLabel !== 'Not tracked' ? officialReleaseLabel : releaseLabel
+  const releaseLine = earlyAccessLabel !== 'Not tracked' && earlyAccessLabel !== primaryReleaseLabel
+    ? `${primaryReleaseLabel} · Early access ${earlyAccessLabel}`
+    : primaryReleaseLabel
   const websiteUrl = safeExternalUrl(game.website_url)
   const steamAppId = steamAppIdFromGame(game)
   const protonText = protonLabel(game)
@@ -351,8 +373,22 @@ export function GameDetailPage({ initialGame }: { initialGame?: Game }) {
 
             <h1 className="dp-title">{game.title}</h1>
 
-            {game.developer && (
-              <p className="dp-subtitle">{game.developer}{game.publisher && game.publisher !== game.developer ? ` · ${game.publisher}` : ''}</p>
+            {(game.developer || websiteUrl) && (
+              <p className="dp-subtitle">
+                {game.developer && (
+                  <Link className="dp-subtitle-link" to={catalogFilterHref('developer', game.developer)}>{game.developer}</Link>
+                )}
+                {game.publisher && game.publisher !== game.developer ? ` · ${game.publisher}` : ''}
+                {websiteUrl && (
+                  <>
+                    {game.developer || game.publisher ? ' · ' : ''}
+                    <a className="dp-subtitle-link" href={websiteUrl} target="_blank" rel="noopener noreferrer">
+                      {websiteLabel(websiteUrl)}
+                      <ExternalLink size={11} aria-hidden="true" />
+                    </a>
+                  </>
+                )}
+              </p>
             )}
 
             {game.platforms.length > 0 && (
@@ -475,45 +511,12 @@ export function GameDetailPage({ initialGame }: { initialGame?: Game }) {
             {/* Info table */}
             <div className="dp-section">
               <div className="dp-info-table">
-                {game.platforms.length > 0 && (
-                  <div className="dp-info-row">
-                    <span className="dp-info-key">Platforms</span>
-                    <span className="dp-info-val">{game.platforms.join(', ')}</span>
-                  </div>
-                )}
-                {game.genres.length > 0 && (
-                  <div className="dp-info-row">
-                    <span className="dp-info-key">Genre</span>
-                    <span className="dp-info-val">{game.genres.join(', ')}</span>
-                  </div>
-                )}
-                <div className="dp-info-row">
-                  <span className="dp-info-key">Release date</span>
-                  <span className="dp-info-val">{releaseLabel}</span>
-                </div>
-                <div className="dp-info-row">
-                  <span className="dp-info-key">Early release</span>
-                  <span className="dp-info-val">{earlyAccessLabel}</span>
-                </div>
-                <div className="dp-info-row">
-                  <span className="dp-info-key">Official release</span>
-                  <span className="dp-info-val">{officialReleaseLabel}</span>
-                </div>
-                {websiteUrl ? (
-                  <div className="dp-info-row">
-                    <span className="dp-info-key">Website</span>
-                    <span className="dp-info-val">
-                      <a className="dp-info-link" href={websiteUrl} target="_blank" rel="noopener noreferrer">
-                        {websiteLabel(websiteUrl)}
-                        <ExternalLink size={11} aria-hidden="true" />
-                      </a>
-                    </span>
-                  </div>
-                ) : null}
                 {game.developer && (
                   <div className="dp-info-row">
                     <span className="dp-info-key">Developer</span>
-                    <span className="dp-info-val">{game.developer}</span>
+                    <span className="dp-info-val">
+                      <Link className="dp-info-link" to={catalogFilterHref('developer', game.developer)}>{game.developer}</Link>
+                    </span>
                   </div>
                 )}
                 {game.publisher && game.publisher !== game.developer && (
@@ -522,10 +525,41 @@ export function GameDetailPage({ initialGame }: { initialGame?: Game }) {
                     <span className="dp-info-val">{game.publisher}</span>
                   </div>
                 )}
+                {game.genres.length > 0 && (
+                  <div className="dp-info-row">
+                    <span className="dp-info-key">Genre</span>
+                    <span className="dp-info-val">
+                      {game.genres.map((genre, index) => (
+                        <span key={genre}>
+                          {index > 0 ? ', ' : ''}
+                          <Link className="dp-info-link" to={catalogFilterHref('genre', genre)}>{genre}</Link>
+                        </span>
+                      ))}
+                    </span>
+                  </div>
+                )}
+                {game.platforms.length > 0 && (
+                  <div className="dp-info-row">
+                    <span className="dp-info-key">Platforms</span>
+                    <span className="dp-info-val">
+                      <PlatformIcons platforms={game.platforms} mode="detail" game={game} />
+                    </span>
+                  </div>
+                )}
+                <div className="dp-info-row">
+                  <span className="dp-info-key">Release date</span>
+                  <span className="dp-info-val">
+                    {game.release_year > 1970 ? (
+                      <Link className="dp-info-link" to={catalogFilterHref('year', game.release_year)}>{releaseLine}</Link>
+                    ) : releaseLine}
+                  </span>
+                </div>
                 {game.goty_year && (
                   <div className="dp-info-row">
                     <span className="dp-info-key">GOTY</span>
-                    <span className="dp-info-val">{game.goty_year}</span>
+                    <span className="dp-info-val">
+                      <Link className="dp-info-link" to={catalogFilterHref('year', game.goty_year)}>{game.goty_year}</Link>
+                    </span>
                   </div>
                 )}
                 {(endless || hasHltb) && (
@@ -589,7 +623,30 @@ export function GameDetailPage({ initialGame }: { initialGame?: Game }) {
                 {game.popularity_label && (
                   <div className="dp-info-row">
                     <span className="dp-info-key">Popularity</span>
-                    <span className="dp-info-val">{game.popularity_label} · {popularity.detail}</span>
+                    <span className="dp-info-val dp-pop">
+                      <strong
+                        className="dp-pop-label"
+                        style={{ '--pop-color': popularityColor(game.popularity_label) } as CSSProperties}
+                      >
+                        {game.popularity_label}
+                      </strong>
+                      {' · '}{popularity.detail}
+                      <span
+                        className="dp-hltb-info"
+                        tabIndex={0}
+                        aria-label={`Popularity tiers: ${POPULARITY_TIERS.map((tier) => `${tier.label} ${tier.threshold}`).join(', ')}`}
+                      >
+                        <Info size={12} aria-hidden="true" />
+                        <span className="dp-hltb-tip" role="tooltip">
+                          {POPULARITY_TIERS.map((tier) => (
+                            <span className="dp-hltb-tip-row" key={tier.label}>
+                              <span style={{ color: tier.color }}>{tier.label}</span>
+                              <span>{tier.threshold}</span>
+                            </span>
+                          ))}
+                        </span>
+                      </span>
+                    </span>
                   </div>
                 )}
                 {dataUpdatedAt && (
@@ -607,13 +664,6 @@ export function GameDetailPage({ initialGame }: { initialGame?: Game }) {
                 </div>
               </div>
             </div>
-
-            {game.proton_tier && (
-              <div className="dp-section">
-                <h2 className="dp-section-title">Linux / Steam Deck compatibility</h2>
-                <ProtonCompat game={game} />
-              </div>
-            )}
 
             {priceSnapshots.length > 0 && (
               <div className="dp-section">

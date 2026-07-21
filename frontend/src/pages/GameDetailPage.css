@@ -122,6 +122,14 @@
   color: #6b7280;
   margin: 0 0 0.75rem;
 }
+.dp-subtitle-link {
+  color: #9aa4b6;
+  font-weight: 700;
+  text-decoration: none;
+  transition: color 0.14s;
+}
+.dp-subtitle-link:hover { color: var(--score-color, #cbd3e1); }
+.dp-subtitle-link svg { vertical-align: -1px; }
 
 .dp-platform-strip {
   margin-bottom: 1.25rem;
@@ -464,6 +472,16 @@
 .dp-info-val {
   color: #c4c9d6;
 }
+.dp-pop {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.dp-pop-label {
+  color: var(--pop-color, #c4c9d6);
+  font-weight: 800;
+}
 .dp-info-link {
   display: inline-flex;
   align-items: center;
@@ -755,74 +773,6 @@
   font-weight: 900;
 }
 
-/* ─── ProtonDB compatibility ─────────────────────────────────────────────── */
-
-.dp-proton {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.055);
-  border-radius: 8px;
-  background: rgba(0, 0, 0, 0.14);
-  padding: 10px 12px;
-}
-
-.dp-proton-badge {
-  --proton-rgb: 166, 166, 166;
-  display: inline-grid;
-  place-items: center;
-  min-width: 78px;
-  border: 1px solid rgba(var(--proton-rgb), 0.76);
-  border-radius: 999px;
-  padding: 4px 12px;
-  color: var(--proton-color, #a6a6a6);
-  background: rgba(var(--proton-rgb), 0.12);
-  font-size: 0.74rem;
-  font-weight: 900;
-  letter-spacing: 0;
-  text-transform: uppercase;
-}
-
-.dp-proton-native { --proton-color: #6ed7a7; --proton-rgb: 110, 215, 167; }
-.dp-proton-platinum { --proton-color: #b4c7dc; --proton-rgb: 180, 199, 220; }
-.dp-proton-gold { --proton-color: #cfb53b; --proton-rgb: 207, 181, 59; }
-.dp-proton-silver { --proton-color: #a6a6a6; --proton-rgb: 166, 166, 166; }
-.dp-proton-bronze { --proton-color: #cd7f32; --proton-rgb: 205, 127, 50; }
-.dp-proton-borked { --proton-color: #f87171; --proton-rgb: 248, 113, 113; }
-
-.dp-proton-detail {
-  display: grid;
-  gap: 2px;
-  min-width: 0;
-}
-
-.dp-proton-detail strong {
-  color: #dce3ef;
-  font-size: 0.82rem;
-}
-
-.dp-proton-detail small {
-  color: #6f7a8e;
-  font-size: 0.68rem;
-}
-
-.dp-proton-link {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  color: #aab2c1;
-  font-size: 0.74rem;
-  font-weight: 800;
-  text-decoration: none;
-  white-space: nowrap;
-  transition: color 0.14s;
-}
-
-.dp-proton-link:hover {
-  color: #eef4ff;
-}
-
 /* ─── System requirements ────────────────────────────────────────────────── */
 
 .dp-sysreq-block {
@@ -921,8 +871,9 @@
 }
 
 .dp-similar-grid {
-  columns: 5 180px;
-  column-gap: 16px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 16px;
 }
 
 .dp-dlc-grid {
@@ -1004,12 +955,9 @@
 
 .dp-similar-card {
   position: relative;
-  display: inline-grid;
-  width: 100%;
-  min-height: 260px;
+  display: grid;
+  grid-template-rows: auto 1fr;
   overflow: hidden;
-  break-inside: avoid;
-  margin: 0 0 16px;
   border: 1px solid rgba(255, 255, 255, 0.065);
   border-radius: 10px;
   background: #1a1a1a;
@@ -1064,10 +1012,6 @@
   align-content: start;
   gap: 8px;
   padding: 13px 14px 16px;
-}
-
-.dp-similar-body .platform-icons {
-  min-height: 18px;
 }
 
 .dp-similar-body strong {
