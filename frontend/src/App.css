@@ -1614,61 +1614,7 @@ a.proton-badge:hover {
   color: #b6f2c0;
 }
 
-/* ─── Platform icons (new system) ─────────────────────────────────────────── */
-.platform-icons {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px;
-}
-
-.pf-icon {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 3px 5px;
-  border-radius: 4px;
-  border: 1px solid transparent;
-  cursor: default;
-  transition: color 0.14s, border-color 0.14s, background 0.14s;
-  color: #4a4e58;
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0;
-  line-height: 1;
-  white-space: nowrap;
-}
-
-.pf-icon svg {
-  width: 14px;
-  height: 14px;
-  flex-shrink: 0;
-}
-
-.pf-icon:hover {
-  color: var(--pf-color, #b8bcc6);
-  border-color: rgba(from var(--pf-color, #b8bcc6) r g b / 0.28);
-  background: rgba(from var(--pf-color, #b8bcc6) r g b / 0.08);
-}
-
-/* Fallback for browsers without CSS relative color syntax */
-@supports not (color: rgba(from red r g b / 1)) {
-  .pf-icon:hover {
-    border-color: rgba(255, 255, 255, 0.12);
-    background: rgba(255, 255, 255, 0.04);
-  }
-}
-
-/* Icons rendered as store links */
-a.pf-icon-link {
-  text-decoration: none;
-  cursor: pointer;
-}
-
-a.pf-icon-link:hover,
-a.pf-icon-link:focus-visible {
-  text-decoration: none;
-}
+/* Platform icon styles are colocated with the component: components/PlatformIcons.css */
 
 /* ── "More from this series" strip ─────────────────────────────────── */
 .series-row {
@@ -1753,34 +1699,6 @@ a.pf-icon-link:focus-visible {
   font-size: 11px;
   font-weight: 600;
   color: #7d8390;
-}
-
-.pf-label {
-  line-height: 1;
-}
-
-.pf-overflow {
-  font-size: 11px;
-  font-weight: 700;
-  color: #4a4e58;
-  padding: 3px 4px;
-  letter-spacing: 0;
-}
-
-/* compact mode: icon only, no label, tighter */
-.platform-icons-compact .pf-icon {
-  padding: 2px 3px;
-}
-
-/* detail mode: larger icon + full name */
-.platform-icons-detail .pf-icon {
-  padding: 4px 8px;
-  font-size: 12px;
-}
-
-.platform-icons-detail .pf-icon svg {
-  width: 16px;
-  height: 16px;
 }
 
 /* Platform badges (legacy — kept for where-to-play) */

@@ -2,12 +2,17 @@ import type React from 'react'
 import { siApple } from 'simple-icons'
 import type { Game } from '../types/game'
 import { storeUrlForGroup } from '../utils/storeLinks'
+import './PlatformIcons.css'
 
 // ─── Platform icon SVGs ───────────────────────────────────────────────────────
-// All icons: 16×16 viewBox, fill="currentColor" for CSS color control
+// All icons: 16×16 viewBox, fill="currentColor" for CSS color control.
+// Intrinsic width/height keep the icons at a sane size even before CSS applies —
+// a viewBox-only SVG falls back to the 300×150 replaced-element default. CSS
+// still controls the final size (14px list, 16px detail) since it overrides
+// presentation attributes.
 
 const BrandIcon = ({ paths }: { paths: string[] }) => (
-  <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
     {paths.map((path) => <path d={path} key={path} />)}
   </svg>
 )
@@ -45,34 +50,34 @@ const SwitchIcon = () => (
 )
 
 const AppleIcon = () => (
-  <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
     <path d={siApple.path} />
   </svg>
 )
 
 const LinuxIcon = () => (
-  <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
     {/* Tux: round head with ears, eyes, beak, body */}
     <path d="M8 1C6.3 1 5 2.5 5 4c0 1 .4 2 1 2.7-1.3.5-3 1.6-3 3.8 0 1.8 1.2 2.5 2 2.5.5 0 1-.2 1.5-.5 1 .5 1.7.7 2.5.7s1.5-.2 2.5-.7c.5.3 1 .5 1.5.5.8 0 2-.7 2-2.5 0-2.2-1.7-3.3-3-3.8.6-.7 1-1.7 1-2.7C13 2.5 11.7 1 10 1c-.7 0-1.3.3-1.7.7L8 1.5l-.3.2C7.3 1.3 6.7 1 8 1zM7 3.5a1 1 0 112 0 1 1 0 01-2 0zm-1 7a.75.75 0 110-1.5.75.75 0 010 1.5zm4 0a.75.75 0 110-1.5.75.75 0 010 1.5z" />
   </svg>
 )
 
 const AndroidIcon = () => (
-  <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
     {/* Android robot head */}
     <path d="M5.18 3.7L3.9 1.5l.87-.5 1.28 2.2C6.6 3.1 7.3 3 8 3s1.4.1 1.95.2L11.23 1l.87.5L10.82 3.7A5 5 0 0113 8H3a5 5 0 012.18-4.3zM5.5 6a.75.75 0 100 1.5A.75.75 0 005.5 6zm5 0a.75.75 0 100 1.5.75.75 0 000-1.5zM3 9h10v2.5c0 .83-.67 1.5-1.5 1.5H11v2h-1.5v-2h-3v2H5v-2H4.5C3.67 13 3 12.33 3 11.5V9z" />
   </svg>
 )
 
 const GogIcon = () => (
-  <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
     {/* GOG.com: G in a circle */}
     <path d="M8 1a7 7 0 100 14A7 7 0 008 1zm.5 4.5H11v5H9.5V9H7.5v-1.5h2V7H7a2 2 0 00-2 2 2 2 0 002 2h1V9.5H6.5A.5.5 0 016 9a.5.5 0 01.5-.5H8V10h.5v.5H7a3.5 3.5 0 110-7h1.5v2z" />
   </svg>
 )
 
 const EpicIcon = () => (
-  <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
     {/* Epic Games: shield with horizontal stripes */}
     <path d="M8 1L2 4v5c0 3 3 5.5 6 7 3-1.5 6-4 6-7V4L8 1zm-2 3h4v1.5H6V4zm0 2.5h4V8H6V6.5zm0 2.5h4v1.5H6V9z" />
   </svg>
