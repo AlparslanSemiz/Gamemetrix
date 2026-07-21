@@ -9,6 +9,7 @@ Public API:
   daily_refresh_loop()                         -> Awaitable[None]  (runs forever; cancel to stop)
   metadata_backfill_loop()                     -> Awaitable[None]  (runs forever; cancel to stop)
   hltb_backfill_loop()                         -> Awaitable[None]  (runs forever; cancel to stop)
+  summary_backfill_loop()                      -> Awaitable[None]  (runs forever; cancel to stop)
   purge_expired_raw_analytics(db)              -> int
   raw_analytics_retention_loop()               -> Awaitable[None]  (runs forever; cancel to stop)
 """
@@ -29,6 +30,7 @@ from ..integrations.sync import game_needs_rating_refresh, refresh_game_sources
 from ..integrations.steam import extract_steam_app_id, get_steam_release_dates
 from .metadata import fix_game_year
 from .metadata_backfill import metadata_backfill_batch
+from .summarizer import shorten_summary_batch
 
 
 log = logging.getLogger(__name__)
@@ -332,3 +334,38 @@ async def hltb_backfill_loop() -> None:
         except Exception:
             log.exception("Periodic HLTB backfill failed")
         await asyncio.sleep(interval_seconds)
+
+
+async def summary_backfill_loop() -> None:
+    """
+    Shortens long game descriptions into a compact `summary_short` in small
+    periodic batches, so the catalog list shows a complete short blurb instead
+    of a mid-sentence, ellipsis-clamped full summary.
+
+    Uses Groq when GROQ_API_KEY is configured, otherwise falls back to a
+    clean sentence-boundary extract (see services/summarizer.py). Runs on its
+    own schedule, independent of the score/metadata refresh loops.
+    """
+    cfg = get_settings()
+    await asyncio.sleep(120)
+
+    if cfg.SUMMARY_SHORTEN_STARTUP_LIMIT > 0:
+        try:
+            with SessionLocal() as db:
+                await shorten_summary_batch(db, cfg.SUMMARY_SHORTEN_STARTUP_LIMIT)
+        except Exception:
+            log.exception("Startup summary backfill failed")
+
+    interval_seconds = max(60, int(cfg.SUMMARY_SHORTEN_INTERVAL_MINUTES * 60))
+    while True:
+        await asyncio.sleep(interval_seconds)
+        try:
+            with SessionLocal() as db:
+                result = await shorten_summary_batch(db, cfg.SUMMARY_SHORTEN_BATCH_SIZE)
+            log.info(
+                "Summary backfill: %s shortened, %s skipped",
+                result["shortened"],
+                result["skipped"],
+            )
+        except Exception:
+            log.exception("Periodic summary backfill failed")

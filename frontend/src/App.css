@@ -1438,7 +1438,7 @@ html { font-size: 16px; }
   line-height: 1.58;
   display: -webkit-box;
   -webkit-box-orient: vertical;
-  -webkit-line-clamp: 6;
+  -webkit-line-clamp: 7;
   overflow: hidden;
 }
 
@@ -1503,11 +1503,11 @@ html { font-size: 16px; }
   width: fit-content;
   align-items: center;
   gap: 6px;
-  border: 1px solid rgba(255,255,255,0.08);
+  border: 1px solid rgba(from currentColor r g b / 0.5);
   border-radius: 20px;
-  background: rgba(0,0,0,0.25);
+  background: rgba(from currentColor r g b / 0.12);
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 800;
   padding: 4px 12px;
   letter-spacing: 0;
   text-decoration: none;
@@ -1515,8 +1515,16 @@ html { font-size: 16px; }
 }
 
 .playtime-badge:hover {
-  border-color: rgba(var(--score-rgb, 255,255,255), 0.32);
-  background: rgba(var(--score-rgb, 255,255,255), 0.08);
+  border-color: rgba(from currentColor r g b / 0.72);
+  background: rgba(from currentColor r g b / 0.18);
+}
+
+/* Fallback for browsers without CSS relative color syntax */
+@supports not (color: rgba(from red r g b / 1)) {
+  .playtime-badge {
+    border-color: rgba(255, 255, 255, 0.12);
+    background: rgba(0, 0, 0, 0.25);
+  }
 }
 
 .playtime-badge svg { opacity: 0.8; }

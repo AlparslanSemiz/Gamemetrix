@@ -97,7 +97,8 @@ class Settings:
         self.RAPIDAPI_HOST: str = os.getenv(
             "RAPIDAPI_HOST", "opencritic-api.p.rapidapi.com"
         )
-        self.ANTHROPIC_API_KEY: str = os.getenv("ANTHROPIC_API_KEY", "")
+        self.GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
+        self.GROQ_MODEL: str = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
         self.ITAD_API_KEY: str = os.getenv("ITAD_API_KEY", "")
         self.STEAM_WEB_API_KEY: str = os.getenv("STEAM_WEB_API_KEY", "")
         self.CHEAPSHARK_USER_AGENT: str = os.getenv("CHEAPSHARK_USER_AGENT", USER_AGENT)
@@ -196,6 +197,14 @@ class Settings:
         self.HLTB_BACKFILL_BATCH_SIZE: int = int(os.getenv("HLTB_BACKFILL_BATCH_SIZE", "50"))
         self.HLTB_BACKFILL_INTER_GAME_DELAY: float = float(
             os.getenv("HLTB_BACKFILL_INTER_GAME_DELAY", "1.0")
+        )
+        # ── Description shortening (summary_short) backfill ──────────────────
+        self.SUMMARY_SHORTEN_INTERVAL_MINUTES: float = float(
+            os.getenv("SUMMARY_SHORTEN_INTERVAL_MINUTES", "30")
+        )
+        self.SUMMARY_SHORTEN_BATCH_SIZE: int = int(os.getenv("SUMMARY_SHORTEN_BATCH_SIZE", "40"))
+        self.SUMMARY_SHORTEN_STARTUP_LIMIT: int = int(
+            os.getenv("SUMMARY_SHORTEN_STARTUP_LIMIT", "60")
         )
         # ── Data fill orchestration ─────────────────────────────────────────
         self.DATA_FILL_ENABLED: bool = os.getenv("DATA_FILL_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"}
@@ -397,8 +406,8 @@ class Settings:
             return bool(self.RAPIDAPI_KEY)
         return bool(self.OPENCRITIC_API_KEY or self.RAPIDAPI_KEY)
 
-    def anthropic_configured(self) -> bool:
-        return bool(self.ANTHROPIC_API_KEY)
+    def groq_configured(self) -> bool:
+        return bool(self.GROQ_API_KEY)
 
     def itad_configured(self) -> bool:
         return bool(self.ITAD_API_KEY)

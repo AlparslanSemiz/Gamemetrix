@@ -13,13 +13,12 @@ import re
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
-from ..config import get_settings
+from ..integrations.groq import generate_text
 from ..models import Game
 
 
 log = logging.getLogger(__name__)
 
-_ANTHROPIC_MODEL = "claude-haiku-4-5-20251001"
 _MAX_SHORT_CHARS = 450
 _MIN_LONG_CHARS = 200   # only shorten if original is longer than this
 _SYSTEM_PROMPT = (
@@ -70,26 +69,15 @@ async def shorten_summary(title: str, summary: str) -> str | None:
     if _is_placeholder(summary):
         return None
 
-    cfg = get_settings()
-    if not cfg.anthropic_configured():
+    generated = await generate_text(
+        _SYSTEM_PROMPT,
+        f"Game: {title}\n\nDescription: {summary}",
+    )
+    if not generated:
         return _extract_sentences(summary, _MAX_SHORT_CHARS)
-
-    try:
-        from anthropic import AsyncAnthropic
-        client = AsyncAnthropic(api_key=cfg.ANTHROPIC_API_KEY)
-        message = await client.messages.create(
-            model=_ANTHROPIC_MODEL,
-            max_tokens=200,
-            system=_SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": f"Game: {title}\n\nDescription: {summary}"}],
-        )
-        result = message.content[0].text.strip()
-        if len(result) > _MAX_SHORT_CHARS:
-            result = _extract_sentences(result, _MAX_SHORT_CHARS)
-        return result
-    except Exception:
-        log.debug("Claude summarization failed for %r", title, exc_info=True)
-        return _extract_sentences(summary, _MAX_SHORT_CHARS)
+    if len(generated) > _MAX_SHORT_CHARS:
+        return _extract_sentences(generated, _MAX_SHORT_CHARS)
+    return generated
 
 
 async def shorten_summary_batch(db: Session, limit: int) -> dict[str, int]:

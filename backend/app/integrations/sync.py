@@ -70,7 +70,6 @@ _SCORE_PRIMARIES = ("Metacritic", "OpenCritic", "Steam", "IGDB")
 _SCORE_BASELINE = 70.0
 
 # ── Rank score constants ────────────────────────────────────────────────────────
-_RANK_GLOBAL_MEAN = 70.0  # shrinkage target: neutral baseline
 _RATING_SRC  = frozenset({"Metacritic", "OpenCritic", "Steam", "IGDB"})
 _CRITIC_SRC  = frozenset({"Metacritic", "OpenCritic"})
 _USER_SRC    = frozenset({"Steam", "IGDB"})
@@ -478,73 +477,6 @@ def _live_rating_entries(game: Game) -> list[dict[str, object]]:
     ]
 
 
-def _confidence_factor(game: Game) -> float:
-    """
-    Returns 0.0–1.0. Drives how much rank_score equals metrix_score.
-    1.0 = full confidence (both critic & user, high volume).
-    0.0 = no rating data (catalog only).
-
-    Inputs considered: applicable primary counts, critic/user balance, and review volume.
-    """
-    live = _live_rating_entries(game)
-    if not live:
-        return 0.0
-
-    applicable: frozenset[str] = game.applicable_primary_sources
-    live_srcs = {str(s.get("source")) for s in live}
-    live_primary = live_srcs & applicable
-    live_critic = live_primary & _CRITIC_SRC
-    live_user   = live_primary & _USER_SRC
-
-    n_primary = len(live_primary)
-    n_critic  = len(live_critic)
-    n_user    = len(live_user)
-
-    total_reviews  = sum(_review_count(s) for s in live)
-    critic_reviews = sum(
-        _review_count(s) for s in live
-        if str(s.get("source")) in _CRITIC_SRC
-    )
-    user_reviews = sum(
-        _review_count(s) for s in live
-        if str(s.get("source")) in _USER_SRC
-    )
-
-    # Both critic AND user coverage
-    if n_critic >= 1 and n_user >= 1:
-        if n_primary >= 3 and total_reviews >= 500:
-            return 1.00
-        if n_primary >= 2 and total_reviews >= 100:
-            return 0.92
-        return 0.85
-
-    # Critic-only
-    if n_critic >= 1:
-        if n_critic >= 2:
-            return 0.85 if critic_reviews >= 50 else 0.80
-        if critic_reviews >= 100:
-            return 0.80
-        if critic_reviews >= 30:
-            return 0.74
-        return 0.68
-
-    # User-only
-    if n_user >= 2:
-        return 0.78 if user_reviews >= 50_000 else 0.72
-    if n_user == 1:
-        src = next(iter(live_user))
-        if src == "Steam":
-            if user_reviews >= 500_000: return 0.75
-            if user_reviews >= 100_000: return 0.70
-            if user_reviews >=  25_000: return 0.63
-            if user_reviews >=   5_000: return 0.57
-            return 0.50
-        # IGDB community aggregate
-        return 0.62 if user_reviews >= 500 else 0.54
-
-    return 0.45
-
-
 def _is_rankable_and_reason(game: Game) -> tuple[bool, str | None]:
     """
     A game is rankable when it meets any one of:
@@ -576,9 +508,13 @@ def _is_rankable_and_reason(game: Game) -> tuple[bool, str | None]:
 
 
 def compute_rank_fields(game: Game) -> tuple[float, bool, str | None]:
-    """Public — called from sync cycle and main.py startup recomputation."""
-    factor     = _confidence_factor(game)
-    rank_score = round(_RANK_GLOBAL_MEAN + (game.metrix_score - _RANK_GLOBAL_MEAN) * factor, 1)
+    """Public — called from sync cycle and main.py startup recomputation.
+
+    rank_score mirrors the displayed metrix_score so the default list orders by
+    the score shown on each card. metrix_score is already reliability-adjusted in
+    calculate_metrix_score, so no second shrinkage is applied here.
+    """
+    rank_score = round(game.metrix_score, 1)
     is_rankable, reason = _is_rankable_and_reason(game)
     return rank_score, is_rankable, reason
 
