@@ -22,7 +22,7 @@ import { PlatformIcons } from './PlatformIcons'
 import { ScoreRing } from './ScoreRing'
 import { scoreColor, scoreColorRgb, sourceScoreColor } from '../utils/scoreColors'
 import { steamAppIdFromGame } from '../utils/steam'
-import { PROTON_TIER_DESCRIPTIONS, formatProtonScore, isProtonTier } from '../utils/proton'
+import { PROTON_TIER_DESCRIPTIONS, PROTON_TIER_LABELS, formatProtonScore, isProtonTier } from '../utils/proton'
 import { currentPriceSnapshots } from '../utils/prices'
 import { safeExternalUrl } from '../utils/url'
 
@@ -94,10 +94,12 @@ function ProtonBadge({
     ? `ProtonDB: ${PROTON_TIER_DESCRIPTIONS[tier]} (${scoreText}/100)`
     : `ProtonDB: ${PROTON_TIER_DESCRIPTIONS[tier]}`
   const className = `proton-badge proton-badge-${tier}${compact ? ' proton-badge-compact' : ''}`
+  const tierLabel = compact ? PROTON_TIER_LABELS[tier] : `Linux ${PROTON_TIER_LABELS[tier]}`
+  const label = scoreText ? `${tierLabel} ${scoreText}` : tierLabel
   const content = (
     <>
       <MonitorCheck size={compact ? 10 : 13} aria-hidden="true" />
-      <span>Linux</span>
+      <span>{label}</span>
     </>
   )
 

@@ -10,7 +10,7 @@ export async function loader(): Promise<GameListResponse> {
 }
 
 export const meta: MetaFunction = ({ location }) => [
-  { title: 'GameMetrix: PC Game Ratings, Linux Compatibility and Deals' },
+  { title: 'GameMetrix' },
   { name: 'description', content: 'Compare Metacritic, OpenCritic, Steam and IGDB scores with Proton compatibility, playtime and current PC game prices.' },
   { name: 'robots', content: location.search ? 'noindex,follow' : 'index,follow,max-image-preview:large' },
   { tagName: 'link', rel: 'canonical', href: 'https://gamemetrix.me/' },

@@ -177,7 +177,7 @@ interface PlatformIconsProps {
 }
 
 export function PlatformIcons({ platforms, mode = 'list', maxVisible, game }: PlatformIconsProps) {
-  const defaultMax = mode === 'compact' ? 4 : mode === 'list' ? 5 : 99
+  const defaultMax = mode === 'compact' ? 4 : 99
   const limit = maxVisible ?? defaultMax
 
   const defs = deduplicatePlatforms(platforms)
