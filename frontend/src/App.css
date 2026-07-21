@@ -123,6 +123,23 @@ html { font-size: 16px; }
   box-shadow: inset 3px 0 0 var(--gm-accent);
 }
 
+/* My Lists — each collection list gets its own accent (icon + active bar) */
+.side-rail button[data-collection="watchlist"] { --list-color: #2dd4bf; }  /* teal */
+.side-rail button[data-collection="playing"] { --list-color: #a855f7; }  /* purple */
+.side-rail button[data-collection="seen"] { --list-color: #60a5fa; }  /* blue */
+.side-rail button[data-collection="completed"] { --list-color: #4ade80; }  /* green */
+.side-rail button[data-collection="liked"] { --list-color: #fb7185; }  /* rose */
+.side-rail button[data-collection="favorites"] { --list-color: #fbbf24; }  /* gold */
+
+.side-rail button[data-collection]:hover svg,
+.side-rail button[data-collection].is-active svg {
+  color: var(--list-color);
+}
+
+.side-rail button[data-collection].is-active {
+  box-shadow: inset 3px 0 0 var(--list-color);
+}
+
 .side-rail button span {
   font-size: 12px;
   font-weight: 800;
@@ -1995,12 +2012,12 @@ a.source-name-link:hover {
 }
 
 .action-column button:hover {
-  background: rgba(var(--score-rgb, 76, 196, 88), 0.08);
-  color: var(--score-color, #b8bcc6);
+  background: rgba(var(--act-color, var(--score-rgb, 76, 196, 88)), 0.14);
+  color: rgb(var(--act-color, 184, 188, 198));
 }
 
 .action-column button.is-active {
-  color: var(--score-color, #4cc458);
+  color: rgb(var(--act-color, 76, 196, 88));
 }
 
 .action-column button:disabled {
@@ -2012,6 +2029,22 @@ a.source-name-link:hover {
   width: 22px;
   height: 22px;
 }
+
+/* Per-action accent colors — each card action button owns a distinct hover/active hue */
+.action-column button[data-action="watchlist"],
+.compact-actions button[data-action="watchlist"] { --act-color: 45, 212, 191; }  /* teal */
+.action-column button[data-action="playing"],
+.compact-actions button[data-action="playing"] { --act-color: 168, 85, 247; }  /* purple */
+.action-column button[data-action="seen"],
+.compact-actions button[data-action="seen"] { --act-color: 96, 165, 250; }  /* blue */
+.action-column button[data-action="completed"],
+.compact-actions button[data-action="completed"] { --act-color: 74, 222, 128; }  /* green */
+.action-column button[data-action="liked"],
+.compact-actions button[data-action="liked"] { --act-color: 251, 113, 133; }  /* rose */
+.action-column button[data-action="favorites"],
+.compact-actions button[data-action="favorites"] { --act-color: 251, 191, 36; }  /* gold */
+.action-column button[data-action="share"],
+.compact-actions button[data-action="share"] { --act-color: 34, 211, 238; }  /* cyan */
 
 /* ─── Status messages ─────────────────────────────────────────────── */
 .status {
@@ -2177,11 +2210,11 @@ a.source-name-link:hover {
 }
 
 .compact-actions button:hover {
-  background: rgba(var(--score-rgb, 76, 196, 88), 0.08);
-  color: var(--score-color, #b8bcc6);
+  background: rgba(var(--act-color, var(--score-rgb, 76, 196, 88)), 0.14);
+  color: rgb(var(--act-color, 184, 188, 198));
 }
 
-.compact-actions button.is-active { color: var(--score-color, #4cc458); }
+.compact-actions button.is-active { color: rgb(var(--act-color, 76, 196, 88)); }
 .compact-actions button:disabled { cursor: wait; opacity: 0.45; }
 
 .compact-actions button svg {

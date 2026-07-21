@@ -6,8 +6,12 @@ import {
   ArrowDown,
   ArrowUp,
   Compass,
+  Eye,
+  Flag,
+  Gamepad2,
   Gift,
   Grid2X2,
+  Heart,
   Home,
   Info,
   List,
@@ -16,6 +20,7 @@ import {
   Search,
   Settings,
   SlidersHorizontal,
+  Star,
   Tag,
   UserRound,
 } from 'lucide-react'
@@ -42,7 +47,9 @@ type MainPage = 'catalog' | 'watchlist' | 'playing' | 'seen' | 'completed' | 'li
 export type UtilityPage = 'alerts' | 'settings' | 'about'
 type ActivePage = MainPage | UtilityPage
 
-const ROUTABLE_MAIN_PAGES = new Set<MainPage>(['watchlist', 'suggestions'])
+const ROUTABLE_MAIN_PAGES = new Set<MainPage>([
+  'watchlist', 'playing', 'seen', 'completed', 'liked', 'favorites', 'suggestions',
+])
 
 const CURRENT_YEAR = new Date().getFullYear()
 const PAGE_SIZE = 24
@@ -303,8 +310,18 @@ function writeCatalogSnapshot(snapshot: CatalogSnapshot | null) {
 
 const mainNavItems: Array<{ id: MainPage; label: string; icon: typeof Search }> = [
   { id: 'catalog', label: 'Home', icon: Home },
-  { id: 'watchlist', label: 'Wishlist', icon: CheckCircle2 },
   { id: 'suggestions', label: 'For You', icon: Compass },
+]
+
+// One dedicated list entry per card action, each with its own accent colour
+// (mirrors the per-action hover colours on the game cards).
+const collectionNavItems: Array<{ id: CollectionKey; label: string; icon: typeof Search }> = [
+  { id: 'watchlist', label: 'Wishlist', icon: CheckCircle2 },
+  { id: 'playing', label: 'Playing', icon: Gamepad2 },
+  { id: 'seen', label: 'Played', icon: Eye },
+  { id: 'completed', label: 'Completed', icon: Flag },
+  { id: 'liked', label: 'Liked', icon: Heart },
+  { id: 'favorites', label: 'Favorites', icon: Star },
 ]
 
 const utilityNavItems: Array<{ id: UtilityPage; label: string; icon: typeof Search }> = [
@@ -997,6 +1014,29 @@ export function AppContent({ initialGames = [], initialTotal = 0, initialPage }:
                 <span>{label}</span>
               </button>
             ))}
+          </div>
+          <div>
+            <div className="rail-divider" />
+            <div className="rail-group rail-group-curated rail-group-lists">
+              <span className="rail-section-label">My Lists</span>
+              {collectionNavItems.map(({ icon: Icon, id, label }) => {
+                const count = collections[id].length
+                return (
+                  <button
+                    type="button"
+                    data-collection={id}
+                    className={activePage === id && activePreset === null ? 'is-active' : ''}
+                    key={id}
+                    title={label}
+                    onClick={() => openMainPage(id)}
+                  >
+                    <Icon size={18} aria-hidden="true" />
+                    <span>{label}</span>
+                    {count > 0 ? <small>{count}</small> : null}
+                  </button>
+                )
+              })}
+            </div>
           </div>
           {SIDEBAR_GROUPS.map((group) => (
             <div key={group.label}>

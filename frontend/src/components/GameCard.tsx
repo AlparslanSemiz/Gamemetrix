@@ -275,6 +275,7 @@ export const GameCard = memo(function GameCard({
     <>
       <button
         type="button"
+        data-action="watchlist"
         className={isWatchlisted ? 'is-active' : ''}
         title="Add to wishlist"
         onClick={() => onToggleCollection('watchlist', game.slug)}
@@ -283,6 +284,7 @@ export const GameCard = memo(function GameCard({
       </button>
       <button
         type="button"
+        data-action="playing"
         className={isPlaying ? 'is-active' : ''}
         title="Currently playing"
         onClick={() => onToggleCollection('playing', game.slug)}
@@ -291,6 +293,7 @@ export const GameCard = memo(function GameCard({
       </button>
       <button
         type="button"
+        data-action="seen"
         className={isSeen ? 'is-active' : ''}
         title="Mark as played"
         onClick={() => onToggleCollection('seen', game.slug)}
@@ -299,6 +302,7 @@ export const GameCard = memo(function GameCard({
       </button>
       <button
         type="button"
+        data-action="completed"
         className={isCompleted ? 'is-active' : ''}
         title="Mark as completed"
         onClick={() => onToggleCollection('completed', game.slug)}
@@ -307,6 +311,7 @@ export const GameCard = memo(function GameCard({
       </button>
       <button
         type="button"
+        data-action="liked"
         className={isLiked ? 'is-active' : ''}
         title="Like"
         onClick={() => onToggleCollection('liked', game.slug)}
@@ -315,13 +320,14 @@ export const GameCard = memo(function GameCard({
       </button>
       <button
         type="button"
+        data-action="favorites"
         className={isFavorite ? 'is-active' : ''}
         title="Add to favorites"
         onClick={() => onToggleCollection('favorites', game.slug)}
       >
         <Star size={20} aria-hidden="true" />
       </button>
-      <button type="button" title="Copy link" onClick={handleShare}>
+      <button type="button" data-action="share" title="Copy link" onClick={handleShare}>
         <Share2 size={20} aria-hidden="true" />
       </button>
     </>
@@ -417,6 +423,7 @@ export const GameCard = memo(function GameCard({
           {/* Primary: always visible */}
           <button
             type="button"
+            data-action="watchlist"
             className={isWatchlisted ? 'is-active' : ''}
             title="Add to wishlist"
             onClick={() => onToggleCollection('watchlist', game.slug)}
@@ -425,6 +432,7 @@ export const GameCard = memo(function GameCard({
           </button>
           <button
             type="button"
+            data-action="playing"
             className={isPlaying ? 'is-active' : ''}
             title="Currently playing"
             onClick={() => onToggleCollection('playing', game.slug)}
@@ -433,6 +441,7 @@ export const GameCard = memo(function GameCard({
           </button>
           <button
             type="button"
+            data-action="seen"
             className={isSeen ? 'is-active' : ''}
             title="Mark as played"
             onClick={() => onToggleCollection('seen', game.slug)}
@@ -442,6 +451,7 @@ export const GameCard = memo(function GameCard({
           {/* Secondary: revealed on card hover */}
           <button
             type="button"
+            data-action="completed"
             className={`compact-secondary${isCompleted ? ' is-active' : ''}`}
             title="Mark as completed"
             onClick={() => onToggleCollection('completed', game.slug)}
@@ -450,6 +460,7 @@ export const GameCard = memo(function GameCard({
           </button>
           <button
             type="button"
+            data-action="liked"
             className={`compact-secondary${isLiked ? ' is-active' : ''}`}
             title="Like"
             onClick={() => onToggleCollection('liked', game.slug)}
@@ -458,6 +469,7 @@ export const GameCard = memo(function GameCard({
           </button>
           <button
             type="button"
+            data-action="favorites"
             className={`compact-secondary${isFavorite ? ' is-active' : ''}`}
             title="Add to favorites"
             onClick={() => onToggleCollection('favorites', game.slug)}
@@ -466,6 +478,7 @@ export const GameCard = memo(function GameCard({
           </button>
           <button
             type="button"
+            data-action="share"
             className="compact-secondary"
             title="Copy link"
             onClick={handleShare}
