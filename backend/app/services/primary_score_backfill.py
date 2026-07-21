@@ -3,7 +3,7 @@
 import asyncio
 from collections import Counter
 
-from sqlalchemy import desc, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session, noload
 
 from ..config import get_settings
@@ -102,11 +102,10 @@ def primary_score_backfill_candidates(db: Session, limit: int, *, force: bool = 
             select(Game)
             .where(Game.content_type == "game")
             .options(noload(Game.price_snapshots))
-            .order_by(desc(Game.rank_score), desc(Game.metrix_score), Game.title)
         ).all()
     )
 
-    candidates: list[tuple[int, tuple[str, ...]]] = []
+    scored: list[tuple[int, tuple[str, ...], float]] = []
     for game in games:
         missing = (
             tuple(source for source in PRIMARY_SCORE_SOURCES if source in game.applicable_primary_sources)
@@ -114,10 +113,14 @@ def primary_score_backfill_candidates(db: Session, limit: int, *, force: bool = 
             else missing_primary_score_sources(game)
         )
         if missing:
-            candidates.append((game.id, tuple(missing)))
-        if len(candidates) >= limit:
-            break
-    return candidates
+            scored.append((game.id, tuple(missing), game.rank_score))
+
+    # Emptiest-first: games missing the most primary sources are filled before
+    # the near-complete ones, so a per-source daily budget reaches the catalog
+    # tail instead of being spent top-down on already-covered games. Rank breaks
+    # ties so, among equally-empty games, the more prominent ones go first.
+    scored.sort(key=lambda item: (-len(item[1]), -item[2]))
+    return [(game_id, missing) for game_id, missing, _ in scored[:limit]]
 
 
 async def primary_score_backfill_batch(

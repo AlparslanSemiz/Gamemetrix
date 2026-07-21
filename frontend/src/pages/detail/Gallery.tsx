@@ -2,20 +2,21 @@
 import { type CSSProperties, useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { Game } from '../../types/game'
+import { fallbackCoverUrl, galleryImages, looksLikePlaceholderImage } from '../../utils/coverImage'
 
 const GALLERY_INLINE_LIMIT = 10
 
 export function Gallery({ game }: { game: Game }) {
-  const images = [
-    game.cover_url || game.image_url,
-    ...game.screenshots,
-  ].filter(Boolean) as string[]
+  const images = galleryImages(game)
   const inlineImages = images.slice(0, Math.min(images.length, GALLERY_INLINE_LIMIT))
   const overflowCount = Math.max(0, images.length - GALLERY_INLINE_LIMIT)
   const overflowImage = overflowCount > 0 ? images[GALLERY_INLINE_LIMIT] : null
 
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null)
   const [naturalSize, setNaturalSize] = useState<{ width: number; height: number } | null>(null)
+  // Steam serves a grey logo capsule for apps with no key art; its URL looks
+  // ordinary, so we only learn it is a placeholder once it decodes small/square.
+  const [heroFallback, setHeroFallback] = useState<string | null>(null)
 
   useEffect(() => {
     if (lightboxIndex === null) return
@@ -110,13 +111,19 @@ export function Gallery({ game }: { game: Game }) {
         </div>
         <button type="button" className="dp-gallery-main" onClick={() => setLightboxIndex(0)}>
           <img
-            src={first}
+            src={heroFallback ?? first}
             alt={`${game.title} cover`}
             className="dp-gallery-hero"
             loading="eager"
             decoding="async"
             fetchPriority="high"
-            onError={(e) => { e.currentTarget.style.display = 'none' }}
+            onLoad={(e) => {
+              if (heroFallback) return
+              if (looksLikePlaceholderImage(e.currentTarget.naturalWidth, e.currentTarget.naturalHeight)) {
+                setHeroFallback(images.find((url) => url !== first) ?? fallbackCoverUrl(game.title))
+              }
+            }}
+            onError={() => setHeroFallback(fallbackCoverUrl(game.title))}
           />
           <div className="dp-gallery-zoom-hint">🔍</div>
         </button>

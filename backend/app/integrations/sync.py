@@ -62,6 +62,9 @@ PRIMARY_RATING_SOURCES = ("Metacritic", "OpenCritic", "IGDB", "Steam")
 CRITIC_RATING_SOURCES = {"Metacritic", "OpenCritic"}
 USER_RATING_SOURCES = {"IGDB", "Steam"}
 CACHE_TTL = timedelta(hours=24)
+# Fully-populated games only need an occasional re-verify, so they stop competing
+# with the incomplete tail for daily API budget.
+DATA_COMPLETE_TTL = timedelta(days=30)
 RAWG_CACHE_TTL = timedelta(days=30)
 _DEFAULT_BUDGET_SOURCE = object()
 
@@ -292,7 +295,8 @@ def game_needs_rating_refresh(game: Game, now: datetime | None = None) -> bool:
     refreshed_at = game.ratings_refreshed_at
     if refreshed_at.tzinfo is None:
         refreshed_at = refreshed_at.replace(tzinfo=UTC)
-    if now - refreshed_at >= CACHE_TTL:
+    ttl = DATA_COMPLETE_TTL if game.data_complete else CACHE_TTL
+    if now - refreshed_at >= ttl:
         return True
     live = {
         str(s.get("source"))
@@ -705,6 +709,8 @@ async def refresh_game_sources(
     _persist_source_records(db, game, list(fresh_scores))
     from ..services.seo import refresh_game_seo_state
     refresh_game_seo_state(game, content_updated=True)
+    from ..services.completeness import refresh_data_complete
+    refresh_data_complete(game)
 
     db.add(game)
     db.commit()

@@ -25,6 +25,8 @@ import { steamAppIdFromGame } from '../utils/steam'
 import { PROTON_TIER_DESCRIPTIONS, PROTON_TIER_LABELS, formatProtonScore, isProtonTier } from '../utils/proton'
 import { currentPriceSnapshots } from '../utils/prices'
 import { safeExternalUrl } from '../utils/url'
+import { bestCoverUrl, fallbackCoverUrl } from '../utils/coverImage'
+import { isEndlessGame } from '../utils/playtime'
 
 interface GameCardProps {
   game: Game
@@ -189,30 +191,6 @@ function hltbTooltip(game: Game): string {
   return rows.length > 0 ? `HowLongToBeat - ${rows.join(' | ')}` : 'HowLongToBeat - click to search'
 }
 
-function fallbackCoverUrl(title: string): string {
-  const words = title
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 4)
-    .join(' ')
-  const safeTitle = words || 'GameMetrix'
-  const svg = `
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900">
-      <defs>
-        <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
-          <stop offset="0" stop-color="#20242c"/>
-          <stop offset="0.55" stop-color="#15171d"/>
-          <stop offset="1" stop-color="#22352a"/>
-        </linearGradient>
-      </defs>
-      <rect width="1600" height="900" fill="url(#bg)"/>
-      <rect x="64" y="64" width="1472" height="772" rx="28" fill="none" stroke="#3c4642" stroke-width="6"/>
-      <text x="120" y="450" fill="#f1f3f7" font-family="Inter, Segoe UI, sans-serif" font-size="86" font-weight="800">${safeTitle}</text>
-      <text x="120" y="540" fill="#a78bfa" font-family="Inter, Segoe UI, sans-serif" font-size="34" font-weight="800">GAMEMETRIX</text>
-    </svg>`
-  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`
-}
-
 export const GameCard = memo(function GameCard({
   game,
   isFavorite,
@@ -229,13 +207,7 @@ export const GameCard = memo(function GameCard({
   onToggleCollection,
   onOpenDetail,
 }: GameCardProps) {
-  const ENDLESS_GENRES = new Set([
-    'Roguelike', 'Roguelite', 'Rogue-like', 'Rogue-lite', 'Roguelikes', 'Rouge-like',
-    'roguelike', 'roguelite', 'rogue-like',
-    'Massively Multiplayer', 'MMO', 'MMORPG', 'Battle Royale',
-    'Sports', 'Racing', 'Sandbox', 'Party', 'Pinball',
-  ])
-  const isEndless = game.genres.some((g) => ENDLESS_GENRES.has(g))
+  const isEndless = isEndlessGame(game)
   const hltbMinutes = game.hltb_main_story_minutes > 0
     ? game.hltb_main_story_minutes
     : game.playtime_minutes
@@ -249,7 +221,7 @@ export const GameCard = memo(function GameCard({
     : null
   const bestPrice = bestPriceSnapshot(game)
   const hltbHref = safeExternalUrl(game.hltb_url) ?? `https://howlongtobeat.com/?q=${encodeURIComponent(game.title)}`
-  const coverSrc = game.cover_url || fallbackCoverUrl(game.title)
+  const coverSrc = bestCoverUrl(game)
   const displayScore = Math.round(game.metrix_score)
   const cardStyle = {
     '--score-color': scoreColor(displayScore),

@@ -140,6 +140,7 @@ class NormalizedGame:
     game_modes: list[str] = field(default_factory=list)
     developer: str | None = None
     publisher: str | None = None
+    franchise: str | None = None
     summary: str | None = None
     cover_url: str | None = None
     # Score (0-100 scale)

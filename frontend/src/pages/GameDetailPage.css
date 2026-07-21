@@ -476,6 +476,64 @@
   color: #fff;
 }
 
+/* ── How long to beat: one value + hover/focus tooltip for the rest ── */
+.dp-hltb {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.dp-hltb-endless {
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: var(--score-color, #4cc458);
+  cursor: help;
+}
+.dp-hltb-info {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  color: #7d8390;
+  cursor: help;
+  outline: none;
+}
+.dp-hltb-info:hover,
+.dp-hltb-info:focus-visible {
+  color: #c4c9d6;
+}
+.dp-hltb-tip {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%) translateY(4px);
+  display: grid;
+  gap: 3px;
+  min-width: 118px;
+  padding: 8px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  background: #12151b;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+  z-index: 5;
+}
+.dp-hltb-info:hover .dp-hltb-tip,
+.dp-hltb-info:focus-visible .dp-hltb-tip {
+  opacity: 1;
+  visibility: visible;
+  transform: translateX(-50%) translateY(0);
+}
+.dp-hltb-tip-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+.dp-hltb-tip-row > span:first-child { color: #9ca3af; }
+.dp-hltb-tip-row > span:last-child { color: #e6e9f0; font-weight: 600; }
+
 .dp-proton-tier {
   --proton-tier-color: #a6a6a6;
   --proton-tier-rgb: 166, 166, 166;

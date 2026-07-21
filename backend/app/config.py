@@ -206,6 +206,20 @@ class Settings:
         self.SUMMARY_SHORTEN_STARTUP_LIMIT: int = int(
             os.getenv("SUMMARY_SHORTEN_STARTUP_LIMIT", "60")
         )
+        # ── Endless (∞) playtime classification ──────────────────────────────
+        # Roguelikes/MMOs/sandbox etc. have no completion time; flag them so they
+        # stop reading as "missing HLTB". Heuristic first, Groq for the unclear ones.
+        self.ENDLESS_BACKFILL_INTERVAL_MINUTES: float = float(
+            os.getenv("ENDLESS_BACKFILL_INTERVAL_MINUTES", "120")
+        )
+        self.ENDLESS_BACKFILL_BATCH_SIZE: int = int(os.getenv("ENDLESS_BACKFILL_BATCH_SIZE", "60"))
+        self.ENDLESS_USE_AI: bool = os.getenv("ENDLESS_USE_AI", "true").strip().lower() in {"1", "true", "yes", "on"}
+        # ── Non-game cleanup ─────────────────────────────────────────────────
+        # Detect asset packs / tools / demos that slipped through bulk imports.
+        # Deletion only happens when algorithm AND AI agree and this flag is on;
+        # otherwise candidates are quarantined by content_type, never removed.
+        self.NONGAME_AUTODELETE_ENABLED: bool = os.getenv("NONGAME_AUTODELETE_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
+        self.NONGAME_CLEANUP_BATCH_SIZE: int = int(os.getenv("NONGAME_CLEANUP_BATCH_SIZE", "40"))
         # ── Data fill orchestration ─────────────────────────────────────────
         self.DATA_FILL_ENABLED: bool = os.getenv("DATA_FILL_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"}
         self.DATA_FILL_TARGET_TOTAL: int = int(os.getenv("DATA_FILL_TARGET_TOTAL", "10000"))

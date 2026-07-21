@@ -1,7 +1,7 @@
 /* eslint-disable react-hooks/set-state-in-effect */
 import { type CSSProperties, useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { ExternalLink } from 'lucide-react'
+import { ExternalLink, Info } from 'lucide-react'
 import {
   getGameBySlug,
   getGameTrailer,
@@ -15,6 +15,8 @@ import { steamAppIdFromGame } from '../utils/steam'
 import { safeExternalUrl } from '../utils/url'
 import { PROTON_TIER_LABELS, formatProtonScore, isProtonTier } from '../utils/proton'
 import { currentPriceSnapshots } from '../utils/prices'
+import { bestCoverUrl } from '../utils/coverImage'
+import { isEndlessGame } from '../utils/playtime'
 import type { Game, SourceScore } from '../types/game'
 import { DlcSection } from './detail/DlcSection'
 import { Gallery } from './detail/Gallery'
@@ -247,7 +249,7 @@ export function GameDetailPage({ initialGame }: { initialGame?: Game }) {
     </div>
   )
 
-  const bgImage = game.cover_url || game.image_url || ''
+  const bgImage = bestCoverUrl(game)
 
   const scoreBySource = new Map(game.source_scores.map((s) => [s.source, s]))
 
@@ -298,12 +300,18 @@ export function GameDetailPage({ initialGame }: { initialGame?: Game }) {
   const protonText = protonLabel(game)
   const protonUrl = steamAppId ? `https://www.protondb.com/app/${steamAppId}` : 'https://www.protondb.com/'
   const hltbUrl = safeExternalUrl(game.hltb_url)
-  const hltbRows = [
-    ['HLTB main', game.hltb_main_story_minutes || (game.hltb_id ? game.playtime_minutes : 0)],
-    ['HLTB extra', game.hltb_main_extra_minutes],
-    ['HLTB 100%', game.hltb_completionist_minutes],
-    ['HLTB avg', game.hltb_all_styles_minutes],
-  ].filter(([, minutes]) => Number(minutes) > 0)
+  const endless = isEndlessGame(game)
+  const hltbPrimaryMinutes = game.hltb_main_story_minutes
+    || game.playtime_minutes
+    || game.hltb_all_styles_minutes
+    || game.hltb_completionist_minutes
+    || game.hltb_main_extra_minutes
+  const hltbDetail: [string, number][] = ([
+    ['Extra', game.hltb_main_extra_minutes],
+    ['100%', game.hltb_completionist_minutes],
+    ['Avg', game.hltb_all_styles_minutes],
+  ] as [string, number][]).filter(([, minutes]) => Number(minutes) > 0)
+  const hasHltb = hltbPrimaryMinutes > 0 || hltbDetail.length > 0
   const aboutParagraphs = buildAboutParagraphs(game)
   const priceSnapshots = currentPriceSnapshots(game.price_snapshots ?? [])
   const dataUpdatedAt = latestGameUpdate(game)
@@ -520,27 +528,44 @@ export function GameDetailPage({ initialGame }: { initialGame?: Game }) {
                     <span className="dp-info-val">{game.goty_year}</span>
                   </div>
                 )}
-                {game.playtime_minutes > 0 && hltbRows.length === 0 && (
+                {(endless || hasHltb) && (
                   <div className="dp-info-row">
-                    <span className="dp-info-key">Avg playtime</span>
-                    <span className="dp-info-val">{formatHours(game.playtime_minutes)}</span>
-                  </div>
-                )}
-                {hltbRows.map(([label, minutes], index) => (
-                  <div className="dp-info-row" key={label}>
-                    <span className="dp-info-key">{label}</span>
+                    <span className="dp-info-key">How long to beat</span>
                     <span className="dp-info-val">
-                      {index === 0 && hltbUrl ? (
-                        <a className="dp-info-link" href={hltbUrl} target="_blank" rel="noopener noreferrer">
-                          {formatHours(Number(minutes))}
-                          <ExternalLink size={11} aria-hidden="true" />
-                        </a>
+                      {endless ? (
+                        <span className="dp-hltb-endless" title="Endlessly replayable — no fixed completion time">∞</span>
                       ) : (
-                        formatHours(Number(minutes))
+                        <span className="dp-hltb">
+                          {hltbUrl ? (
+                            <a className="dp-info-link" href={hltbUrl} target="_blank" rel="noopener noreferrer">
+                              {formatHours(hltbPrimaryMinutes)}
+                              <ExternalLink size={11} aria-hidden="true" />
+                            </a>
+                          ) : (
+                            formatHours(hltbPrimaryMinutes)
+                          )}
+                          {hltbDetail.length > 0 && (
+                            <span
+                              className="dp-hltb-info"
+                              tabIndex={0}
+                              aria-label={`Other playtimes: ${hltbDetail.map(([label, minutes]) => `${label} ${formatHours(Number(minutes))}`).join(', ')}`}
+                            >
+                              <Info size={12} aria-hidden="true" />
+                              <span className="dp-hltb-tip" role="tooltip">
+                                {hltbDetail.map(([label, minutes]) => (
+                                  <span className="dp-hltb-tip-row" key={label}>
+                                    <span>{label}</span>
+                                    <span>{formatHours(Number(minutes))}</span>
+                                  </span>
+                                ))}
+                              </span>
+                            </span>
+                          )}
+                        </span>
                       )}
                     </span>
                   </div>
-                ))}
+                )}
                 {protonText && (
                   <div className="dp-info-row">
                     <span className="dp-info-key">ProtonDB</span>

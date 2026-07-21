@@ -57,6 +57,7 @@ export interface Game {
   hltb_completionist_minutes: number
   hltb_all_styles_minutes: number
   hltb_refreshed_at?: string | null
+  is_endless?: boolean
   award_count: number
   award_nominations: number
   goty_year?: number | null
@@ -65,6 +66,7 @@ export interface Game {
   system_requirements: SystemRequirement[]
   dlcs: RelatedGame[]
   similar_games: RelatedGame[]
+  franchise?: string | null
   proton_tier?: ProtonTier | null
   proton_score?: number | null
   price_snapshots?: PriceSnapshot[]

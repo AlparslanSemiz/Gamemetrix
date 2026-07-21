@@ -29,6 +29,7 @@ from .routers.seo import router as seo_router
 from .services.admin_audit import audit_admin_request
 from .services.background import (
     daily_refresh_loop,
+    endless_backfill_loop,
     hltb_backfill_loop,
     metadata_backfill_loop,
     raw_analytics_retention_loop,
@@ -53,6 +54,10 @@ def _reclassify_and_rescore(db: Session) -> None:
     all_games = db.scalars(select(Game)).all()
     parent_titles = frozenset(g.title.strip().lower() for g in all_games)
     for game in all_games:
+        # 'non-game' is set only by the AI-confirmed cleanup; re-inferring would
+        # flip it straight back to 'game' (inference is exactly what missed it).
+        if game.content_type == "non-game":
+            continue
         inferred = infer_content_type_with_parent(game, parent_titles)
         dirty = False
         if game.content_type != inferred:
@@ -123,6 +128,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     metadata_task = asyncio.create_task(metadata_backfill_loop())
     hltb_task = asyncio.create_task(hltb_backfill_loop())
     summary_task = asyncio.create_task(summary_backfill_loop())
+    endless_task = asyncio.create_task(endless_backfill_loop())
     data_fill_task = asyncio.create_task(data_fill_loop())
     notification_task = asyncio.create_task(notification_digest_loop())
     retention_task = asyncio.create_task(raw_analytics_retention_loop())
@@ -134,12 +140,13 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         metadata_task.cancel()
         hltb_task.cancel()
         summary_task.cancel()
+        endless_task.cancel()
         data_fill_task.cancel()
         notification_task.cancel()
         retention_task.cancel()
         for task in (
             startup_task, refresh_task, metadata_task, hltb_task,
-            summary_task, data_fill_task, notification_task, retention_task,
+            summary_task, endless_task, data_fill_task, notification_task, retention_task,
         ):
             try:
                 await task

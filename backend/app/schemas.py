@@ -101,6 +101,7 @@ class GameRead(BaseModel):
     hltb_completionist_minutes: int = 0
     hltb_all_styles_minutes: int = 0
     hltb_refreshed_at: datetime | None = None
+    is_endless: bool = False
     proton_tier: str | None = None
     proton_score: float | None = None
     award_count: int = 0
@@ -111,6 +112,7 @@ class GameRead(BaseModel):
     system_requirements: list[dict] = []
     dlcs: list[dict] = []
     similar_games: list[dict] = []
+    franchise: str | None = None
     price_snapshots: list[PriceSnapshotRead] = []
 
 
@@ -166,6 +168,7 @@ class GameListItem(BaseModel):
     hltb_completionist_minutes: int = 0
     hltb_all_styles_minutes: int = 0
     hltb_refreshed_at: datetime | None = None
+    is_endless: bool = False
     proton_tier: str | None = None
     proton_score: float | None = None
     award_count: int = 0
@@ -176,6 +179,7 @@ class GameListItem(BaseModel):
     system_requirements: list[dict] = []
     dlcs: list[dict] = []
     similar_games: list[dict] = []
+    franchise: str | None = None
     price_snapshots: list[PriceSnapshotRead] = []
 
 

@@ -1323,10 +1323,13 @@ html { font-size: 16px; }
   transition: transform 0.24s ease;
 }
 
+/* Keep the blurred backdrop's blur and scale steady on hover — reducing the blur
+   or upscaling it further just sharpens and magnifies the low-res cover's
+   compression artifacts. Lift brightness instead for the highlight feel. */
 .cover:hover::before,
 .game-card-compact:hover .compact-cover::before {
-  filter: blur(16px) saturate(1.18);
-  transform: scale(1.12);
+  filter: blur(18px) saturate(1.2) brightness(1.08);
+  transform: scale(1.08);
 }
 
 .cover:hover img { transform: scale(1.025); }
@@ -1679,19 +1682,18 @@ a.pf-icon-link:focus-visible {
   color: #dfe3ea;
 }
 
-.series-row-scroller {
-  display: flex;
-  gap: 10px;
-  overflow-x: auto;
-  padding-bottom: 6px;
+.series-row-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 14px 12px;
 }
 
 .series-tile {
-  flex: 0 0 148px;
   display: grid;
   gap: 4px;
   align-content: start;
   text-decoration: none;
+  min-width: 0;
 }
 
 .series-tile-cover {

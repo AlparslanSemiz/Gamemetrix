@@ -6,12 +6,14 @@ Public API:
   summary_needs_enrichment(game)   -> bool
   enrich_game_summary(game)        -> Awaitable[None]
   fix_game_year(game)              -> Awaitable[bool]
+  looks_like_promo(text)           -> bool
+  strip_promo(text)                -> str
 """
 
 import html
 import logging
 import re
-from datetime import date
+from datetime import UTC, date, datetime
 
 from ..models import Game
 from ..integrations.rate_limiter import get_rate_limiter
@@ -57,6 +59,36 @@ _WEAK_SUMMARY_MARKERS: tuple[str, ...] = (
     "Critic and player scores are available from multiple sources",
 )
 
+# Storefront / marketing language that leaks into RAWG descriptions for indie and
+# free games (e.g. "Here to download the game? Download Chapter 1 & 2…").
+_PROMO_MARKERS: tuple[str, ...] = (
+    "download the game",
+    "download chapter",
+    "\"download\"",
+    "click the",
+    "wishlist",
+    "buy now",
+    "on sale",
+    "% off",
+    "coming soon",
+    "available now on",
+    "pre-order",
+    "pre order",
+    "ダウンロード",
+    "をクリック",
+)
+
+
+def looks_like_promo(text: str) -> bool:
+    lowered = text.lower()
+    return any(marker in lowered for marker in _PROMO_MARKERS)
+
+
+def strip_promo(text: str) -> str:
+    sentences = re.split(r"(?<=[.!?])\s+", text.strip())
+    kept = [s for s in sentences if not looks_like_promo(s)]
+    return " ".join(kept).strip() if kept else text
+
 
 def clean_game_summary(value: str | None, title: str) -> str | None:
     if not value:
@@ -97,8 +129,13 @@ async def enrich_game_summary(game: Game) -> None:
         if len(raw_desc) < _RAWG_DESC_MIN_CHARS:
             raw_desc = re.sub(r"<[^>]+>", " ", metadata.get("description") or "")
             raw_desc = html.unescape(raw_desc).strip()
-        if len(raw_desc) >= _RAWG_DESC_MIN_CHARS:
-            game.summary = raw_desc[:_RAWG_DESC_MAX_CHARS].strip()
+        if len(raw_desc) < _RAWG_DESC_MIN_CHARS:
+            return
+        cleaned = clean_game_summary(strip_promo(raw_desc[:_RAWG_DESC_MAX_CHARS]), game.title)
+        if cleaned:
+            game.summary = cleaned
+            game.summary_short = None
+            game.summary_refreshed_at = datetime.now(UTC)
     except Exception:
         log.debug("Summary enrichment failed for %r", game.title, exc_info=True)
 

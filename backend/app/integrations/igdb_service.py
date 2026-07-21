@@ -23,6 +23,17 @@ IGDB_API_BASE = "https://api.igdb.com/v4"
 SMOKE_TEST_TITLE = "Portal 2"
 
 
+def _extract_franchise(raw: dict) -> str | None:
+    for key in ("franchise", "collection"):
+        node = raw.get(key)
+        if isinstance(node, dict) and node.get("name"):
+            return str(node["name"])[:200]
+    for node in raw.get("franchises") or []:
+        if isinstance(node, dict) and node.get("name"):
+            return str(node["name"])[:200]
+    return None
+
+
 class IGDBService:
     def is_configured(self) -> bool:
         return get_settings().igdb_configured()
@@ -87,9 +98,10 @@ class IGDBService:
         body = (
             "fields id,name,slug,first_release_date,rating,rating_count,"
             "aggregated_rating,aggregated_rating_count,total_rating,"
-            "total_rating_count,platforms.name,genres.name,cover.url,"
+            "total_rating_count,platforms.name,genres.name,game_modes.name,cover.url,"
             "involved_companies.company.name,involved_companies.developer,"
-            "involved_companies.publisher,summary,external_games.uid,"
+            "involved_companies.publisher,franchise.name,franchises.name,"
+            "collection.name,summary,external_games.uid,"
             "external_games.category,url; "
             f'search "{escape_igdb_search_text(title)}"; '
             "where version_parent = null; "
@@ -144,9 +156,10 @@ class IGDBService:
         body = (
             "fields id,name,slug,first_release_date,rating,rating_count,"
             "aggregated_rating,aggregated_rating_count,total_rating,"
-            "total_rating_count,platforms.name,genres.name,cover.url,"
+            "total_rating_count,platforms.name,genres.name,game_modes.name,cover.url,"
             "involved_companies.company.name,involved_companies.developer,"
-            "involved_companies.publisher,summary,url; "
+            "involved_companies.publisher,franchise.name,franchises.name,"
+            "collection.name,summary,url; "
             f"where id = {igdb_id}; "
             "limit 1;"
         )
@@ -237,6 +250,7 @@ class IGDBService:
             game_modes=game_modes,
             developer=developer,
             publisher=publisher,
+            franchise=_extract_franchise(raw),
             summary=str(raw["summary"])[:20_000] if raw.get("summary") else None,
             cover_url=cover_url,
             score=score,

@@ -1,8 +1,9 @@
-import { type CSSProperties, useEffect, useState } from 'react'
+import { type CSSProperties, type SyntheticEvent, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import type { SeriesGameItem } from '../types/game'
 import { getSeriesGames } from '../services/games'
 import { scoreColor } from '../utils/scoreColors'
+import { fallbackCoverUrl, isPlaceholderImageUrl } from '../utils/coverImage'
 
 // Self-fetching "More from this series" strip. Renders nothing while loading
 // or when the game has no franchise siblings, so it can be dropped into any
@@ -30,24 +31,31 @@ export function SeriesRow({ slug }: { slug: string }) {
   return (
     <section className="series-row" aria-label="More from this series">
       <h2 className="series-row-title">More from this series</h2>
-      <div className="series-row-scroller">
-        {games.map((item) => (
-          <Link key={item.slug} to={`/game/${item.slug}`} className="series-tile" title={item.title}>
-            <div className="series-tile-cover">
-              {item.cover_url ? <img src={item.cover_url} alt="" loading="lazy" /> : null}
-              {item.metrix_score > 0 ? (
-                <span
-                  className="series-tile-score"
-                  style={{ '--score-color': scoreColor(Math.round(item.metrix_score)) } as CSSProperties}
-                >
-                  {Math.round(item.metrix_score)}
-                </span>
-              ) : null}
-            </div>
-            <strong className="series-tile-name">{item.title}</strong>
-            <span className="series-tile-year">{item.release_year > 1970 ? item.release_year : 'TBA'}</span>
-          </Link>
-        ))}
+      <div className="series-row-grid">
+        {games.map((item) => {
+          const coverSrc = isPlaceholderImageUrl(item.cover_url) ? fallbackCoverUrl(item.title) : item.cover_url
+          const handleError = (event: SyntheticEvent<HTMLImageElement>) => {
+            const fallback = fallbackCoverUrl(item.title)
+            if (event.currentTarget.src !== fallback) event.currentTarget.src = fallback
+          }
+          return (
+            <Link key={item.slug} to={`/game/${item.slug}`} className="series-tile" title={item.title}>
+              <div className="series-tile-cover">
+                <img src={coverSrc} alt="" loading="lazy" decoding="async" onError={handleError} />
+                {item.metrix_score > 0 ? (
+                  <span
+                    className="series-tile-score"
+                    style={{ '--score-color': scoreColor(Math.round(item.metrix_score)) } as CSSProperties}
+                  >
+                    {Math.round(item.metrix_score)}
+                  </span>
+                ) : null}
+              </div>
+              <strong className="series-tile-name">{item.title}</strong>
+              <span className="series-tile-year">{item.release_year > 1970 ? item.release_year : 'TBA'}</span>
+            </Link>
+          )
+        })}
       </div>
     </section>
   )

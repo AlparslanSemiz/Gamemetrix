@@ -346,6 +346,9 @@ def _apply_normalized_game(
     if result.publisher and not game.publisher:
         game.publisher = result.publisher[:200]
         changed = True
+    if result.franchise and game.franchise != result.franchise[:200]:
+        game.franchise = result.franchise[:200]
+        changed = True
 
     if result.genres and _tupled(game.genres) in _GENERIC_GENRES:
         game.genres = result.genres[:6]

@@ -96,6 +96,7 @@ class Game(Base):
     slug: Mapped[str] = mapped_column(String(180), unique=True, nullable=False, index=True)
     summary: Mapped[str] = mapped_column(Text, nullable=False)
     summary_short: Mapped[str | None] = mapped_column(Text, nullable=True)
+    summary_refreshed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     cover_url: Mapped[str] = mapped_column(String(500), nullable=False)
     release_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
     release_year: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
@@ -107,6 +108,7 @@ class Game(Base):
     ratings_refreshed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     metadata_refreshed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     prices_refreshed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    data_complete: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, index=True)
     content_type: Mapped[str] = mapped_column(String(40), nullable=False, default="game")
     metrix_score: Mapped[float] = mapped_column(Float, nullable=False, index=True)
     rank_score: Mapped[float] = mapped_column(Float, nullable=False, default=0.0, index=True)
@@ -137,6 +139,8 @@ class Game(Base):
     hltb_completionist_minutes: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     hltb_all_styles_minutes: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     hltb_refreshed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    is_endless: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    endless_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     proton_tier: Mapped[str | None] = mapped_column(String(16), nullable=True)
     proton_score: Mapped[float | None] = mapped_column(Float, nullable=True)
     award_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
@@ -147,6 +151,7 @@ class Game(Base):
     system_requirements: Mapped[list[dict]] = mapped_column(JSON, nullable=False, default=list)
     dlcs: Mapped[list[dict]] = mapped_column(JSON, nullable=False, default=list)
     similar_games: Mapped[list[dict]] = mapped_column(JSON, nullable=False, default=list)
+    franchise: Mapped[str | None] = mapped_column(String(200), nullable=True, index=True)
 
     price_snapshots: Mapped[list["PriceSnapshot"]] = relationship("PriceSnapshot", back_populates="game", cascade="all, delete-orphan", lazy="select")
 

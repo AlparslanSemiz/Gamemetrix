@@ -19,9 +19,13 @@ from ..integrations.rawg import import_catalog_to_size
 from ..integrations.steamspy import import_steamspy_games
 from ..integrations.sync import game_needs_rating_refresh, refresh_game_sources
 from ..models import DataFillRun, ExternalId, Game, PriceSnapshot
+from .completeness import sweep_data_complete
+from .endless import backfill_endless_batch
 from .metadata_backfill import metadata_backfill_batch
+from .nongame_cleanup import nongame_cleanup_batch
 from .price_backfill import price_backfill_batch
 from .primary_score_backfill import primary_score_backfill_batch, primary_score_coverage_status
+from .summarizer import shorten_summary_batch
 
 log = logging.getLogger(__name__)
 
@@ -74,6 +78,7 @@ def data_fill_status() -> dict[str, object]:
                 Game.content_type == "game",
                 Game.hltb_id.is_(None),
                 Game.playtime_minutes <= 0,
+                Game.is_endless.is_(False),
             )
         ) or 0
         fresh_before = datetime.now(UTC) - timedelta(hours=24)
@@ -133,7 +138,11 @@ async def execute_data_fill_run(run_id: int, *, force: bool, target_total: int) 
             "primary_scores": {},
             "metadata": {},
             "hltb": {},
+            "endless": {},
+            "summaries": {},
+            "nongames": {},
             "prices": {},
+            "completeness": {},
             "external_ids": {},
         }
         try:
@@ -143,7 +152,12 @@ async def execute_data_fill_run(run_id: int, *, force: bool, target_total: int) 
             result["ratings"] = await _fill_ratings(force=force)
             result["metadata"] = await _fill_metadata()
             result["hltb"] = await _fill_hltb()
+            result["endless"] = await _fill_endless()
+            result["summaries"] = await _fill_summaries()
+            result["nongames"] = await _clean_nongames()
             result["prices"] = await _fill_prices()
+            with SessionLocal() as db:
+                result["completeness"] = sweep_data_complete(db)
             with SessionLocal() as db:
                 from .seo import refresh_catalog_seo_states
                 result["seo"] = refresh_catalog_seo_states(db)
@@ -330,6 +344,24 @@ async def _fill_hltb() -> dict[str, int]:
             target=cfg.DATA_FILL_HLTB_TARGET,
             refresh_existing=False,
         )
+
+
+async def _fill_endless() -> dict[str, int]:
+    cfg = get_settings()
+    with SessionLocal() as db:
+        return await backfill_endless_batch(db, cfg.ENDLESS_BACKFILL_BATCH_SIZE)
+
+
+async def _fill_summaries() -> dict[str, int]:
+    cfg = get_settings()
+    with SessionLocal() as db:
+        return await shorten_summary_batch(db, cfg.SUMMARY_SHORTEN_BATCH_SIZE)
+
+
+async def _clean_nongames() -> dict[str, int]:
+    cfg = get_settings()
+    with SessionLocal() as db:
+        return await nongame_cleanup_batch(db, cfg.NONGAME_CLEANUP_BATCH_SIZE)
 
 
 async def _fill_prices() -> dict[str, int | str]:

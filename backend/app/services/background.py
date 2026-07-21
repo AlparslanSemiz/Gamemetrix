@@ -10,6 +10,7 @@ Public API:
   metadata_backfill_loop()                     -> Awaitable[None]  (runs forever; cancel to stop)
   hltb_backfill_loop()                         -> Awaitable[None]  (runs forever; cancel to stop)
   summary_backfill_loop()                      -> Awaitable[None]  (runs forever; cancel to stop)
+  endless_backfill_loop()                      -> Awaitable[None]  (runs forever; cancel to stop)
   purge_expired_raw_analytics(db)              -> int
   raw_analytics_retention_loop()               -> Awaitable[None]  (runs forever; cancel to stop)
 """
@@ -28,6 +29,7 @@ from ..models import Game, VisitEvent
 from ..integrations.hltb import backfill_hltb_playtimes
 from ..integrations.sync import game_needs_rating_refresh, refresh_game_sources
 from ..integrations.steam import extract_steam_app_id, get_steam_release_dates
+from .endless import backfill_endless_batch
 from .metadata import fix_game_year
 from .metadata_backfill import metadata_backfill_batch
 from .summarizer import shorten_summary_batch
@@ -363,9 +365,36 @@ async def summary_backfill_loop() -> None:
             with SessionLocal() as db:
                 result = await shorten_summary_batch(db, cfg.SUMMARY_SHORTEN_BATCH_SIZE)
             log.info(
-                "Summary backfill: %s shortened, %s skipped",
+                "Summary backfill: %s rewritten, %s shortened, %s skipped",
+                result["rewritten"],
                 result["shortened"],
                 result["skipped"],
             )
         except Exception:
             log.exception("Periodic summary backfill failed")
+
+
+async def endless_backfill_loop() -> None:
+    """
+    Flags games with no fixed completion time (roguelikes, MMOs, sandbox, sports)
+    as endless in small periodic batches, so they show ∞ instead of reading as
+    "missing playtime". Genre/mode heuristics decide the clear cases; Groq (when
+    configured and ENDLESS_USE_AI is on) classifies the ambiguous ones.
+    """
+    cfg = get_settings()
+    await asyncio.sleep(150)
+
+    interval_seconds = max(60, int(cfg.ENDLESS_BACKFILL_INTERVAL_MINUTES * 60))
+    while True:
+        try:
+            with SessionLocal() as db:
+                result = await backfill_endless_batch(db, cfg.ENDLESS_BACKFILL_BATCH_SIZE)
+            log.info(
+                "Endless backfill: %s processed, %s endless, %s ai",
+                result["processed"],
+                result["endless"],
+                result["ai_used"],
+            )
+        except Exception:
+            log.exception("Periodic endless backfill failed")
+        await asyncio.sleep(interval_seconds)

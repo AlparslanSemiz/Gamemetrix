@@ -614,38 +614,47 @@ def find_series_games(db: Session, source: Game, limit: int = 8) -> list[Game]:
     """
     Other entries in the source game's franchise, oldest first.
 
-    One ILIKE query pulls a candidate pool (broad, cheap); the series-key check
-    then filters it precisely in-process, so "Persona 5 Royal" matches
-    "Persona 4 Golden" but not "Personal Trainer".
+    Authoritative membership comes from IGDB's franchise/collection (`Game.franchise`)
+    when present; the title-key heuristic then fills in siblings IGDB has not tagged
+    yet, so "Persona 5 Royal" matches "Persona 4 Golden" but not "Personal Trainer".
     """
+    matches: dict[int, Game] = {}
+
+    if source.franchise:
+        for game in db.scalars(
+            select(Game)
+            .options(noload(Game.price_snapshots))
+            .where(Game.content_type == "game")
+            .where(Game.id != source.id)
+            .where(Game.franchise == source.franchise)
+            .order_by(Game.rank_score.desc())
+            .limit(_SERIES_CANDIDATE_POOL)
+        ):
+            matches[game.id] = game
+
     source_key = _title_series_key(source.title)
-    if not source_key:
-        return []
+    if source_key:
+        first_token = source_key.split()[0]
+        pattern = (
+            f"%{first_token}%"
+            if len(first_token) >= _FRANCHISE_MIN_FIRST_TOKEN
+            else _series_title_pattern(source)
+        )
+        if pattern:
+            for game in db.scalars(
+                select(Game)
+                .options(noload(Game.price_snapshots))
+                .where(Game.content_type == "game")
+                .where(Game.id != source.id)
+                .where(Game.title.ilike(pattern))
+                .order_by(Game.rank_score.desc())
+                .limit(_SERIES_CANDIDATE_POOL)
+            ):
+                if game.id not in matches and _same_franchise(source_key, _title_series_key(game.title)):
+                    matches[game.id] = game
 
-    first_token = source_key.split()[0]
-    if len(first_token) >= _FRANCHISE_MIN_FIRST_TOKEN:
-        pattern = f"%{first_token}%"
-    else:
-        pattern = _series_title_pattern(source)
-    if not pattern:
-        return []
-
-    candidates = db.scalars(
-        select(Game)
-        .options(noload(Game.price_snapshots))
-        .where(Game.content_type == "game")
-        .where(Game.id != source.id)
-        .where(Game.title.ilike(pattern))
-        .order_by(Game.rank_score.desc())
-        .limit(_SERIES_CANDIDATE_POOL)
-    )
-
-    matches = [
-        game for game in candidates
-        if _same_franchise(source_key, _title_series_key(game.title))
-    ]
-    matches.sort(key=lambda g: (g.release_year or 0, g.release_date or date.min))
-    return matches[:limit]
+    ordered = sorted(matches.values(), key=lambda g: (g.release_year or 0, g.release_date or date.min))
+    return ordered[:limit]
 
 
 def _genre_match_sql() -> str:
