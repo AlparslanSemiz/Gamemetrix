@@ -79,6 +79,7 @@ a.pf-icon-link:focus-visible {
 /* detail mode: larger icon + full name */
 .platform-icons-detail .pf-icon {
   padding: 4px 8px;
+  color: #9ca3af;
   font-size: 12px;
 }
 

@@ -497,13 +497,14 @@
 .dp-attribution {
   margin: 14px 2px 0;
   font-size: 0.72rem;
-  color: #565c6b;
+  color: #9ca3af;
 }
 .dp-attribution a {
-  color: #868ea1;
-  text-decoration: none;
+  color: #c4c9d6;
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
-.dp-attribution a:hover { color: #c4c9d6; }
+.dp-attribution a:hover { color: #fff; }
 .dp-pop {
   display: inline-flex;
   align-items: center;
@@ -542,13 +543,21 @@
   position: relative;
   display: inline-flex;
   align-items: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
   color: #7d8390;
+  font: inherit;
   cursor: help;
-  outline: none;
 }
 .dp-hltb-info:hover,
 .dp-hltb-info:focus-visible {
   color: #c4c9d6;
+}
+.dp-hltb-info:focus-visible {
+  border-radius: 2px;
+  outline: 2px solid #a78bfa;
+  outline-offset: 3px;
 }
 .dp-hltb-tip {
   position: absolute;

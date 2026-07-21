@@ -583,13 +583,14 @@ export function GameDetailPage({ initialGame }: { initialGame?: Game }) {
                             formatHours(hltbPrimaryMinutes)
                           )}
                           {hltbDetail.length > 0 && (
-                            <span
+                            <button
+                              type="button"
                               className="dp-hltb-info"
-                              tabIndex={0}
-                              aria-label={`Other playtimes: ${hltbDetail.map(([label, minutes]) => `${label} ${formatHours(Number(minutes))}`).join(', ')}`}
+                              aria-label="Other playtimes"
+                              aria-describedby="game-hltb-tooltip"
                             >
                               <Info size={12} aria-hidden="true" />
-                              <span className="dp-hltb-tip" role="tooltip">
+                              <span id="game-hltb-tooltip" className="dp-hltb-tip" role="tooltip">
                                 {hltbDetail.map(([label, minutes]) => (
                                   <span className="dp-hltb-tip-row" key={label}>
                                     <span>{label}</span>
@@ -597,7 +598,7 @@ export function GameDetailPage({ initialGame }: { initialGame?: Game }) {
                                   </span>
                                 ))}
                               </span>
-                            </span>
+                            </button>
                           )}
                         </span>
                       )}
@@ -639,13 +640,14 @@ export function GameDetailPage({ initialGame }: { initialGame?: Game }) {
                         {game.popularity_label}
                       </strong>
                       {' · '}{popularity.detail}
-                      <span
+                      <button
+                        type="button"
                         className="dp-hltb-info"
-                        tabIndex={0}
-                        aria-label={`Popularity tiers: ${POPULARITY_TIERS.map((tier) => `${tier.label} ${tier.threshold}`).join(', ')}`}
+                        aria-label="Popularity tiers"
+                        aria-describedby="game-popularity-tooltip"
                       >
                         <Info size={12} aria-hidden="true" />
-                        <span className="dp-hltb-tip" role="tooltip">
+                        <span id="game-popularity-tooltip" className="dp-hltb-tip" role="tooltip">
                           {POPULARITY_TIERS.map((tier) => (
                             <span className="dp-hltb-tip-row" key={tier.label}>
                               <span style={{ color: tier.color }}>{tier.label}</span>
@@ -653,7 +655,7 @@ export function GameDetailPage({ initialGame }: { initialGame?: Game }) {
                             </span>
                           ))}
                         </span>
-                      </span>
+                      </button>
                     </span>
                   </div>
                 )}

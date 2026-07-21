@@ -16,14 +16,15 @@ test('crawler receives complete game HTML without executing JavaScript', async (
   expect(html).toContain('rel="canonical"')
   expect(html).toContain('name="description"')
   expect(html).toContain('application/ld+json')
-  expect(html).toContain('Linux / Steam Deck compatibility')
+  expect(html).toContain('ProtonDB')
+  expect(html).toContain('Gold')
 
   expect((await request.get('/game/definitely-missing')).status()).toBe(404)
   expect((await request.get('/sitemap.xml')).headers()['content-type']).toContain('application/xml')
   expect((await request.get('/robots.txt')).headers()['content-type']).toContain('text/plain')
 })
 
-test('desktop and mobile navigation keep account and admin separate', async ({ page }) => {
+test('desktop and mobile navigation expose account controls without admin', async ({ page }) => {
   const hydrationErrors = []
   page.on('console', (message) => {
     if (message.type() === 'error' && /hydration/i.test(message.text())) hydrationErrors.push(message.text())
@@ -31,7 +32,7 @@ test('desktop and mobile navigation keep account and admin separate', async ({ p
   await gotoHydrated(page, '/')
   await expect(page.getByRole('heading', { name: 'Game rankings' })).toBeVisible()
   await expect(page.getByTitle('Login')).toBeVisible()
-  await expect(page.getByTitle('Admin')).toBeVisible()
+  await expect(page.getByTitle('Admin')).toHaveCount(0)
   expect(hydrationErrors).toEqual([])
   await page.screenshot({ path: 'test-results/home-desktop.png', fullPage: true })
 
@@ -42,7 +43,7 @@ test('desktop and mobile navigation keep account and admin separate', async ({ p
   await page.getByRole('button', { name: 'More' }).click()
   const menu = page.locator('.mobile-more-menu')
   await expect(menu.getByText('Login')).toBeVisible()
-  await expect(menu.getByText('Admin')).toBeVisible()
+  await expect(menu.getByText('Admin')).toHaveCount(0)
   const box = await menu.boundingBox()
   expect(box).not.toBeNull()
   expect((box?.x ?? -1) + (box?.width ?? 1000)).toBeLessThanOrEqual(390)
@@ -56,9 +57,9 @@ test('utility panels have dedicated noindex routes and return to catalog navigat
   await expect(page.getByRole('heading', { name: 'Settings' })).toBeVisible()
   await expect(page.locator('meta[name="robots"]')).toHaveAttribute('content', 'noindex,follow')
   await expect(page.getByTitle('Login')).toBeVisible()
-  await expect(page.getByTitle('Admin')).toBeVisible()
+  await expect(page.getByTitle('Admin')).toHaveCount(0)
 
-  await page.getByTitle('Search').click()
+  await page.getByTitle('Home').click()
   await expect(page).toHaveURL('http://127.0.0.1:4173/')
   await expect(page.getByRole('heading', { name: 'Game rankings' })).toBeVisible()
 
@@ -93,7 +94,7 @@ test('login merges valid guest collections and changes Login to Account', async 
 
   await gotoHydrated(page, '/')
   await expect(page.getByTitle('Account')).toBeVisible()
-  await expect(page.getByTitle('Admin')).toBeVisible()
+  await expect(page.getByTitle('Admin')).toHaveCount(0)
   const storedValues = await page.evaluate(() => [
     ...Object.values(localStorage),
     ...Object.values(sessionStorage),
@@ -101,6 +102,14 @@ test('login merges valid guest collections and changes Login to Account', async 
   expect(storedValues.join(' ')).not.toContain('test-session')
   expect(storedValues.join(' ')).not.toContain('test-csrf')
   expect(hydrationErrors).toEqual([])
+})
+
+test('admin login remains directly accessible and excluded from indexing', async ({ page }) => {
+  await page.goto('/admin')
+  await expect(page.getByRole('heading', { name: 'GameMetrix Admin' })).toBeVisible()
+  await expect(page.getByLabel('Username')).toBeVisible()
+  await expect(page.getByLabel('Password')).toBeVisible()
+  await expect(page.locator('meta[name="robots"]')).toHaveAttribute('content', 'noindex,nofollow,noarchive')
 })
 
 test('one-time account tokens leave the address bar after hydration', async ({ page }) => {
