@@ -20,12 +20,12 @@ from ..models import Game
 log = logging.getLogger(__name__)
 
 _ANTHROPIC_MODEL = "claude-haiku-4-5-20251001"
-_MAX_SHORT_CHARS = 320
+_MAX_SHORT_CHARS = 450
 _MIN_LONG_CHARS = 200   # only shorten if original is longer than this
 _SYSTEM_PROMPT = (
     "You are a game description writer. "
-    "Write a concise 2-sentence description of the given game. "
-    "Capture the genre, core gameplay style, and tone. "
+    "Write a short paragraph of 3-4 sentences describing the given game. "
+    "Capture the genre, core gameplay style, setting, and tone. "
     "Do NOT mention review scores, awards, prices, or platform names. "
     f"Stay strictly under {_MAX_SHORT_CHARS} characters. "
     "Write in English. Return only the description, no extra text."
@@ -79,7 +79,7 @@ async def shorten_summary(title: str, summary: str) -> str | None:
         client = AsyncAnthropic(api_key=cfg.ANTHROPIC_API_KEY)
         message = await client.messages.create(
             model=_ANTHROPIC_MODEL,
-            max_tokens=120,
+            max_tokens=200,
             system=_SYSTEM_PROMPT,
             messages=[{"role": "user", "content": f"Game: {title}\n\nDescription: {summary}"}],
         )

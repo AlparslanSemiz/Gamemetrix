@@ -15,7 +15,6 @@ import {
   MoreHorizontal,
   Search,
   Settings,
-  Shield,
   SlidersHorizontal,
   Tag,
   UserRound,
@@ -225,7 +224,7 @@ function findGameCardElement(slug: string): HTMLElement | null {
 // endpoint then echoes back — those blobs are useless to the catalog cards but
 // can push a multi-page snapshot past the sessionStorage quota, silently
 // killing scroll restoration. Strip them before saving.
-const SNAPSHOT_SUMMARY_MAX_CHARS = 420
+const SNAPSHOT_SUMMARY_MAX_CHARS = 460
 
 function compactText(value: string, maxLength: number): string {
   return value.length > maxLength ? `${value.slice(0, maxLength).trimEnd()}...` : value
@@ -292,8 +291,8 @@ const mainNavItems: Array<{ id: MainPage; label: string; icon: typeof Search }> 
 ]
 
 const utilityNavItems: Array<{ id: UtilityPage; label: string; icon: typeof Search }> = [
-  { id: 'alerts', label: 'Alerts', icon: Bell },
   { id: 'settings', label: 'Settings', icon: Settings },
+  { id: 'alerts', label: 'Alerts', icon: Bell },
   { id: 'about', label: 'About', icon: Info },
 ]
 
@@ -1017,10 +1016,6 @@ export function AppContent({ initialGames = [], initialTotal = 0, initialPage }:
               <span>{label}</span>
             </button>
           ))}
-          <button type="button" title="Admin" onClick={() => navigate('/admin')}>
-            <Shield size={22} aria-hidden="true" />
-            <span>Admin</span>
-          </button>
         </div>
       </aside>
 
@@ -1050,7 +1045,6 @@ export function AppContent({ initialGames = [], initialTotal = 0, initialPage }:
             </button>
             <button type="button" onClick={() => openUtilityPage('settings')}><Settings size={18} />Settings</button>
             <button type="button" onClick={() => openUtilityPage('about')}><Info size={18} />About</button>
-            <button type="button" onClick={() => navigate('/admin')}><Shield size={18} />Admin</button>
           </div>
         ) : null}
       </nav>
