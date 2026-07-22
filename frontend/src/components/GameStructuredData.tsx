@@ -72,8 +72,7 @@ export function GameStructuredData({ game }: { game: Game }) {
         '@id': `${canonical}#breadcrumb`,
         itemListElement: [
           { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://gamemetrix.me/' },
-          { '@type': 'ListItem', position: 2, name: 'Games', item: 'https://gamemetrix.me/' },
-          { '@type': 'ListItem', position: 3, name: game.title, item: canonical },
+          { '@type': 'ListItem', position: 2, name: game.title, item: canonical },
         ],
       },
     ],

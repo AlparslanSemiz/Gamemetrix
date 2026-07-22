@@ -1603,34 +1603,6 @@ a.proton-badge:hover {
 .proton-badge-bronze { --proton-color: #cd7f32; --proton-rgb: 205, 127, 50; }
 .proton-badge-borked { --proton-color: #f87171; --proton-rgb: 248, 113, 113; }
 
-.deal-badge {
-  display: inline-flex;
-  width: fit-content;
-  align-items: center;
-  gap: 6px;
-  border: 1px solid rgba(87, 212, 109, 0.46);
-  border-radius: 20px;
-  background: rgba(87, 212, 109, 0.11);
-  color: #8ee89d;
-  font-size: 13px;
-  font-weight: 850;
-  line-height: 1.5;
-  padding: 4px 10px;
-  white-space: nowrap;
-}
-
-.deal-badge small {
-  color: #fde68a;
-  font-size: 11px;
-  font-weight: 900;
-}
-
-.deal-badge-free {
-  border-color: rgba(87, 212, 109, 0.58);
-  background: rgba(87, 212, 109, 0.15);
-  color: #b6f2c0;
-}
-
 /* Platform icon styles are colocated with the component: components/PlatformIcons.css */
 /* "More from this series" strip styles are colocated: components/SeriesRow.css */
 
@@ -2249,15 +2221,6 @@ a.source-name-link:hover {
   color: #6a6e78;
   font-size: 11px;
   font-weight: 600;
-}
-
-.deal-badge-compact {
-  gap: 4px;
-  border-radius: 999px;
-  font-size: 10.5px;
-  font-weight: 800;
-  line-height: 1.2;
-  padding: 2px 6px;
 }
 
 .proton-badge-compact {

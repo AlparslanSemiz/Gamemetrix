@@ -10,12 +10,11 @@ import {
   Play,
   Share2,
   Star,
-  Tag,
   Trophy,
 } from 'lucide-react'
 import { memo, type CSSProperties, type SyntheticEvent } from 'react'
 import { Link } from 'react-router-dom'
-import type { Game, PriceSnapshot, ProtonTier, SourceScore } from '../types/game'
+import type { Game, ProtonTier, SourceScore } from '../types/game'
 import type { CollectionKey } from '../state/collections'
 import { trackProductEvent } from '../services/analytics'
 import { PlatformIcons } from './PlatformIcons'
@@ -23,7 +22,6 @@ import { ScoreRing } from './ScoreRing'
 import { scoreColor, scoreColorRgb, sourceScoreColor } from '../utils/scoreColors'
 import { steamAppIdFromGame } from '../utils/steam'
 import { PROTON_TIER_DESCRIPTIONS, PROTON_TIER_LABELS, formatProtonScore, isProtonTier } from '../utils/proton'
-import { currentPriceSnapshots } from '../utils/prices'
 import { safeExternalUrl } from '../utils/url'
 import { bestCoverUrl, fallbackCoverUrl } from '../utils/coverImage'
 import { isEndlessGame } from '../utils/playtime'
@@ -120,43 +118,6 @@ function ProtonBadge({
   )
 }
 
-function priceAmount(price: PriceSnapshot): number | null {
-  if (price.is_free) return 0
-  return price.sale_price ?? price.list_price ?? null
-}
-
-function bestPriceSnapshot(game: Game): PriceSnapshot | null {
-  const priced = currentPriceSnapshots(game.price_snapshots ?? [])
-    .filter((price) => priceAmount(price) !== null)
-    .sort((a, b) => (priceAmount(a) ?? Infinity) - (priceAmount(b) ?? Infinity))
-  return priced[0] ?? null
-}
-
-function priceLabel(price: PriceSnapshot): string {
-  const amount = priceAmount(price)
-  if (amount === 0) return 'Free'
-  if (amount === null) return 'Deal'
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: price.currency || 'USD',
-    maximumFractionDigits: amount >= 10 ? 0 : 2,
-  }).format(amount)
-}
-
-function DealBadge({ price, compact = false }: { price: PriceSnapshot; compact?: boolean }) {
-  const discount = price.discount_percent && price.discount_percent > 0 ? `-${price.discount_percent}%` : null
-  return (
-    <span
-      className={`deal-badge${price.is_free ? ' deal-badge-free' : ''}${compact ? ' deal-badge-compact' : ''}`}
-      title={`${price.store}: ${priceLabel(price)}${discount ? ` (${discount})` : ''}`}
-    >
-      <Tag size={compact ? 10 : 13} aria-hidden="true" />
-      <span>{priceLabel(price)}</span>
-      {discount && !compact ? <small>{discount}</small> : null}
-    </span>
-  )
-}
-
 function playtimeColor(minutes: number): string {
   const hours = minutes / 60
   let score: number
@@ -219,7 +180,6 @@ export const GameCard = memo(function GameCard({
   const protonTier = game.proton_tier && isProtonTier(game.proton_tier)
     ? game.proton_tier
     : null
-  const bestPrice = bestPriceSnapshot(game)
   const hltbHref = safeExternalUrl(game.hltb_url) ?? `https://howlongtobeat.com/?q=${encodeURIComponent(game.title)}`
   const coverSrc = bestCoverUrl(game)
   const displayScore = Math.round(game.metrix_score)
@@ -369,9 +329,8 @@ export const GameCard = memo(function GameCard({
           </h2>
           <p className="compact-meta">{game.release_year} · {game.genres.slice(0, 2).join(' · ')}</p>
           {game.developer ? <p className="compact-dev">{game.developer}</p> : null}
-          {(playtimeFmt || protonTier || bestPrice) ? (
+          {(playtimeFmt || protonTier) ? (
             <div className="compact-meta-badges">
-              {bestPrice ? <DealBadge price={bestPrice} compact /> : null}
               {playtimeFmt ? (
                 <span className="compact-hltb">
                   <Clock3 size={10} aria-hidden="true" /> {playtimeFmt}
@@ -569,9 +528,8 @@ export const GameCard = memo(function GameCard({
         ) : null}
 
         <div className="meta-lines">
-          {(playtimeFmt || protonTier || bestPrice) ? (
+          {(playtimeFmt || protonTier) ? (
             <div className="meta-badge-row">
-              {bestPrice ? <DealBadge price={bestPrice} /> : null}
               {playtimeFmt ? (
                 isEndless ? (
                   <span className="playtime-badge playtime-badge-endless" title="Endlessly replayable — no fixed completion time">

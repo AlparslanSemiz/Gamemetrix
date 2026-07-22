@@ -350,13 +350,15 @@ export function GameDetailPage({ initialGame }: { initialGame?: Game }) {
       <div className="dp-inner">
         {/* Breadcrumb */}
         {/* Real anchors, not buttons: a crawler follows these and they pass link
-            equity, which the previous onClick-only version did neither of. */}
-        <nav className="dp-breadcrumb">
-          <Link to="/" className="dp-bc-item dp-bc-link" onClick={goBackToCatalog}>Home</Link>
+            equity, which the previous onClick-only version did neither of.
+            Two levels only — "/" is the games catalog, so a separate "Games"
+            crumb was the same URL twice. The catalog snapshot is restored from
+            sessionStorage on mount, so a plain push keeps filters and scroll;
+            no history-back handler is needed here. */}
+        <nav className="dp-breadcrumb" aria-label="Breadcrumb">
+          <Link to="/" className="dp-bc-item dp-bc-link">Home</Link>
           <span className="dp-bc-sep">/</span>
-          <Link to="/" className="dp-bc-item dp-bc-link" onClick={goBackToCatalog}>Games</Link>
-          <span className="dp-bc-sep">/</span>
-          <span className="dp-bc-item dp-bc-current">{game.title}</span>
+          <span className="dp-bc-item dp-bc-current" aria-current="page">{game.title}</span>
         </nav>
 
         {/* Main two-column grid */}
