@@ -1,10 +1,26 @@
 /* eslint-disable react-hooks/set-state-in-effect */
-import { type CSSProperties, useEffect, useState } from 'react'
+import { type CSSProperties, type SyntheticEvent, useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { Game } from '../../types/game'
-import { fallbackCoverUrl, galleryImages, looksLikePlaceholderImage } from '../../utils/coverImage'
+import { fallbackCoverUrl, galleryImages, looksLikePlaceholderImage, thumbnailUrl } from '../../utils/coverImage'
 
 const GALLERY_INLINE_LIMIT = 14
+// Screenshots above the fold are worth the extra connections; the rest wait for
+// the scroll so a 14-image gallery does not compete with the hero.
+const GALLERY_EAGER_LIMIT = 4
+
+// A CDN can miss the scaled variant even when the original exists, so retry with
+// the full-size URL once before giving up on the frame.
+function thumbErrorHandler(fullUrl: string) {
+  return (event: SyntheticEvent<HTMLImageElement>) => {
+    const img = event.currentTarget
+    if (img.src !== fullUrl) {
+      img.src = fullUrl
+      return
+    }
+    img.parentElement?.style.setProperty('display', 'none')
+  }
+}
 
 export function Gallery({ game }: { game: Game }) {
   const images = galleryImages(game)
@@ -37,6 +53,16 @@ export function Gallery({ game }: { game: Game }) {
     const img = new Image()
     img.onload = () => setNaturalSize({ width: img.naturalWidth, height: img.naturalHeight })
     img.src = images[lightboxIndex]
+  }, [images, lightboxIndex])
+
+  // Warm the neighbours so arrow-key browsing does not blank out between frames.
+  useEffect(() => {
+    if (lightboxIndex === null || images.length < 2) return
+    const count = images.length
+    for (const offset of [1, -1]) {
+      const neighbour = new Image()
+      neighbour.src = images[(lightboxIndex + offset + count) % count]
+    }
   }, [images, lightboxIndex])
 
   if (images.length === 0) return null
@@ -92,7 +118,7 @@ export function Gallery({ game }: { game: Game }) {
           <span>Media</span>
           <div className="dp-gallery-count-wrap">
             <button type="button" className="dp-gallery-count" onClick={() => setLightboxIndex(0)}>
-              {images.length} images
+              {images.length} {images.length === 1 ? 'image' : 'images'}
             </button>
             <div className="dp-gallery-strip" aria-label={`${game.title} media thumbnails`}>
               {images.map((url, index) => (
@@ -103,7 +129,14 @@ export function Gallery({ game }: { game: Game }) {
                   onClick={() => setLightboxIndex(index)}
                   aria-label={`Open image ${index + 1}`}
                 >
-                  <img src={url} alt="" loading="lazy" decoding="async" />
+                  {/* Same thumbnail URL as the grid below, so the strip costs no extra bytes. */}
+                  <img
+                    src={thumbnailUrl(url)}
+                    alt=""
+                    loading="lazy"
+                    decoding="async"
+                    onError={thumbErrorHandler(url)}
+                  />
                 </button>
               ))}
             </div>
@@ -132,11 +165,11 @@ export function Gallery({ game }: { game: Game }) {
             {rest.map((url, i) => (
               <button type="button" key={url} className="dp-gallery-img" onClick={() => setLightboxIndex(i + 1)}>
                 <img
-                  src={url}
+                  src={thumbnailUrl(url)}
                   alt={`${game.title} screenshot ${i + 2}`}
-                  loading="lazy"
+                  loading={i + 1 < GALLERY_EAGER_LIMIT ? 'eager' : 'lazy'}
                   decoding="async"
-                  onError={(e) => { e.currentTarget.parentElement!.style.display = 'none' }}
+                  onError={thumbErrorHandler(url)}
                 />
               </button>
             ))}
@@ -148,11 +181,11 @@ export function Gallery({ game }: { game: Game }) {
                 aria-label={`Open ${overflowCount} more images`}
               >
                 <img
-                  src={overflowImage}
+                  src={thumbnailUrl(overflowImage)}
                   alt={`${game.title} screenshot ${GALLERY_INLINE_LIMIT + 1}`}
                   loading="lazy"
                   decoding="async"
-                  onError={(e) => { e.currentTarget.parentElement!.style.display = 'none' }}
+                  onError={thumbErrorHandler(overflowImage)}
                 />
                 <span>+{overflowCount}</span>
               </button>

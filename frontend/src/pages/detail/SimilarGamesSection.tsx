@@ -1,5 +1,5 @@
 import type { CSSProperties } from 'react'
-import { Link } from 'react-router-dom'
+import { Link } from 'react-router'
 import type { Game } from '../../types/game'
 import { scoreColor } from '../../utils/scoreColors'
 import { safeExternalUrl } from '../../utils/url'
@@ -48,6 +48,7 @@ export function SimilarGamesSection({
           <Link
             key={item.slug}
             to={`/game/${item.slug}`}
+            prefetch="intent"
             className="dp-similar-card"
           >
             <div className="dp-similar-cover">

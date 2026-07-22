@@ -108,6 +108,21 @@
   color: #9ca3af;
   font-weight: 500;
 }
+.dp-header-meta .platform-icons { gap: 6px; }
+.dp-header-meta .pf-icon {
+  color: #aab2c1;
+  border-color: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.035);
+}
+.dp-header-playtime {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #9ca3af;
+}
+.dp-header-playtime svg { color: #6b7280; }
 
 .dp-title {
   font-size: clamp(2rem, 5vw, 3.2rem);
@@ -131,26 +146,17 @@
 .dp-subtitle-link:hover { color: var(--score-color, #cbd3e1); }
 .dp-subtitle-link svg { vertical-align: -1px; }
 
-.dp-platform-strip {
-  margin-bottom: 1.25rem;
-}
-
-.dp-platform-strip .platform-icons {
-  gap: 6px;
-}
-
-.dp-platform-strip .pf-icon {
-  color: #aab2c1;
-  border-color: rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.035);
-}
-
 /* ─── Action buttons ─────────────────────────────────────────────────────── */
 
+/* Positioned so the open collection menu stacks above the score block, which
+   creates its own stacking context via backdrop-filter. */
 .dp-actions {
+  position: relative;
+  z-index: 20;
   display: flex;
-  gap: 10px;
+  gap: 8px;
   flex-wrap: wrap;
+  align-items: stretch;
   margin-bottom: 1.75rem;
 }
 .dp-btn {
@@ -158,7 +164,7 @@
   align-items: center;
   justify-content: center;
   gap: 7px;
-  padding: 8px 20px;
+  padding: 9px 16px;
   border-radius: 8px;
   font-size: 0.82rem;
   font-weight: 600;
@@ -170,9 +176,9 @@
   transition: background 0.15s, border-color 0.15s, color 0.15s;
 }
 .dp-btn:hover { background: rgba(255, 255, 255, 0.12); color: #fff; }
-.dp-btn-link {
-  color: #d1d5db;
-}
+/* The two headline collection actions flex to share the row width. */
+.dp-btn-wide { flex: 1 1 160px; }
+.dp-btn-icon { padding: 9px 11px; flex: 0 0 auto; }
 .dp-btn-primary {
   background: #252b36;
   border-color: var(--score-color, #3b82f6);
@@ -181,22 +187,85 @@
 .dp-btn-primary:hover {
   background: #303744;
 }
-.dp-btn-loading { opacity: 0.6; cursor: not-allowed; }
+/* Active collection state: green tint, matching the card toggle language. */
+.dp-btn.is-active {
+  background: rgba(76, 196, 88, 0.14);
+  border-color: rgba(76, 196, 88, 0.55);
+  color: #7ee08a;
+}
+.dp-btn.is-active:hover { background: rgba(76, 196, 88, 0.2); color: #a6efb0; }
+
+/* ─── Save-to-collection menu ────────────────────────────────────────────── */
+
+.dp-menu-wrap {
+  position: relative;
+  display: inline-flex;
+}
+.dp-menu-count {
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: rgba(76, 196, 88, 0.25);
+  color: #a6efb0;
+  font-size: 0.66rem;
+  font-weight: 800;
+  display: inline-grid;
+  place-items: center;
+}
+.dp-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 30;
+  min-width: 210px;
+  display: grid;
+  gap: 2px;
+  padding: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  background: rgba(14, 17, 23, 0.98);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+}
+.dp-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: #c4ccdb;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.12s, color 0.12s;
+}
+.dp-menu-item > span { flex: 1; }
+.dp-menu-item:hover { background: rgba(255, 255, 255, 0.06); color: #fff; }
+.dp-menu-item.is-active { color: #7ee08a; }
+.dp-menu-item.is-active svg:last-child { color: #7ee08a; }
 
 /* ─── Score block ────────────────────────────────────────────────────────── */
 
+/* Ring row on top, the five stats as one full-width strip beneath — five cells
+   squeezed into a half-width column clipped labels like "Phenomenon". */
 .dp-score-block {
   display: grid;
-  grid-template-columns: minmax(260px, auto) minmax(260px, 1fr);
+  grid-template-columns: 1fr;
   align-items: center;
-  gap: 1.25rem;
+  gap: 1rem;
   background:
     linear-gradient(135deg, rgba(255, 255, 255, 0.075), rgba(255, 255, 255, 0.025)),
     rgba(7, 10, 16, 0.62);
   border: 1px solid rgba(255, 255, 255, 0.10);
   border-radius: 14px;
   padding: 1.1rem 1.25rem;
-  margin-bottom: 0.85rem;
+  margin-bottom: 1.75rem;
   box-shadow: 0 18px 50px rgba(0, 0, 0, 0.28);
   -webkit-backdrop-filter: blur(18px);
   backdrop-filter: blur(18px);
@@ -261,7 +330,7 @@
 
 .dp-score-stats {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 8px;
 }
 .dp-score-stats div {
@@ -287,45 +356,15 @@
   line-height: 1;
   white-space: nowrap;
 }
-
-.dp-signal-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
-  margin-bottom: 1.75rem;
+.dp-stat-muted strong { color: #6b7280; }
+.dp-stat-pop {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  font-size: 0.85rem;
+  color: var(--pop-color, #eef2ff);
 }
-.dp-signal-card {
-  display: grid;
-  gap: 5px;
-  min-height: 94px;
-  align-content: start;
-  border: 1px solid rgba(255, 255, 255, 0.075);
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.035);
-  padding: 12px;
-}
-.dp-signal-card span {
-  color: #9ca3af;
-  font-size: 0.66rem;
-  font-weight: 900;
-  text-transform: uppercase;
-  letter-spacing: 0;
-}
-.dp-signal-card strong {
-  color: #e5ebf7;
-  font-size: 0.92rem;
-}
-.dp-signal-card small {
-  color: #808b9f;
-  font-size: 0.72rem;
-  line-height: 1.45;
-}
-.dp-signal-strong strong { color: #06b6d4; }
-.dp-signal-solid strong { color: #4cc458; }
-.dp-signal-limited strong,
-.dp-signal-low strong { color: #d0a042; }
-.dp-signal-catalog strong,
-.dp-signal-muted strong { color: #6b7280; }
 
 /* ─── Section ────────────────────────────────────────────────────────────── */
 
@@ -468,22 +507,25 @@
 
 /* ─── Info table ─────────────────────────────────────────────────────────── */
 
+/* Two key/value pairs per row on wide screens, halving the vertical run. */
 .dp-info-table {
-  display: flex;
-  flex-direction: column;
-  gap: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 32px;
   border-top: 1px solid rgba(255, 255, 255, 0.14);
 }
 .dp-info-row {
   display: grid;
-  grid-template-columns: 170px 1fr;
-  gap: 18px;
+  grid-template-columns: 130px 1fr;
+  gap: 14px;
   padding: 13px 2px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.11);
   font-size: 0.95rem;
   align-items: center;
 }
-.dp-info-row:last-child { border-bottom: none; }
+/* Clear the bottom border only on the true last row of each column. */
+.dp-info-row:last-child,
+.dp-info-row:nth-last-child(2):nth-child(odd) { border-bottom: none; }
 .dp-info-key {
   color: #d6dbe8;
   font-weight: 800;
@@ -505,16 +547,6 @@
   text-underline-offset: 2px;
 }
 .dp-attribution a:hover { color: #fff; }
-.dp-pop {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-.dp-pop-label {
-  color: var(--pop-color, #c4c9d6);
-  font-weight: 800;
-}
 .dp-info-link {
   display: inline-flex;
   align-items: center;
@@ -865,7 +897,6 @@
 
 /* ─── DLCs / similar games ───────────────────────────────────────────────── */
 
-.dp-related-section,
 .dp-bottom-related {
   display: grid;
   gap: 1.35rem;
@@ -1068,66 +1099,16 @@
   font-weight: 750;
 }
 
-.dp-related-block {
+/* ─── RIGHT column — gallery + where to buy ──────────────────────────────── */
+
+.dp-right {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
   min-width: 0;
 }
 
-.dp-related-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: 10px;
-}
-
-.dp-related-card {
-  display: grid;
-  grid-template-rows: auto 1fr;
-  min-height: 132px;
-  overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.035);
-  color: #c9d0dd;
-  text-decoration: none;
-  transition: border-color 0.14s, background 0.14s, color 0.14s, text-shadow 0.14s;
-}
-
-.dp-related-card:hover {
-  color: #eef4ff;
-  border-color: rgba(var(--score-rgb, 147, 197, 253), 0.28);
-  background: rgba(var(--score-rgb, 59, 130, 246), 0.07);
-  text-shadow: 0.3px 0 0 currentColor, -0.3px 0 0 currentColor;
-}
-
-.dp-related-card img {
-  width: 100%;
-  aspect-ratio: 16 / 9;
-  object-fit: cover;
-  display: block;
-  background: #111827;
-}
-
-.dp-related-info {
-  display: grid;
-  gap: 4px;
-  padding: 9px;
-}
-
-.dp-related-info strong {
-  font-size: 0.78rem;
-  line-height: 1.25;
-}
-
-.dp-related-info span {
-  color: #6f7a8e;
-  font-size: 0.7rem;
-}
-
-/* ─── RIGHT column — gallery ─────────────────────────────────────────────── */
-
-.dp-right {
-  position: sticky;
-  top: 1.5rem;
-}
+.dp-side-panel { min-width: 0; }
 
 .dp-gallery-panel {
   border: 1px solid rgba(255, 255, 255, 0.09);
@@ -1212,7 +1193,6 @@
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 8px;
-  background: #111827;
   cursor: zoom-in;
   padding: 0;
 }
@@ -1229,6 +1209,30 @@
   border-color: rgba(var(--score-rgb, 147, 197, 253), 0.48);
 }
 
+/* A moving sheen so an unloaded frame reads as "loading", not "broken". The
+   decoded <img> paints opaque on top of it. */
+@keyframes dp-skeleton {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+.dp-gallery-main,
+.dp-gallery-img,
+.dp-gallery-strip-item {
+  background-image: linear-gradient(
+    100deg,
+    #141821 30%,
+    #1c2230 50%,
+    #141821 70%
+  );
+  background-size: 200% 100%;
+  animation: dp-skeleton 1.4s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .dp-gallery-main,
+  .dp-gallery-img,
+  .dp-gallery-strip-item { animation: none; }
+}
+
 /* Gallery: first image large, rest in a 2-col grid — all clickable */
 .dp-gallery {
   display: flex;
@@ -1241,7 +1245,6 @@
   position: relative;
   border-radius: 10px;
   overflow: hidden;
-  background: #111827;
   aspect-ratio: 16 / 9;
   cursor: zoom-in;
   border: 0;
@@ -1284,7 +1287,6 @@
   aspect-ratio: 16 / 9;
   border-radius: 7px;
   overflow: hidden;
-  background: #111827;
   cursor: zoom-in;
   border: 0;
   color: inherit;
@@ -1432,18 +1434,15 @@
   .dp-grid {
     grid-template-columns: 1fr;
   }
-  .dp-right {
-    position: static;
-    order: -1;
-  }
   .dp-inner { padding: 1rem 1rem 3rem; }
-  .dp-score-block,
-  .dp-signal-grid {
-    grid-template-columns: 1fr;
-  }
   .dp-score-stats {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
+  .dp-info-table {
+    grid-template-columns: 1fr;
+  }
+  .dp-info-row:nth-last-child(2):nth-child(odd) { border-bottom: 1px solid rgba(255, 255, 255, 0.11); }
+  .dp-info-row:last-child { border-bottom: none; }
   .dp-price-meta {
     grid-template-columns: 1fr;
   }
@@ -1484,14 +1483,13 @@
   }
 
   .dp-actions {
-    display: grid;
-    grid-template-columns: 1fr;
     gap: 8px;
     margin-bottom: 1.1rem;
   }
-
+  .dp-btn-wide { flex: 1 1 100%; }
+  .dp-menu-wrap { flex: 1 1 100%; }
+  .dp-menu-wrap > .dp-btn { width: 100%; }
   .dp-btn {
-    width: 100%;
     min-height: 40px;
   }
 
@@ -1504,11 +1502,7 @@
     align-items: flex-start;
   }
 
-  .dp-rating-panel,
-  .dp-about-card,
   .dp-price-panel,
-  .dp-gallery-card,
-  .dp-sysreq-panel,
   .dp-dlc-card,
   .dp-similar-card {
     border-radius: 8px;
@@ -1526,9 +1520,8 @@
     aspect-ratio: 16 / 9;
     min-height: 0;
   }
-  .dp-score-stats,
-  .dp-signal-grid {
-    grid-template-columns: 1fr;
+  .dp-score-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .dp-src-row {
     grid-template-columns: 96px 1fr 32px;

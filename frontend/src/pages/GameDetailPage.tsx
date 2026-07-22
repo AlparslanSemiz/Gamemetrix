@@ -1,7 +1,7 @@
 /* eslint-disable react-hooks/set-state-in-effect */
 import { type CSSProperties, useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { ExternalLink, Info } from 'lucide-react'
+import { Clock3, ExternalLink, Info } from 'lucide-react'
 import {
   getGameBySlug,
   getGameTrailer,
@@ -18,13 +18,14 @@ import { currentPriceSnapshots } from '../utils/prices'
 import { bestCoverUrl } from '../utils/coverImage'
 import { isEndlessGame } from '../utils/playtime'
 import type { Game, SourceScore } from '../types/game'
+import { CollectionActions } from './detail/CollectionActions'
 import { DlcSection } from './detail/DlcSection'
 import { Gallery } from './detail/Gallery'
 import { PricePanel } from './detail/PricePanel'
 import { SimilarGamesSection, SIMILAR_DISPLAY_LIMIT } from './detail/SimilarGamesSection'
 import { SeriesRow } from '../components/SeriesRow'
 import { SysReqBlock } from './detail/SysReqBlock'
-import { formatCompactCount, formatDate } from './detail/format'
+import { formatCompactCount, formatCount, formatDate } from './detail/format'
 import './GameDetailPage.css'
 
 // The 4 core quality sources shown in the main rating block
@@ -69,7 +70,7 @@ function SourceRow({ s, game, secondary = false }: { s: SourceScore; game: Game;
       <div className="dp-src-bar"><span className="dp-src-fill" style={{ width: unavailable ? '0%' : `${pct}%` }} /></div>
       <strong className="dp-src-score">{unavailable ? '—' : Math.round(s.score)}</strong>
       {s.review_count ? (
-        <span className="dp-src-count">{s.review_count.toLocaleString()}</span>
+        <span className="dp-src-count">{formatCount(s.review_count)}</span>
       ) : null}
     </div>
   )
@@ -365,9 +366,18 @@ export function GameDetailPage({ initialGame }: { initialGame?: Game }) {
         <div className="dp-grid">
           {/* ── LEFT ── */}
           <div className="dp-left">
-            {/* Date */}
+            {/* Release date · platforms · playtime — the whole "at a glance" line */}
             <div className="dp-header-meta">
               <span className="dp-release-chip">{releaseLabel}</span>
+              {game.platforms.length > 0 && (
+                <PlatformIcons platforms={game.platforms} mode="detail" maxVisible={6} game={game} />
+              )}
+              {(endless || hltbPrimaryMinutes > 0) && (
+                <span className="dp-header-playtime">
+                  <Clock3 size={12} aria-hidden="true" />
+                  {endless ? '∞' : formatHours(hltbPrimaryMinutes)}
+                </span>
+              )}
             </div>
 
             <h1 className="dp-title">{game.title}</h1>
@@ -390,24 +400,7 @@ export function GameDetailPage({ initialGame }: { initialGame?: Game }) {
               </p>
             )}
 
-            {game.platforms.length > 0 && (
-              <div className="dp-platform-strip">
-                <PlatformIcons platforms={game.platforms} mode="detail" maxVisible={6} game={game} />
-              </div>
-            )}
-
-            {/* Action buttons */}
-            <div className="dp-actions">
-              <button type="button" className="dp-btn dp-btn-primary" onClick={handleTrailer}>
-                ▶ Trailer
-              </button>
-              {websiteUrl ? (
-                <a className="dp-btn dp-btn-link" href={websiteUrl} target="_blank" rel="noopener noreferrer">
-                  <ExternalLink size={14} aria-hidden="true" />
-                  Official site
-                </a>
-              ) : null}
-            </div>
+            <CollectionActions slug={game.slug} onOpenTrailer={handleTrailer} />
 
             {/* Score block */}
             <div className="dp-score-block">
@@ -418,46 +411,55 @@ export function GameDetailPage({ initialGame }: { initialGame?: Game }) {
                 <div className="dp-score-meta">
                   <span
                     className={`dp-confidence dp-confidence-${confidenceLower}`}
+                    title={reliabilityCopy(game, livePrimaryCount)}
                   >
                     {game.confidence_level}
                   </span>
                   <span className="dp-score-label">GameMetrix Score</span>
                   {totalReviews > 0 && (
-                    <span className="dp-total-reviews">{totalReviews.toLocaleString()} total reviews</span>
+                    <span className="dp-total-reviews">{formatCount(totalReviews)} total reviews</span>
                   )}
                 </div>
               </div>
               <div className="dp-score-stats">
-                <div>
+                <div title="Plain average of the live primary source scores.">
                   <span>Source avg</span>
                   <strong>{sourceAverage}</strong>
                 </div>
-                <div>
+                <div title={reliabilityCopy(game, livePrimaryCount)}>
                   <span>Coverage</span>
                   <strong>{coverageLabel}</strong>
                 </div>
-                <div>
+                <div title="Score used for leaderboard ordering.">
                   <span>Rank score</span>
                   <strong>{Math.round(game.rank_score)}</strong>
                 </div>
-              </div>
-            </div>
-
-            <div className="dp-signal-grid">
-              <div className={`dp-signal-card dp-signal-${confidenceLower}`}>
-                <span>Data reliability</span>
-                <strong>{game.confidence_level}</strong>
-                <small>{reliabilityCopy(game, livePrimaryCount)}</small>
-              </div>
-              <div className="dp-signal-card">
-                <span>Popularity</span>
-                <strong>{popularity.label}</strong>
-                <small>{popularity.detail}</small>
-              </div>
-              <div className={game.is_rankable ? 'dp-signal-card' : 'dp-signal-card dp-signal-muted'}>
-                <span>Ranking</span>
-                <strong>{rankStatus}</strong>
-                <small>{rankDetail}</small>
+                <div title={popularity.detail}>
+                  <span>Popularity</span>
+                  <strong style={{ '--pop-color': popularityColor(popularity.label) } as CSSProperties} className="dp-stat-pop">
+                    {popularity.label}
+                    <button
+                      type="button"
+                      className="dp-hltb-info"
+                      aria-label="Popularity tiers"
+                      aria-describedby="game-popularity-tooltip"
+                    >
+                      <Info size={12} aria-hidden="true" />
+                      <span id="game-popularity-tooltip" className="dp-hltb-tip" role="tooltip">
+                        {POPULARITY_TIERS.map((tier) => (
+                          <span className="dp-hltb-tip-row" key={tier.label}>
+                            <span style={{ color: tier.color }}>{tier.label}</span>
+                            <span>{tier.threshold}</span>
+                          </span>
+                        ))}
+                      </span>
+                    </button>
+                  </strong>
+                </div>
+                <div className={game.is_rankable ? '' : 'dp-stat-muted'} title={rankDetail}>
+                  <span>Ranking</span>
+                  <strong>{rankStatus}</strong>
+                </div>
               </div>
             </div>
 
@@ -631,49 +633,12 @@ export function GameDetailPage({ initialGame }: { initialGame?: Game }) {
                     </span>
                   </div>
                 )}
-                {game.popularity_label && (
-                  <div className="dp-info-row">
-                    <span className="dp-info-key">Popularity</span>
-                    <span className="dp-info-val dp-pop">
-                      <strong
-                        className="dp-pop-label"
-                        style={{ '--pop-color': popularityColor(game.popularity_label) } as CSSProperties}
-                      >
-                        {game.popularity_label}
-                      </strong>
-                      {' · '}{popularity.detail}
-                      <button
-                        type="button"
-                        className="dp-hltb-info"
-                        aria-label="Popularity tiers"
-                        aria-describedby="game-popularity-tooltip"
-                      >
-                        <Info size={12} aria-hidden="true" />
-                        <span id="game-popularity-tooltip" className="dp-hltb-tip" role="tooltip">
-                          {POPULARITY_TIERS.map((tier) => (
-                            <span className="dp-hltb-tip-row" key={tier.label}>
-                              <span style={{ color: tier.color }}>{tier.label}</span>
-                              <span>{tier.threshold}</span>
-                            </span>
-                          ))}
-                        </span>
-                      </button>
-                    </span>
-                  </div>
-                )}
               </div>
               <p className="dp-attribution">
                 Metadata and imagery may include attributed data from{' '}
                 <a href="https://rawg.io/" target="_blank" rel="noopener noreferrer">RAWG</a>.
               </p>
             </div>
-
-            {priceSnapshots.length > 0 && (
-              <div className="dp-section">
-                <h2 className="dp-section-title">Price & availability</h2>
-                <PricePanel prices={priceSnapshots} game={game} />
-              </div>
-            )}
 
             {/* System requirements */}
             {game.system_requirements.length > 0 && (
@@ -694,6 +659,12 @@ export function GameDetailPage({ initialGame }: { initialGame?: Game }) {
             <div className="dp-gallery-panel">
               <Gallery game={game} />
             </div>
+            {priceSnapshots.length > 0 && (
+              <div className="dp-side-panel">
+                <h2 className="dp-section-title">Where to buy</h2>
+                <PricePanel prices={priceSnapshots} game={game} />
+              </div>
+            )}
           </div>
         </div>
 

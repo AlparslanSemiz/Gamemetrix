@@ -38,9 +38,8 @@ import {
   getIntegrationStatus,
 } from './services/games'
 import type { CollectionKey } from './state/collections'
-import { trackProductEvent } from './services/analytics'
 import { useAccount } from './state/useAccount'
-import { useCollections } from './state/useCollections'
+import { useCollectionActions } from './state/useCollectionActions'
 import type { Facets, Game, GameFilters, GameSort, ProviderStatus } from './types/game'
 
 type MainPage = 'catalog' | 'watchlist' | 'playing' | 'seen' | 'completed' | 'liked' | 'favorites' | 'suggestions'
@@ -413,8 +412,7 @@ export function AppContent({ initialGames = [], initialTotal = 0, initialPage }:
   const [facets, setFacets] = useState<Facets>({ genres: [], years: [], platforms: [], developers: [] })
   const [filters, setFilters] = useState<GameFilters>(() => ({ ...DEFAULT_FILTERS, ...urlFilters }))
   const [pendingApply, setPendingApply] = useState(0)
-  const { collections, toggleCollection } = useCollections()
-  const { account, syncCollection } = useAccount()
+  const { account } = useAccount()
   const [providerStatuses, setProviderStatuses] = useState<ProviderStatus[]>([])
   const [catalogTotal, setCatalogTotal] = useState(initialTotal)
   const [libraryTotal, setLibraryTotal] = useState(initialTotal)
@@ -795,25 +793,7 @@ export function AppContent({ initialGames = [], initialTotal = 0, initialPage }:
     }
   }, [])
 
-  const collectionSets = useMemo(() => ({
-    watchlist: new Set(collections.watchlist),
-    playing: new Set(collections.playing),
-    seen: new Set(collections.seen),
-    completed: new Set(collections.completed),
-    liked: new Set(collections.liked),
-    favorites: new Set(collections.favorites),
-  }), [collections])
-
-  const handleToggleCollection = useCallback((collection: CollectionKey, slug: string) => {
-    const enabled = !collectionSets[collection].has(slug)
-    toggleCollection(collection, slug)
-    void syncCollection(collection, slug, enabled).catch(() => {
-      setError('This collection change is saved locally, but account sync is temporarily unavailable.')
-    })
-    if (collection === 'watchlist' && enabled) {
-      trackProductEvent('wishlist_add', { game_slug: slug })
-    }
-  }, [collectionSets, syncCollection, toggleCollection])
+  const { collections, collectionSets, toggle: handleToggleCollection } = useCollectionActions(setError)
 
   const visibleGames = useMemo(() => {
     if (activePage === 'suggestions') {

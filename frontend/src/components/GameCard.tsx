@@ -13,7 +13,7 @@ import {
   Trophy,
 } from 'lucide-react'
 import { memo, type CSSProperties, type SyntheticEvent } from 'react'
-import { Link } from 'react-router-dom'
+import { Link } from 'react-router'
 import type { Game, ProtonTier, SourceScore } from '../types/game'
 import type { CollectionKey } from '../state/collections'
 import { trackProductEvent } from '../services/analytics'
@@ -321,6 +321,7 @@ export const GameCard = memo(function GameCard({
           <h2 className="compact-title">
             <Link
               to={`/game/${game.slug}`}
+              prefetch="intent"
               className="game-title-link"
               onClick={() => onOpenDetail(game)}
             >
@@ -474,6 +475,7 @@ export const GameCard = memo(function GameCard({
           <h2>
             <Link
               to={`/game/${game.slug}`}
+              prefetch="intent"
               className="game-title-link"
               onClick={() => onOpenDetail(game)}
             >

@@ -1,5 +1,5 @@
 import { type CSSProperties, type SyntheticEvent, useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link } from 'react-router'
 import type { SeriesGameItem } from '../types/game'
 import { getSeriesGames } from '../services/games'
 import { scoreColor } from '../utils/scoreColors'
@@ -40,7 +40,7 @@ export function SeriesRow({ slug }: { slug: string }) {
             if (event.currentTarget.src !== fallback) event.currentTarget.src = fallback
           }
           return (
-            <Link key={item.slug} to={`/game/${item.slug}`} className="series-tile" title={item.title}>
+            <Link key={item.slug} to={`/game/${item.slug}`} prefetch="intent" className="series-tile" title={item.title}>
               <div className="series-tile-cover">
                 <img src={coverSrc} alt="" loading="lazy" decoding="async" onError={handleError} />
                 {item.metrix_score > 0 ? (

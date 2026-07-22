@@ -2,10 +2,19 @@ export function normalizeSignal(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
 }
 
+// Pinned locale: the server formats in the container's locale and the browser in
+// the visitor's, so a bare toLocaleString() renders 26,352 on one side and
+// 26.352 on the other and fails hydration.
+const COUNT_FORMATTER = new Intl.NumberFormat('en-US')
+
+export function formatCount(value: number): string {
+  return COUNT_FORMATTER.format(value)
+}
+
 export function formatCompactCount(value: number): string {
   if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(value >= 10_000_000 ? 0 : 1)}M`
   if (value >= 1_000) return `${(value / 1_000).toFixed(value >= 100_000 ? 0 : 1)}K`
-  return value.toLocaleString()
+  return formatCount(value)
 }
 
 export function formatDate(value?: string | null): string {

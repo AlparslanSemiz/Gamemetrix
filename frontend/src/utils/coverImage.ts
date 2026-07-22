@@ -55,6 +55,29 @@ export function bestCoverUrl(game: Pick<Game, 'title' | 'cover_url' | 'image_url
   return fallbackCoverUrl(game.title)
 }
 
+// Both CDNs we store art from serve pre-scaled variants of the same asset, so a
+// thumbnail grid never has to pull the full-resolution frame: a Steam
+// screenshot drops 841 KB → 106 KB, a RAWG one 374 KB → 40 KB.
+const STEAM_FULL_SEGMENT = '.1920x1080.'
+const STEAM_THUMB_SEGMENT = '.600x338.'
+const RAWG_MEDIA_PREFIX = 'https://media.rawg.io/media/'
+const RAWG_TRANSFORM_MARKERS = ['resize/', 'crop/']
+const RAWG_THUMB_WIDTH = 640
+
+// Small variant of a gallery image. Unknown hosts, data URLs and already
+// transformed RAWG paths pass through unchanged. Full-size originals stay in the
+// lightbox — this is only for thumbnails.
+export function thumbnailUrl(url: string): string {
+  if (url.startsWith('data:')) return url
+  if (url.includes(STEAM_FULL_SEGMENT)) return url.replace(STEAM_FULL_SEGMENT, STEAM_THUMB_SEGMENT)
+  if (url.startsWith(RAWG_MEDIA_PREFIX)) {
+    const path = url.slice(RAWG_MEDIA_PREFIX.length)
+    if (RAWG_TRANSFORM_MARKERS.some((marker) => path.startsWith(marker))) return url
+    return `${RAWG_MEDIA_PREFIX}resize/${RAWG_THUMB_WIDTH}/-/${path}`
+  }
+  return url
+}
+
 // Ordered, de-duplicated hero/gallery candidates with placeholder URLs removed.
 // Falls back to the generated cover when nothing usable exists.
 export function galleryImages(game: Pick<Game, 'title' | 'cover_url' | 'image_url' | 'screenshots'>): string[] {
