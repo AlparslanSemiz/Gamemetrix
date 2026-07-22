@@ -9,9 +9,9 @@ from sqlalchemy.orm import sessionmaker
 from app.database import Base, get_db
 from app.main import app
 from app.account_security import hash_secret
-from app.models import AccountSession, AnalyticsEvent, User, UserCollection, VisitEvent
+from app.models import AccountSession, AccountToken, AnalyticsEvent, User, UserCollection, VisitEvent
 from app.rate_limit import limiter
-from app.routers.account import _new_account_token
+from app.routers.account import _discard_unverified_local_credentials, _new_account_token
 
 
 TEST_DATABASE_URL = os.getenv("TEST_DATABASE_URL", "")
@@ -158,10 +158,129 @@ def test_account_token_endpoint_is_rate_limited(postgres_client) -> None:
         client.post(
             "/api/account/email/verify",
             headers={"Origin": "http://localhost:5173"},
-            json={"token": "x" * 48},
+            json={"token": "x" * 48, "password": "not the registration password"},
         )
         for _ in range(11)
     ]
     assert all(response.status_code == 400 for response in responses[:10])
     assert responses[-1].status_code == 429
     limiter.reset()
+
+
+def test_email_verification_requires_the_pending_registration_password(postgres_client) -> None:
+    client, sessions = postgres_client
+    response = client.post(
+        "/api/account/register",
+        headers={"Origin": "http://localhost:5173"},
+        json={"display_name": "First Name", "email": "pending@example.com", "password": "first secure passphrase"},
+    )
+    assert response.status_code == 202
+
+    # A later registration for the same still-unverified mailbox replaces the
+    # pending credentials instead of preserving an attacker's chosen password.
+    response = client.post(
+        "/api/account/register",
+        headers={"Origin": "http://localhost:5173"},
+        json={"display_name": "Mailbox Owner", "email": "pending@example.com", "password": "second secure passphrase"},
+    )
+    assert response.status_code == 202
+    with sessions() as db:
+        user = db.scalar(select(User).where(User.email == "pending@example.com"))
+        token = _new_account_token(db, user, "verify_email", 1)
+
+    wrong = client.post(
+        "/api/account/email/verify",
+        headers={"Origin": "http://localhost:5173"},
+        json={"token": token, "password": "first secure passphrase"},
+    )
+    assert wrong.status_code == 400
+    with sessions() as db:
+        account_token = db.scalar(select(AccountToken).where(AccountToken.token_hash == hash_secret(token)))
+        assert account_token is not None and account_token.consumed_at is None
+
+    verified = client.post(
+        "/api/account/email/verify",
+        headers={"Origin": "http://localhost:5173"},
+        json={"token": token, "password": "second secure passphrase"},
+    )
+    assert verified.status_code == 200
+    with sessions() as db:
+        user = db.scalar(select(User).where(User.email == "pending@example.com"))
+        assert user is not None and user.email_verified_at is not None
+
+
+def test_verified_oauth_adoption_discards_unverified_local_credentials(postgres_client) -> None:
+    client, sessions = postgres_client
+    response = client.post(
+        "/api/account/register",
+        headers={"Origin": "http://localhost:5173"},
+        json={"display_name": "Pending User", "email": "oauth@example.com", "password": "attacker chosen passphrase"},
+    )
+    assert response.status_code == 202
+
+    with sessions() as db:
+        user = db.scalar(select(User).where(User.email == "oauth@example.com"))
+        assert user is not None and user.password_hash is not None
+        _new_account_token(db, user, "reset_password", 1)
+        now = datetime.now(UTC)
+        _discard_unverified_local_credentials(db, user, now)
+        user.email_verified_at = now
+        db.commit()
+
+    with sessions() as db:
+        user = db.scalar(select(User).where(User.email == "oauth@example.com"))
+        assert user is not None and user.password_hash is None
+        outstanding = db.scalar(
+            select(func.count(AccountToken.id)).where(
+                AccountToken.user_id == user.id,
+                AccountToken.consumed_at.is_(None),
+            )
+        )
+        assert outstanding == 0
+
+
+def test_catalog_json_filters_are_executed_by_postgres_and_refresh_is_admin_only(postgres_client) -> None:
+    client, sessions = postgres_client
+    with sessions() as db:
+        from tests.test_seo import game_fixture
+
+        db.add(game_fixture(
+            developer="Fixture Studio",
+            publisher="Fixture Publishing",
+            game_modes=["singleplayer"],
+            playtime_minutes=600,
+            award_count=1,
+            source_scores=[
+                {"source": "Metacritic", "score": 86, "scale": 100, "status": "live", "review_count": 25},
+                {"source": "OpenCritic", "score": 87, "scale": 100, "status": "live", "review_count": 30},
+                {"source": "IGDB", "score": 88, "scale": 100, "status": "live", "review_count": 35},
+                {"source": "Steam", "score": 89, "scale": 100, "status": "live", "review_count": 500},
+            ],
+        ))
+        db.commit()
+
+    response = client.get(
+        "/api/games",
+        params={
+            "genre": "RPG",
+            "developer": "Fixture Studio",
+            "publisher": "Fixture Publishing",
+            "platform": "Steam",
+            "min_ratings": 100,
+            "max_ratings": 1000,
+            "min_live_sources": 4,
+            "player_mode": "singleplayer",
+            "playtime_min_hours": 1,
+            "playtime_max_hours": 20,
+            "require_critic": True,
+            "has_award": True,
+            "sort": "review_count",
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["total"] == 1
+    assert [game["slug"] for game in response.json()["games"]] == ["a-complete-test-game"]
+
+    assert client.get("/api/games/a-complete-test-game").status_code == 200
+    denied_refresh = client.get("/api/games/a-complete-test-game", params={"refresh": True})
+    assert denied_refresh.status_code == 403

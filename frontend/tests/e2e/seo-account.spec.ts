@@ -114,11 +114,12 @@ test('admin login remains directly accessible and excluded from indexing', async
 
 test('one-time account tokens leave the address bar after hydration', async ({ page }) => {
   const token = 'a'.repeat(48)
-  await gotoHydrated(page, `/reset-password?token=${token}`)
+  await gotoHydrated(page, `/reset-password#token=${token}`)
   await expect(page).toHaveURL('http://127.0.0.1:4173/reset-password')
   await expect(page.locator('meta[name="referrer"]')).toHaveAttribute('content', 'no-referrer')
 
-  await gotoHydrated(page, `/verify-email?token=${token}`)
+  await gotoHydrated(page, `/verify-email#token=${token}`)
   await expect(page).toHaveURL('http://127.0.0.1:4173/verify-email')
+  await expect(page.getByLabel('Password')).toBeVisible()
   await expect(page.locator('meta[name="referrer"]')).toHaveAttribute('content', 'no-referrer')
 })

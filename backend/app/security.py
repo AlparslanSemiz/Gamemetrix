@@ -70,17 +70,7 @@ def create_access_token(user: AuthenticatedUser) -> str:
     return jwt.encode(payload, _require_jwt_secret(), algorithm=cfg.JWT_ALGORITHM)
 
 
-def get_current_user(
-    request: Request,
-    token: str | None = Depends(oauth2_scheme),
-) -> AuthenticatedUser:
-    if not token:
-        if request.cookies.get("gm_session"):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Normal accounts cannot access admin endpoints.",
-            )
-        raise _auth_error()
+def _decode_access_token(token: str) -> AuthenticatedUser:
     cfg = get_settings()
     decode_options: dict[str, Any] = {
         "require": ["exp", "iat", "nbf", "iss", "sub", "role"],
@@ -104,6 +94,29 @@ def get_current_user(
     if not isinstance(username, str) or not isinstance(role, str):
         raise _auth_error()
     return AuthenticatedUser(username=username, role=role)
+
+
+def get_current_user(
+    request: Request,
+    token: str | None = Depends(oauth2_scheme),
+) -> AuthenticatedUser:
+    if not token:
+        if request.cookies.get("gm_session"):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Normal accounts cannot access admin endpoints.",
+            )
+        raise _auth_error()
+    return _decode_access_token(token)
+
+
+def optional_admin_user(
+    token: str | None = Depends(oauth2_scheme),
+) -> AuthenticatedUser | None:
+    if not token:
+        return None
+    user = _decode_access_token(token)
+    return user if user.role == "admin" else None
 
 
 def require_admin_user(

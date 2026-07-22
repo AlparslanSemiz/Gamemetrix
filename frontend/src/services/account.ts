@@ -111,8 +111,8 @@ export function resetAccountPassword(token: string, password: string) {
   return accountFetch<{ message: string }>('/password/reset', { method: 'POST', body: JSON.stringify({ token, password }) })
 }
 
-export function verifyAccountEmail(token: string) {
-  return accountFetch<{ message: string }>('/email/verify', { method: 'POST', body: JSON.stringify({ token }) })
+export function verifyAccountEmail(token: string, password: string) {
+  return accountFetch<{ message: string }>('/email/verify', { method: 'POST', body: JSON.stringify({ token, password }) })
 }
 
 export function mergeAccountState(payload: Omit<AccountState, 'account'>): Promise<AccountState> {

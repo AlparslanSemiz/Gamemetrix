@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, useSyncExternalStore, type FormEvent } from 'react'
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
 import {
   Activity,
   Database,
@@ -29,43 +29,10 @@ import { RefreshAllPanel } from '../components/RefreshAllPanel'
 import { ScoreWeightSettings } from '../components/ScoreWeightSettings'
 import './AdminPage.css'
 
-// sessionStorage (not localStorage): the admin token survives a reload but dies
-// with the tab, so it is not left at rest for an XSS payload to read later.
-const ADMIN_TOKEN_KEY = 'gamemetrix.adminToken.v1'
 const ADMIN_USERNAME_MAX_LENGTH = 64
 const ADMIN_PASSWORD_MAX_LENGTH = 128
 const AUDIT_LOG_LIMIT = 100
 
-function readStoredToken(): string {
-  if (typeof window === 'undefined') return ''
-  try {
-    return window.sessionStorage.getItem(ADMIN_TOKEN_KEY) ?? ''
-  } catch {
-    return ''
-  }
-}
-
-function persistToken(token: string): void {
-  if (typeof window === 'undefined') return
-  try {
-    if (token) window.sessionStorage.setItem(ADMIN_TOKEN_KEY, token)
-    else window.sessionStorage.removeItem(ADMIN_TOKEN_KEY)
-  } catch {
-    // Private mode or quota failure — the session simply will not survive a reload.
-  }
-}
-
-// sessionStorage is external state, so it is read through useSyncExternalStore:
-// the server snapshot is always empty and the client adopts the stored token
-// after hydration, which avoids the server-renders-login / client-renders-dashboard
-// mismatch that reading it during render would cause.
-function subscribeToStoredToken(onChange: () => void): () => void {
-  if (typeof window === 'undefined') return () => {}
-  window.addEventListener('storage', onChange)
-  return () => window.removeEventListener('storage', onChange)
-}
-
-const EMPTY_SERVER_TOKEN = ''
 const TRAFFIC_DAY_OPTIONS = [7, 14, 30] as const
 // Past this range, per-bar labels no longer fit — the chart switches to tooltips only.
 const DENSE_TRAFFIC_THRESHOLD = 10
@@ -89,15 +56,9 @@ function healthClass(status: AdminApiHealth[string]): string {
 }
 
 export function AdminPage() {
-  const storedToken = useSyncExternalStore(
-    subscribeToStoredToken,
-    readStoredToken,
-    () => EMPTY_SERVER_TOKEN,
-  )
-  // Null until this session explicitly signs in or out; until then the stored
-  // token wins, so a reload keeps the admin signed in.
-  const [sessionToken, setSessionToken] = useState<string | null>(null)
-  const token = sessionToken ?? storedToken
+  // Keep the bearer token in component memory only. A reload deliberately
+  // requires a fresh admin login so an XSS cannot recover a token at rest.
+  const [token, setToken] = useState('')
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [dashboard, setDashboard] = useState<AdminDashboard | null>(null)
@@ -113,8 +74,7 @@ export function AdminPage() {
   const [error, setError] = useState<string | null>(null)
 
   const signOutExpiredSession = useCallback(() => {
-    persistToken('')
-    setSessionToken('')
+    setToken('')
     setDashboard(null)
     setHealth({})
     setDataFill(null)
@@ -205,8 +165,7 @@ export function AdminPage() {
     setError(null)
     try {
       const response = await loginAdmin(username.trim(), password)
-      persistToken(response.access_token)
-      setSessionToken(response.access_token)
+      setToken(response.access_token)
       setPassword('')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed.')
@@ -216,8 +175,7 @@ export function AdminPage() {
   }
 
   function handleLogout() {
-    persistToken('')
-    setSessionToken('')
+    setToken('')
     setDashboard(null)
     setHealth({})
     setDataFill(null)

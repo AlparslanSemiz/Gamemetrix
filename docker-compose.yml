@@ -9,7 +9,9 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD before running docker compose}
       POSTGRES_DB: ${POSTGRES_DB:-gamemetrix}
     ports:
-      - "5432:5432"
+      # Keep host-side development access without publishing PostgreSQL to the
+      # LAN or Internet. Containers still connect over the compose network.
+      - "127.0.0.1:5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:

@@ -4,7 +4,7 @@ import base64
 import json
 import logging
 import re
-from datetime import timedelta
+from datetime import datetime, timedelta
 from hashlib import sha256
 from secrets import token_urlsafe
 from typing import Literal
@@ -107,6 +107,10 @@ class LoginPayload(StrictPayload):
 
 class TokenPayload(StrictPayload):
     token: str = Field(min_length=32, max_length=256)
+
+
+class VerifyEmailPayload(TokenPayload):
+    password: str = Field(min_length=1, max_length=128)
 
 
 class ResetPasswordPayload(TokenPayload):
@@ -237,9 +241,21 @@ def _consume_account_token(db: Session, raw: str, purpose: str) -> User:
     return user
 
 
+def _discard_unverified_local_credentials(db: Session, user: User, now: datetime) -> None:
+    user.password_hash = None
+    for token in db.scalars(
+        select(AccountToken).where(
+            AccountToken.user_id == user.id,
+            AccountToken.consumed_at.is_(None),
+        )
+    ).all():
+        token.consumed_at = now
+    revoke_user_sessions(db, user.id)
+
+
 async def _send_verification(db: Session, user: User) -> None:
     raw = _new_account_token(db, user, "verify_email", 24)
-    link = f"{get_settings().ACCOUNT_BASE_URL}/verify-email?token={raw}"
+    link = f"{get_settings().ACCOUNT_BASE_URL}/verify-email#token={raw}"
     await send_account_email(
         user.email,
         "Verify your GameMetrix account",
@@ -309,18 +325,25 @@ async def register(request: Request, payload: RegisterPayload, db: Session = Dep
     if not email_delivery_ready():
         raise HTTPException(status_code=503, detail="Account email delivery is not configured.")
     email = normalize_email(str(payload.email))
+    email_name = email.split("@", 1)[0]
+    if len(email_name) >= 3 and email_name in payload.password.casefold():
+        raise HTTPException(status_code=422, detail="Password must not contain your email name.")
     candidate_password_hash = hash_password(payload.password)
     existing = db.scalar(select(User).where(User.email == email))
     if existing is not None:
         if existing.email_verified_at is None and existing.is_active:
+            # A new registration for an unverified address replaces the pending
+            # credentials. Only the mailbox owner can complete verification, so
+            # an attacker cannot permanently reserve a victim's email/password.
+            existing.display_name = " ".join(payload.display_name.split())
+            existing.password_hash = candidate_password_hash
+            existing.updated_at = utcnow()
+            revoke_user_sessions(db, existing.id)
             try:
                 await _send_verification(db, existing)
             except Exception:
                 log.exception("Could not resend account verification")
         return MessageResponse(message="Check your email to continue.")
-    email_name = email.split("@", 1)[0]
-    if len(email_name) >= 3 and email_name in payload.password.casefold():
-        raise HTTPException(status_code=422, detail="Password must not contain your email name.")
 
     now = utcnow()
     user = User(
@@ -347,9 +370,13 @@ async def register(request: Request, payload: RegisterPayload, db: Session = Dep
 
 @router.post("/email/verify", response_model=MessageResponse)
 @limiter.limit("10/minute")
-def verify_email(request: Request, payload: TokenPayload, db: Session = Depends(get_db)) -> MessageResponse:
+def verify_email(request: Request, payload: VerifyEmailPayload, db: Session = Depends(get_db)) -> MessageResponse:
     require_same_origin(request)
     user = _consume_account_token(db, payload.token, "verify_email")
+    if not verify_password(payload.password, user.password_hash):
+        # The token proves control of the mailbox; the password proves this is
+        # the person who initiated the pending registration.
+        raise HTTPException(status_code=400, detail="This link or password is invalid.")
     user.email_verified_at = utcnow()
     user.updated_at = utcnow()
     db.commit()
@@ -404,7 +431,7 @@ async def forgot_password(request: Request, payload: ForgotPasswordPayload, db: 
     user = db.scalar(select(User).where(User.email == normalize_email(str(payload.email)), User.is_active.is_(True)))
     if user is not None and user.password_hash and email_delivery_ready():
         raw = _new_account_token(db, user, "reset_password", 1)
-        link = f"{get_settings().ACCOUNT_BASE_URL}/reset-password?token={raw}"
+        link = f"{get_settings().ACCOUNT_BASE_URL}/reset-password#token={raw}"
         try:
             await send_account_email(
                 user.email,
@@ -598,6 +625,11 @@ async def google_callback(
         db.flush()
     if not user.is_active:
         raise HTTPException(status_code=403, detail="This account is disabled.")
+    if user.email_verified_at is None:
+        # A pending password was chosen before ownership of this email was
+        # proven. A verified Google identity may adopt the address, but must not
+        # inherit that untrusted credential or any outstanding account tokens.
+        _discard_unverified_local_credentials(db, user, now)
     user.email_verified_at = user.email_verified_at or now
     if identity is None:
         db.add(

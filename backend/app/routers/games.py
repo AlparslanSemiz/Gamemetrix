@@ -12,13 +12,16 @@ Routes:
   GET  /api/facets                          — genre / year / platform filter options
 """
 
+import asyncio
 import datetime
 import logging
+import time
+from collections import OrderedDict
 from typing import Annotated, Literal
 
 import httpx
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Path, Query, Request
-from sqlalchemy import Select, asc, cast, desc, exists, func, or_, select, true
+from sqlalchemy import BigInteger, Float, Select, and_, asc, case, cast, desc, exists, func, or_, select, true
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Session, noload, selectinload
 
@@ -43,21 +46,9 @@ from ..integrations.sync import refresh_game_sources
 from ..integrations.youtube import find_trailer_video_id
 from ..services.game_filter import (
     LIKE_ESCAPE_CHAR,
-    dedupe_near_duplicates,
     escape_like,
-    filter_by_developer,
-    filter_by_genre,
-    filter_by_max_ratings,
-    filter_by_min_ratings,
-    filter_by_platform,
-    filter_by_player_mode,
-    filter_by_playtime,
-    filter_by_publisher,
-    filter_has_award,
-    filter_has_critic,
-    filter_min_live_sources,
-    sort_in_memory,
 )
+from ..integrations.source_registry import CRITIC_SOURCES, PC_PLATFORM_KEYS, PRIMARY_SOURCES
 from ..services.deduplication import find_existing_duplicate, merge_game_data
 from ..services.game_similarity import find_series_games, find_similar_games, series_key_for_title
 from ..services.metadata_backfill import game_needs_metadata_backfill, refresh_game_metadata
@@ -65,7 +56,7 @@ from ..services.price_backfill import fetch_and_store_prices
 from ..services.rawg_import import apply_rawg_to_game, game_from_rawg_search
 from ..rate_limit import limiter
 from ..integrations.rate_limiter import get_rate_limiter
-from ..security import require_admin_user
+from ..security import AuthenticatedUser, optional_admin_user, require_admin_user
 
 router = APIRouter(tags=["games"])
 log = logging.getLogger(__name__)
@@ -137,7 +128,11 @@ async def _fetch_rawg_search(api_key: str, base_url: str, query: str) -> dict:
     return results[0]
 
 
-_IN_MEMORY_SORTS = {"metacritic_score", "opencritic_score", "steam_score", "review_count"}
+_PLAYER_MODE_GENRE_ALIASES: dict[str, frozenset[str]] = {
+    "multiplayer": frozenset({"massively multiplayer", "mmo", "mmorpg", "mmoarpg", "multiplayer", "pvp", "online co-op"}),
+    "coop": frozenset({"co-op", "coop", "online co-op", "local co-op"}),
+    "singleplayer": frozenset({"single player", "singleplayer"}),
+}
 
 
 @router.get("/api/games", response_model=GameListResponse)
@@ -170,36 +165,23 @@ def list_games(
     offset: int = Query(default=0, ge=0, le=1_000_000),
 ) -> GameListResponse:
     base_q = _build_db_query(content_type, q, year_min, year_max, min_score, max_score, deal, sort, direction)
-
-    needs_memory_filter = any([
-        genre, developer, publisher, platform, min_ratings, max_ratings, has_award,
-        min_live_sources, require_critic, player_mode,
-        playtime_min_hours is not None, playtime_max_hours is not None,
-    ])
-    needs_memory_sort = sort in _IN_MEMORY_SORTS
+    base_q = _apply_advanced_db_filters(
+        base_q, genre, developer, publisher, platform, min_ratings, max_ratings,
+        has_award, min_live_sources, require_critic, player_mode,
+        playtime_min_hours, playtime_max_hours,
+    )
     price_options = selectinload(Game.price_snapshots) if deal != "all" else noload(Game.price_snapshots)
 
-    if not needs_memory_filter and not needs_memory_sort:
-        # Fast path: DB handles sort + pagination. Only the requested page is loaded.
-        # COUNT uses a direct WHERE-clause query (no subquery) for index efficiency.
-        count_q = _build_count_query(content_type, q, year_min, year_max, min_score, max_score, deal)
-        total = db.scalar(count_q) or 0
-        page_q = base_q.options(price_options).offset(offset).limit(limit)
-        games = list(db.scalars(page_q).all())
-        return GameListResponse(games=games, total=total)
-
-    # Slow path: in-memory filters or JSON-based sort require loading all matches.
-    all_q = base_q.options(price_options)
-    games = list(db.scalars(all_q).all())
-    games = _apply_in_memory_filters(
-        games, genre, developer, publisher, platform,
-        min_ratings, max_ratings, has_award, min_live_sources, require_critic,
-        player_mode, playtime_min_hours, playtime_max_hours,
+    count_q = _build_count_query(content_type, q, year_min, year_max, min_score, max_score, deal)
+    count_q = _apply_advanced_db_filters(
+        count_q, genre, developer, publisher, platform, min_ratings, max_ratings,
+        has_award, min_live_sources, require_critic, player_mode,
+        playtime_min_hours, playtime_max_hours,
     )
-    games = sort_in_memory(games, sort, direction)
-    games = dedupe_near_duplicates(games)
-    total = len(games)
-    return GameListResponse(games=games[offset: offset + limit], total=total)
+    total = db.scalar(count_q) or 0
+    page_q = base_q.options(price_options).offset(offset).limit(limit)
+    games = list(db.scalars(page_q).all())
+    return GameListResponse(games=games, total=total)
 
 
 def _build_count_query(
@@ -305,13 +287,99 @@ def _apply_db_sort(query: Select[tuple[Game]], sort: str, direction: str) -> Sel
     if sort == "metrix_score":
         col = desc(Game.metrix_score) if direction == "desc" else asc(Game.metrix_score)
         return query.order_by(col, desc(Game.rank_score), desc(Game.is_rankable), asc(Game.title), asc(Game.id))
+    source_map = {
+        "metacritic_score": "Metacritic",
+        "opencritic_score": "OpenCritic",
+        "steam_score": "Steam",
+    }
+    if sort in source_map:
+        source_score = _source_score_expression(source_map[sort])
+        col = desc(source_score) if direction == "desc" else asc(source_score)
+        return query.order_by(col, desc(Game.rank_score), desc(Game.metrix_score), asc(Game.title), asc(Game.id))
+    if sort == "review_count":
+        reviews = _review_count_expression(require_live_score=False)
+        col = desc(reviews) if direction == "desc" else asc(reviews)
+        return query.order_by(col, desc(Game.rank_score), desc(Game.metrix_score), asc(Game.title), asc(Game.id))
     # Default (rank_score) — reliability-weighted ranking
     col = desc(Game.rank_score) if direction == "desc" else asc(Game.rank_score)
     return query.order_by(col, desc(Game.metrix_score), desc(Game.is_rankable), asc(Game.title), asc(Game.id))
 
 
-def _apply_in_memory_filters(
-    games: list[Game],
+def _json_array_match(column, values: set[str] | frozenset[str], *, substring: bool = False):
+    rows = func.jsonb_array_elements_text(cast(column, JSONB)).table_valued("value")
+    stored = func.lower(func.trim(rows.c.value))
+    if substring:
+        condition = or_(*(func.strpos(stored, value) > 0 for value in values))
+    else:
+        condition = stored.in_(values)
+    return exists(select(1).select_from(rows).where(condition)).correlate(Game)
+
+
+def _source_score_parts():
+    rows = func.jsonb_array_elements(cast(Game.source_scores, JSONB)).table_valued("value")
+    item = cast(rows.c.value, JSONB)
+    numeric_score = case(
+        (func.jsonb_typeof(item["score"]) == "number", cast(item["score"].astext, Float)),
+        else_=0.0,
+    )
+    valid = and_(
+        item["status"].astext == "live",
+        numeric_score > 0,
+        numeric_score <= 100,
+    )
+    return rows, item, numeric_score, valid
+
+
+def _source_score_expression(source: str):
+    rows, item, numeric_score, valid = _source_score_parts()
+    return (
+        select(func.coalesce(func.max(case((and_(valid, item["source"].astext == source), numeric_score), else_=0.0)), 0.0))
+        .select_from(rows)
+        .correlate(Game)
+        .scalar_subquery()
+    )
+
+
+def _review_count_expression(*, require_live_score: bool):
+    rows, item, _numeric_score, valid = _source_score_parts()
+    numeric_reviews = case(
+        (func.jsonb_typeof(item["review_count"]) == "number", cast(item["review_count"].astext, BigInteger)),
+        else_=0,
+    )
+    safe_reviews = and_(numeric_reviews >= 0, numeric_reviews <= 2_000_000_000)
+    condition = and_(valid, safe_reviews) if require_live_score else safe_reviews
+    return (
+        select(func.coalesce(func.sum(case((condition, numeric_reviews), else_=0)), 0))
+        .select_from(rows)
+        .correlate(Game)
+        .scalar_subquery()
+    )
+
+
+def _live_primary_source_count_expression():
+    rows, item, _numeric_score, valid = _source_score_parts()
+    pc_platform = _json_array_match(Game.platforms, PC_PLATFORM_KEYS)
+    applicable_source = or_(
+        item["source"].astext.in_(PRIMARY_SOURCES - {"Steam"}),
+        and_(item["source"].astext == "Steam", pc_platform),
+    )
+    return (
+        select(func.coalesce(func.sum(case((and_(valid, applicable_source), 1), else_=0)), 0))
+        .select_from(rows)
+        .correlate(Game)
+        .scalar_subquery()
+    )
+
+
+def _has_live_critic_expression():
+    rows, item, _numeric_score, valid = _source_score_parts()
+    return exists(
+        select(1).select_from(rows).where(and_(valid, item["source"].astext.in_(CRITIC_SOURCES)))
+    ).correlate(Game)
+
+
+def _apply_advanced_db_filters(
+    query: Select,
     genre: str | None,
     developer: str | None,
     publisher: str | None,
@@ -324,30 +392,38 @@ def _apply_in_memory_filters(
     player_mode: str | None = None,
     playtime_min_hours: float | None = None,
     playtime_max_hours: float | None = None,
-) -> list[Game]:
+) -> Select:
     if genre:
-        games = filter_by_genre(games, genre)
+        query = query.where(_json_array_match(Game.genres, {genre.strip().lower()}))
     if developer:
-        games = filter_by_developer(games, developer)
+        query = query.where(func.lower(Game.developer) == developer.lower())
     if publisher:
-        games = filter_by_publisher(games, publisher)
+        query = query.where(func.lower(Game.publisher) == publisher.lower())
     if platform:
-        games = filter_by_platform(games, platform)
+        terms = {platform.lower()}
+        if platform.lower() == "steam":
+            terms.add("pc")
+        query = query.where(_json_array_match(Game.platforms, terms, substring=True))
     if player_mode:
-        games = filter_by_player_mode(games, player_mode)
-    if playtime_min_hours is not None or playtime_max_hours is not None:
-        games = filter_by_playtime(games, playtime_min_hours, playtime_max_hours)
-    if min_ratings:
-        games = filter_by_min_ratings(games, min_ratings)
-    if max_ratings:
-        games = filter_by_max_ratings(games, max_ratings)
+        query = query.where(or_(
+            _json_array_match(Game.game_modes, {player_mode}),
+            _json_array_match(Game.genres, _PLAYER_MODE_GENRE_ALIASES[player_mode]),
+        ))
+    if playtime_min_hours is not None:
+        query = query.where(Game.playtime_minutes > 0, Game.playtime_minutes >= playtime_min_hours * 60)
+    if playtime_max_hours is not None:
+        query = query.where(Game.playtime_minutes > 0, Game.playtime_minutes <= playtime_max_hours * 60)
+    if min_ratings is not None:
+        query = query.where(_review_count_expression(require_live_score=True) >= min_ratings)
+    if max_ratings is not None:
+        query = query.where(_review_count_expression(require_live_score=True) <= max_ratings)
     if has_award:
-        games = filter_has_award(games)
-    if min_live_sources:
-        games = filter_min_live_sources(games, min_live_sources)
+        query = query.where(or_(Game.goty_year.is_not(None), Game.award_count > 0))
+    if min_live_sources is not None:
+        query = query.where(_live_primary_source_count_expression() >= min_live_sources)
     if require_critic:
-        games = filter_has_critic(games)
-    return games
+        query = query.where(_has_live_critic_expression())
+    return query
 
 
 @router.get("/api/games/{slug}", response_model=GameRead)
@@ -356,8 +432,9 @@ async def get_game(
     request: Request,
     slug: SlugPath,
     background_tasks: BackgroundTasks,
-    refresh_metadata: bool = Query(default=True, alias="refresh"),
+    refresh_metadata: bool = Query(default=False, alias="refresh"),
     db: Session = Depends(get_db),
+    admin: AuthenticatedUser | None = Depends(optional_admin_user),
 ) -> Game:
     game = db.scalar(select(Game).where(Game.slug == slug))
     if game is None:
@@ -366,6 +443,8 @@ async def get_game(
     needs_refresh = game_needs_metadata_backfill(game) or (
         app_id and _system_requirements_need_repair(game.system_requirements)
     )
+    if refresh_metadata and admin is None:
+        raise HTTPException(status_code=403, detail="Admin role required to refresh metadata.")
     if refresh_metadata and needs_refresh:
         background_tasks.add_task(_refresh_game_detail_metadata, game.slug)
     return game
@@ -526,7 +605,7 @@ async def fetch_game_prices(
 
 
 @router.get("/api/games/{slug}/trailer", response_model=TrailerResponse)
-@limiter.limit(get_settings().PUBLIC_READ_RATE_LIMIT)
+@limiter.limit("20/minute")
 async def get_trailer(
     request: Request,
     slug: SlugPath,
@@ -535,11 +614,50 @@ async def get_trailer(
     game = db.scalar(select(Game).where(Game.slug == slug))
     if game is None:
         raise HTTPException(status_code=404, detail="Game not found")
-    video_id = await find_trailer_video_id(game.title)
+    video_id = await _cached_trailer_video_id(game.slug, game.title)
     return {
         "video_id": video_id,
         "watch_url": f"https://www.youtube.com/watch?v={video_id}" if video_id else None,
     }
+
+
+_TRAILER_CACHE_TTL = 6 * 60 * 60
+_TRAILER_CACHE_MAX_SIZE = 1000
+_trailer_cache: OrderedDict[str, tuple[float, str | None]] = OrderedDict()
+_trailer_inflight: dict[str, asyncio.Task[str | None]] = {}
+_trailer_cache_lock = asyncio.Lock()
+_trailer_lookup_slots = asyncio.Semaphore(4)
+
+
+async def _cached_trailer_video_id(slug: str, title: str) -> str | None:
+    now = time.monotonic()
+    async with _trailer_cache_lock:
+        cached = _trailer_cache.get(slug)
+        if cached and now - cached[0] < _TRAILER_CACHE_TTL:
+            _trailer_cache.move_to_end(slug)
+            return cached[1]
+        task = _trailer_inflight.get(slug)
+        if task is None:
+            task = asyncio.create_task(_lookup_and_cache_trailer(slug, title))
+            _trailer_inflight[slug] = task
+    return await asyncio.shield(task)
+
+
+async def _lookup_and_cache_trailer(slug: str, title: str) -> str | None:
+    try:
+        async with _trailer_lookup_slots:
+            video_id = await find_trailer_video_id(title)
+        async with _trailer_cache_lock:
+            _trailer_cache[slug] = (time.monotonic(), video_id)
+            _trailer_cache.move_to_end(slug)
+            while len(_trailer_cache) > _TRAILER_CACHE_MAX_SIZE:
+                _trailer_cache.popitem(last=False)
+        return video_id
+    finally:
+        current = asyncio.current_task()
+        async with _trailer_cache_lock:
+            if _trailer_inflight.get(slug) is current:
+                _trailer_inflight.pop(slug, None)
 
 
 _facets_cache: FacetsResponse | None = None

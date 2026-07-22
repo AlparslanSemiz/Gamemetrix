@@ -25,7 +25,11 @@ const TITLES: Record<AuthMode, string> = {
 export function AccountAuth({ mode }: { mode: AuthMode }) {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
-  const [actionToken] = useState(() => searchParams.get('token') ?? '')
+  const [actionToken] = useState(() => {
+    const queryToken = searchParams.get('token') ?? ''
+    if (queryToken || typeof window === 'undefined') return queryToken
+    return new URLSearchParams(window.location.hash.slice(1)).get('token') ?? ''
+  })
   const { account, login } = useAccount()
   const firstInput = useRef<HTMLInputElement>(null)
   const [displayName, setDisplayName] = useState('')
@@ -80,9 +84,10 @@ export function AccountAuth({ mode }: { mode: AuthMode }) {
         setPassword('')
       } else {
         if (!actionToken) throw new Error('The verification token is missing.')
-        const result = await verifyAccountEmail(actionToken)
+        const result = await verifyAccountEmail(actionToken, password)
         trackProductEvent('signup_completed', { method: 'password' })
         setMessage(result.message)
+        setPassword('')
       }
     } catch (caught) {
       setError(caught instanceof AccountApiError || caught instanceof Error ? caught.message : 'The request could not be completed.')
@@ -120,10 +125,10 @@ export function AccountAuth({ mode }: { mode: AuthMode }) {
               <input ref={mode !== 'register' ? firstInput : undefined} type="email" name="email" autoComplete="email" maxLength={320} required value={email} onChange={(event) => setEmail(event.target.value)} />
             </label>
           ) : null}
-          {mode === 'login' || mode === 'register' || mode === 'reset' ? (
+          {mode === 'login' || mode === 'register' || mode === 'reset' || mode === 'verify' ? (
             <label>
               <span>Password</span>
-              <input ref={mode === 'reset' ? firstInput : undefined} type="password" name="password" autoComplete={mode === 'login' ? 'current-password' : 'new-password'} minLength={mode === 'login' ? 1 : 12} maxLength={128} required value={password} onChange={(event) => setPassword(event.target.value)} />
+              <input ref={mode === 'reset' || mode === 'verify' ? firstInput : undefined} type="password" name="password" autoComplete={mode === 'login' || mode === 'verify' ? 'current-password' : 'new-password'} minLength={mode === 'login' ? 1 : 12} maxLength={128} required value={password} onChange={(event) => setPassword(event.target.value)} />
             </label>
           ) : null}
           {error || oauthError ? <p className="account-auth-status is-error" role="alert">{error ?? oauthError}</p> : null}
