@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { trackProductEvent } from '../services/analytics'
 import type { CollectionKey, Collections } from './collections'
 import { useAccount } from './useAccount'
@@ -31,8 +31,17 @@ export function useCollectionActions(onSyncError?: (message: string) => void): C
     favorites: new Set(collections.favorites),
   }), [collections])
 
+  // Read the current sets through a ref so `toggle` never has to list
+  // `collectionSets` as a dependency. Otherwise its identity would change on
+  // every collection change, flipping the onToggleCollection prop on every
+  // GameCard and re-rendering the whole catalog on a single button press.
+  const collectionSetsRef = useRef(collectionSets)
+  useEffect(() => {
+    collectionSetsRef.current = collectionSets
+  }, [collectionSets])
+
   const toggle = useCallback((collection: CollectionKey, slug: string) => {
-    const enabled = !collectionSets[collection].has(slug)
+    const enabled = !collectionSetsRef.current[collection].has(slug)
     toggleCollection(collection, slug)
     void syncCollection(collection, slug, enabled).catch(() => {
       onSyncError?.(SYNC_ERROR_MESSAGE)
@@ -40,7 +49,7 @@ export function useCollectionActions(onSyncError?: (message: string) => void): C
     if (collection === 'watchlist' && enabled) {
       trackProductEvent('wishlist_add', { game_slug: slug })
     }
-  }, [collectionSets, onSyncError, syncCollection, toggleCollection])
+  }, [onSyncError, syncCollection, toggleCollection])
 
   return { collections, collectionSets, toggle }
 }

@@ -445,6 +445,14 @@ export function AppContent({ initialGames = [], initialTotal = 0, initialPage }:
   const lastFetchSignatureRef = useRef<string | null>(
     initialGames.length && !hasUrlFilters ? '0:0' : null,
   )
+  // True from the moment a snapshot restore starts until its state has fully
+  // committed. The restore re-applies offset/filters/games via setState in a
+  // layout effect, which spans two renders; the mount runs of the fetch and
+  // filter-reset effects still see the initial offset=0 / default filters and
+  // would otherwise clear the restored list and refetch page 0. This flag makes
+  // both effects no-ops (they only keep their signature refs in sync) until the
+  // restore settles.
+  const restoreInProgressRef = useRef(false)
   // Always up to date with latest filters without being a dep of the load effect
   const filtersRef = useRef(filters)
   const lastFilterResetSignatureRef = useRef(catalogFilterSignature(filters, pendingApply))
@@ -458,6 +466,7 @@ export function AppContent({ initialGames = [], initialTotal = 0, initialPage }:
     const snapshot = readCatalogSnapshot()
     if (!snapshot?.games.length) return
 
+    restoreInProgressRef.current = true
     filtersRef.current = snapshot.filters
     lastFilterResetSignatureRef.current = catalogFilterSignature(snapshot.filters, pendingApply)
     lastFetchSignatureRef.current = `0:${snapshot.offset}`
@@ -629,6 +638,12 @@ export function AppContent({ initialGames = [], initialTotal = 0, initialPage }:
   // both no-ops without poisoning later, genuine dependency changes.
   const filterResetSignature = catalogFilterSignature(filters, pendingApply)
   useEffect(() => {
+    // During a snapshot restore the filters transition default → restored, which
+    // is not a user-driven filter change and must not reset the loaded pages.
+    if (restoreInProgressRef.current) {
+      lastFilterResetSignatureRef.current = filterResetSignature
+      return
+    }
     if (lastFilterResetSignatureRef.current === filterResetSignature) return
     lastFilterResetSignatureRef.current = filterResetSignature
     prefetchRef.current = null
@@ -642,6 +657,13 @@ export function AppContent({ initialGames = [], initialTotal = 0, initialPage }:
   // An aborted run (StrictMode replay, rapid dep change) clears the ref so
   // the next run with the same signature fetches for real.
   useEffect(() => {
+    // While a snapshot is being restored the games list is already authoritative;
+    // every run here belongs to the two-render restore cascade (offset 0 → restored
+    // offset), so keep the signature ref in sync but never clear or refetch.
+    if (restoreInProgressRef.current) {
+      lastFetchSignatureRef.current = `${fetchKey}:${offset}`
+      return
+    }
     if (offset > 0 && catalogTotal > 0 && offset >= catalogTotal) {
       setHasMore(false)
       setIsLoadingMore(false)
@@ -716,6 +738,14 @@ export function AppContent({ initialGames = [], initialTotal = 0, initialPage }:
       if (!settled) lastFetchSignatureRef.current = null
     }
   }, [catalogTotal, fetchKey, offset])
+
+  // Restore is complete once its state has committed (restoredSnapshot is set in
+  // the same batched update as the offset/filters/games). Defined AFTER the
+  // fetch and filter-reset effects so that, in the settling commit, those two
+  // still observe the flag as set and skip before it is finally cleared here.
+  useEffect(() => {
+    if (restoredSnapshot) restoreInProgressRef.current = false
+  }, [restoredSnapshot])
 
   // IntersectionObserver — load next page when sentinel enters viewport
   useEffect(() => {
