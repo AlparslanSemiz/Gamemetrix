@@ -42,10 +42,12 @@ routers/
   └─ admin.py    — internal debug endpoints (health checks, price import, external-id matching)
 
 services/
-  ├─ metadata.py     — summary cleaning, enrichment, release-year fixing
-  ├─ rawg_import.py  — RAWG search result → Game creation and metadata application
-  ├─ game_filter.py  — list filtering, deduplication, in-memory sorting
-  └─ background.py   — periodic refresh loops (daily_refresh_loop, fix_year_batch, refresh_rating_batch)
+  ├─ metadata.py      — summary cleaning, enrichment, release-year fixing
+  ├─ rawg_import.py   — RAWG search result → Game creation and metadata application
+  ├─ game_filter.py   — list filtering, deduplication, in-memory sorting
+  ├─ game_query.py    — catalog SELECT/COUNT construction (CatalogFilters, sorts, JSON-array predicates)
+  ├─ trailer_cache.py — TTL + in-flight coalescing for YouTube trailer lookups
+  └─ background.py    — periodic refresh loops (daily_refresh_loop, fix_year_batch, refresh_rating_batch)
 
 integrations/
   ├─ sync.py            — Bayesian scoring (calculate_metrix_score) + refresh orchestration
@@ -128,6 +130,8 @@ Follow this checklist in order — do not skip steps:
 
 - `types/game.ts` is the canonical type for API-facing game data. Update before updating components.
 - `services/games.ts` is the only file that calls the backend API. Components never `fetch()` directly.
+- `catalog/` owns catalog-shell concerns, not UI: `config.ts` (page types, `DEFAULT_FILTERS`, nav items, presets, sort options, page copy), `snapshot.ts` (sessionStorage back-nav restore), `useCatalogScroll.ts` (masthead auto-hide + scroll-to-top). Nav entries and preset copy go in `config.ts` — never inline in `App.tsx`.
+- `App.tsx` is the catalog container: state, data fetching, and snapshot restore only. Markup belongs in `components/`.
 - `state/collections.ts` and `CollectionsProvider` own all user-collection state.
 - **TypeScript strict mode** is on. Never use `any`; use `unknown` and narrow. Avoid `as` casts.
 - **Icons:** Lucide only (`lucide-react`). No other icon libraries.
