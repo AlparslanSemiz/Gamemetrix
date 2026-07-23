@@ -8,23 +8,23 @@ import {
   type RefObject,
   type SetStateAction,
 } from 'react'
+
 import type { ViewMode } from '../components/CatalogToolbar'
 import type { Game, GameFilters } from '../types/game'
 import type { ActivePage } from './config'
+import { readCatalogSnapshot, type CatalogSnapshot } from './snapshot'
 import {
-  findGameCardElement,
-  readCatalogSnapshot,
-  writeCatalogSnapshot,
-  type CatalogSnapshot,
-} from './snapshot'
+  anchorForGame,
+  applyRestoredState,
+  prepareRestoreRefs,
+  restoreScrollPosition,
+  writeCurrentSnapshot,
+  type SnapshotAnchor,
+} from './snapshotRestore'
 import type { CatalogPagination } from './useCatalogPagination'
-import { catalogFilterSignature } from './useCatalogPagination'
 import type { CatalogScroll } from './useCatalogScroll'
 
-const RESTORE_SETTLE_DELAY_MS = 80
-const useIsomorphicLayoutEffect = (
-  typeof window === 'undefined' ? useEffect : useLayoutEffect
-)
+const useIsomorphicLayoutEffect = typeof window === 'undefined' ? useEffect : useLayoutEffect
 
 export interface CatalogSnapshotValues {
   activePage: ActivePage
@@ -59,11 +59,6 @@ interface UseCatalogSnapshotProps {
   values: CatalogSnapshotValues
 }
 
-type SnapshotAnchor = {
-  slug: string
-  viewportTop: number
-}
-
 export function useCatalogSnapshot({
   hasUrlFilters,
   pagination,
@@ -77,6 +72,7 @@ export function useCatalogSnapshot({
   const snapshotAnchorRef = useRef<SnapshotAnchor | null>(null)
   const restoreInProgressRef = useRef(false)
   const filtersRef = useRef(values.filters)
+
   const restoredSnapshot = useInitialCatalogRestore({
     filtersRef,
     hasUrlFilters,
@@ -93,13 +89,7 @@ export function useCatalogSnapshot({
     filtersRef.current = values.filters
   }, [values.filters])
 
-  useLatestCatalogSnapshot(
-    latestCatalogRef,
-    pagination,
-    scroll,
-    snapshotAnchorRef,
-    values,
-  )
+  useLatestCatalogSnapshot(latestCatalogRef, pagination, scroll, snapshotAnchorRef, values)
   const saveCatalogSnapshot = useSnapshotPersistence(
     latestCatalogRef,
     scroll,
@@ -140,6 +130,7 @@ function useInitialCatalogRestore({
   snapshotAnchorRef,
 }: InitialCatalogRestoreProps) {
   const [restoredSnapshot, setRestoredSnapshot] = useState<CatalogSnapshot | null>(null)
+  // Captured once: restore must reflect the values at mount, not later edits.
   const initialRestoreRef = useRef({ hasUrlFilters, pendingApply })
   const {
     setActivePage,
@@ -158,17 +149,16 @@ function useInitialCatalogRestore({
     if (routeInitialPage !== 'catalog' || initial.hasUrlFilters) return
     const snapshot = readCatalogSnapshot()
     if (!snapshot?.games.length) return
-    prepareRestoreRefs(
-      snapshot,
-      initial.pendingApply,
-      pagination.lastFetchSignatureRef,
-      pagination.lastFilterResetSignatureRef,
-      scroll.lastScrollYRef,
-      scroll.mastheadVisibleRef,
+
+    prepareRestoreRefs(snapshot, initial.pendingApply, {
       filtersRef,
+      lastFetchSignatureRef: pagination.lastFetchSignatureRef,
+      lastFilterResetSignatureRef: pagination.lastFilterResetSignatureRef,
+      lastScrollYRef: scroll.lastScrollYRef,
+      mastheadVisibleRef: scroll.mastheadVisibleRef,
       restoreInProgressRef,
       snapshotAnchorRef,
-    )
+    })
     applyRestoredState(snapshot, {
       setActivePage,
       setActivePreset,
@@ -270,30 +260,20 @@ function useSnapshotPersistence(
   snapshotAnchorRef: RefObject<SnapshotAnchor | null>,
 ) {
   const { lastScrollYRef, mastheadVisibleRef } = scroll
-  const saveCatalogSnapshot = useCallback((focusedGame?: Game) => {
-    const snapshot = latestCatalogRef.current
-    if (!snapshot) return
-    const scrollY = window.scrollY
-    if (focusedGame) {
-      const card = findGameCardElement(focusedGame.slug)
-      snapshotAnchorRef.current = {
-        slug: focusedGame.slug,
-        viewportTop: card?.getBoundingClientRect().top ?? 0,
+
+  const saveCatalogSnapshot = useCallback(
+    (focusedGame?: Game) => {
+      const snapshot = latestCatalogRef.current
+      if (!snapshot) return
+      const scrollY = window.scrollY
+      if (focusedGame) {
+        snapshotAnchorRef.current = anchorForGame(focusedGame)
       }
-    }
-    lastScrollYRef.current = scrollY
-    writeCurrentSnapshot(
-      snapshot,
-      scrollY,
-      mastheadVisibleRef.current,
-      snapshotAnchorRef,
-    )
-  }, [
-    lastScrollYRef,
-    latestCatalogRef,
-    mastheadVisibleRef,
-    snapshotAnchorRef,
-  ])
+      lastScrollYRef.current = scrollY
+      writeCurrentSnapshot(snapshot, scrollY, mastheadVisibleRef.current, snapshotAnchorRef)
+    },
+    [lastScrollYRef, latestCatalogRef, mastheadVisibleRef, snapshotAnchorRef],
+  )
 
   useEffect(() => {
     const saveSnapshot = () => {
@@ -314,12 +294,7 @@ function useSnapshotPersistence(
       window.removeEventListener('pagehide', saveSnapshot)
       window.history.scrollRestoration = previousScrollRestoration
     }
-  }, [
-    lastScrollYRef,
-    latestCatalogRef,
-    mastheadVisibleRef,
-    snapshotAnchorRef,
-  ])
+  }, [lastScrollYRef, latestCatalogRef, mastheadVisibleRef, snapshotAnchorRef])
 
   return saveCatalogSnapshot
 }
@@ -333,124 +308,13 @@ function useRestoredCatalogScroll(
     if (!restoredSnapshot?.games.length) return
     mastheadVisibleRef.current = restoredSnapshot.mastheadVisible
     return restoreScrollPosition(restoredSnapshot, lastScrollYRef)
-  }, [
-    lastScrollYRef,
-    mastheadVisibleRef,
-    restoredSnapshot,
-  ])
+  }, [lastScrollYRef, mastheadVisibleRef, restoredSnapshot])
 }
 
-function prepareRestoreRefs(
-  snapshot: CatalogSnapshot,
-  pendingApply: number,
-  lastFetchSignatureRef: RefObject<string | null>,
-  lastFilterResetSignatureRef: RefObject<string>,
-  lastScrollYRef: RefObject<number>,
-  mastheadVisibleRef: RefObject<boolean>,
-  filtersRef: RefObject<GameFilters>,
-  restoreInProgressRef: RefObject<boolean>,
-  snapshotAnchorRef: RefObject<{ slug: string; viewportTop: number } | null>,
-) {
-  restoreInProgressRef.current = true
-  filtersRef.current = snapshot.filters
-  lastFilterResetSignatureRef.current = catalogFilterSignature(
-    snapshot.filters,
-    pendingApply,
-  )
-  lastFetchSignatureRef.current = `0:${snapshot.offset}`
-  lastScrollYRef.current = snapshot.scrollY
-  mastheadVisibleRef.current = snapshot.mastheadVisible
-  snapshotAnchorRef.current = (
-    snapshot.focusedGameSlug
-    && typeof snapshot.focusedGameViewportTop === 'number'
-  )
-    ? {
-        slug: snapshot.focusedGameSlug,
-        viewportTop: snapshot.focusedGameViewportTop,
-      }
-    : null
-}
-
-function applyRestoredState(
-  snapshot: CatalogSnapshot,
-  actions: CatalogSnapshotSetters & {
-    setHasMore: Dispatch<SetStateAction<boolean>>
-    setMastheadVisibility: (next: boolean) => void
-    setOffset: Dispatch<SetStateAction<number>>
-  },
-) {
-  actions.setActivePage(snapshot.activePage)
-  actions.setActivePreset(snapshot.activePreset)
-  actions.setFilters(snapshot.filters)
-  actions.setGames(snapshot.games)
-  actions.setCatalogTotal(snapshot.catalogTotal)
-  actions.setLibraryTotal(snapshot.libraryTotal)
-  actions.setViewMode(snapshot.viewMode)
-  actions.setFiltersOpen(snapshot.filtersOpen)
-  actions.setOffset(snapshot.offset)
-  actions.setHasMore(snapshot.hasMore)
-  actions.setMastheadVisibility(snapshot.mastheadVisible)
-  actions.setIsLoading(false)
-}
-
-function writeCurrentSnapshot(
-  snapshot: CatalogSnapshot,
-  scrollY: number,
-  mastheadVisible: boolean,
-  anchorRef: RefObject<{ slug: string; viewportTop: number } | null>,
-) {
-  writeCatalogSnapshot({
-    ...snapshot,
-    scrollY,
-    mastheadVisible,
-    focusedGameSlug: anchorRef.current?.slug ?? null,
-    focusedGameViewportTop: anchorRef.current?.viewportTop ?? null,
-  })
-}
-
-function restoreScrollPosition(
-  snapshot: CatalogSnapshot,
-  lastScrollYRef: RefObject<number>,
-) {
-  const restorePosition = () => {
-    let nextScrollY = snapshot.scrollY
-    if (
-      snapshot.focusedGameSlug
-      && typeof snapshot.focusedGameViewportTop === 'number'
-    ) {
-      const card = findGameCardElement(snapshot.focusedGameSlug)
-      if (card) {
-        nextScrollY = (
-          window.scrollY
-          + card.getBoundingClientRect().top
-          - snapshot.focusedGameViewportTop
-        )
-      }
-    }
-    const previousBehavior = document.documentElement.style.scrollBehavior
-    document.documentElement.style.scrollBehavior = 'auto'
-    window.scrollTo(0, Math.max(0, nextScrollY))
-    document.documentElement.style.scrollBehavior = previousBehavior
-    lastScrollYRef.current = window.scrollY
-  }
-
-  restorePosition()
-  const frameIds: number[] = []
-  const firstFrame = window.requestAnimationFrame(() => {
-    restorePosition()
-    frameIds.push(window.requestAnimationFrame(restorePosition))
-  })
-  frameIds.push(firstFrame)
-  const settleTimer = window.setTimeout(
-    restorePosition,
-    RESTORE_SETTLE_DELAY_MS,
-  )
-  return () => {
-    frameIds.forEach((frameId) => window.cancelAnimationFrame(frameId))
-    window.clearTimeout(settleTimer)
-  }
-}
-
+/**
+ * Clears the restore guard. Must be called AFTER the fetch and filter-reset
+ * effects so those still see the guard set during the settling commit.
+ */
 export function useCatalogRestoreCompletion(
   restoredSnapshot: CatalogSnapshot | null,
   restoreInProgressRef: RefObject<boolean>,

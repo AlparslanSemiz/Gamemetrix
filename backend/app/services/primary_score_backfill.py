@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session, noload
 from ..config import get_settings
 from ..database import SessionLocal
 from ..integrations.rate_limiter import get_rate_limiter
-from ..integrations.sync import _score_value, refresh_game_sources
+from ..integrations.sync import refresh_game_sources, score_value
 from ..models import Game
 
 PRIMARY_SCORE_SOURCES: tuple[str, ...] = ("OpenCritic", "Metacritic", "IGDB", "Steam")
@@ -19,7 +19,7 @@ def _has_live_score(game: Game, source: str) -> bool:
     return any(
         row.get("source") == source
         and row.get("status") == "live"
-        and _score_value(row) is not None
+        and score_value(row) is not None
         for row in game.source_scores
     )
 

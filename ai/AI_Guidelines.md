@@ -8,7 +8,7 @@ Rules every AI session on this project must follow without exception. Read this 
 
 1. Read `memory/MEMORY.md` and follow all linked memory files relevant to the task.
 2. Read this file entirely.
-3. If the task touches scoring, read `backend/app/integrations/sync.py` and `source_registry.py` before touching anything.
+3. If the task touches scoring, read `backend/app/integrations/sync/scoring.py` and `source_registry.py` before touching anything.
 4. If the task touches the frontend, read `frontend/src/types/game.ts` before adding or renaming fields.
 5. Do NOT infer the current state of the codebase from memory alone — memory can be stale. Always verify by reading the actual file.
 
@@ -22,7 +22,7 @@ Rules every AI session on this project must follow without exception. Read this 
 | **I-2** | Awards (`award_count`, `goty_year`) are NEVER added as a score bump to `metrix_score`. They are display-only badges. |
 | **I-3** | Raw API responses are NEVER written directly to the database. Every source must produce a `NormalizedGame` or `ExternalScore` first. |
 | **I-4** | Source names (`"Metacritic"`, `"Steam"`, etc.) are NEVER hardcoded in multiple places. `source_registry.py` is the single source of truth for source metadata. |
-| **I-5** | `PRIOR_VOTE_COUNTS` in `sync.py` and `prior_count` in `source_registry.py` must always stay in sync. If you change one, change the other in the same commit. |
+| **I-5** | `SOURCE_WEIGHTS` in `integrations/sync/constants.py` is derived from `source_registry.REGISTRY[*].weight`. Never re-declare weights as literals there — change the registry. |
 | **I-6** | The sidebar stays short — no per-year entries. "Best of the Year" is one sidebar item; year selection happens via in-page chips. |
 | **I-7** | `applicable_for_game()` in `source_registry.py` is the authoritative function for which sources apply to a game. The `Game.applicable_primary_sources` property delegates to it — never re-implement this logic inline. |
 
@@ -39,35 +39,54 @@ routers/
   ├─ games.py    — public game endpoints (search, list, detail, refresh, trailer, facets)
   ├─ imports.py  — bulk import endpoints (rawg, steamspy, cheapshark, free-to-game)
   ├─ ratings.py  — rating/metadata maintenance (weights, enrich, fix-years, enrich-summaries)
-  └─ admin.py    — internal debug endpoints (health checks, price import, external-id matching)
+  ├─ account/    — auth, oauth, state, preferences, alerts, schemas (one module per surface)
+  └─ admin/      — health, dashboard, jobs, diagnostics, matching, prices
 
 services/
-  ├─ metadata.py      — summary cleaning, enrichment, release-year fixing
-  ├─ rawg_import.py   — RAWG search result → Game creation and metadata application
-  ├─ game_filter.py   — list filtering, deduplication, in-memory sorting
-  ├─ game_query.py    — catalog SELECT/COUNT construction (CatalogFilters, sorts, JSON-array predicates)
-  ├─ trailer_cache.py — TTL + in-flight coalescing for YouTube trailer lookups
-  └─ background.py    — periodic refresh loops (daily_refresh_loop, fix_year_batch, refresh_rating_batch)
+  ├─ metadata.py           — summary cleaning, enrichment, release-year fixing
+  ├─ rawg_import.py        — RAWG search result → Game creation and metadata application
+  ├─ game_filter.py        — list filtering, in-memory sorting
+  ├─ game_query.py         — catalog SELECT/COUNT construction (CatalogFilters, sorts, JSON predicates)
+  ├─ trailer_cache.py      — TTL + in-flight coalescing for YouTube trailer lookups
+  ├─ background.py         — periodic refresh loops
+  ├─ similarity/           — "games like X": taxonomy → signals → profiles → scoring/gates → ranking → queries
+  ├─ deduplication/        — titles → matching → merge → in_memory → store
+  └─ metadata_backfill/    — sanitize → gaps → persistence → apply → sources → batch
 
 integrations/
-  ├─ sync.py            — Bayesian scoring (calculate_metrix_score) + refresh orchestration
-  ├─ source_registry.py — canonical source definitions (weight, prior_count, requires_pc, etc.)
+  ├─ sync/              — constants, values, serialization, scoring, cache, fetching,
+  │                       ranking, persistence, refresh
+  ├─ rawg/              — matching, client, persistence, catalog_import, detail
+  ├─ source_registry.py — canonical source definitions (weight, is_primary, requires_pc, …)
   ├─ types.py           — shared dataclasses: ExternalScore, NormalizedGame, SourceHealth
   └─ <source>.py / <source>_service.py — one pair per data source (thin HTTP client + normalizer)
 
-models.py   — ORM models only. Properties must use source_registry imports; no duplicated sets.
-schemas.py  — Pydantic API schemas only.
-config.py   — All os.getenv calls live here. No other file may call os.getenv.
-database.py — SQLAlchemy engine and session factory only.
+models.py           — ORM models only. Computed properties delegate to game_signals.py.
+game_signals.py     — pure rating-signal classification (confidence_level, popularity_label, …)
+content_type.py     — game / dlc / soundtrack / software classification
+schemas.py          — Pydantic API schemas only.
+config.py           — All os.getenv calls live here. No other file may call os.getenv.
+config_validation.py— Settings validation only; reads no environment itself.
+database.py         — SQLAlchemy engine and session factory only.
 ```
 
-### Dependency rule (call downward only):
+When a module passes ~400 lines or holds two unrelated concerns, split it into a package
+with one module per responsibility and re-export the public API from `__init__.py`, so
+existing import paths keep working.
+
+### Dependency rule (call downward only)
+
 ```
 main → routers → services → integrations/sync → integrations/<source>
-                           → models
-                           → integrations/source_registry
+                           → models → game_signals → integrations/source_registry
+                           → content_type
 ```
-No upward calls. `sync.py` may call `services/metadata.py` for enrichment (one permitted cross-call; avoids a circular dependency). `models.py` imports from `integrations/source_registry.py` only.
+
+No upward calls, with two long-standing exceptions: `integrations/sync/refresh.py` imports
+`services/metadata|seo|completeness` (lazily, inside the function, to avoid a cycle), and
+`integrations/rawg/` imports `services/rawg_import` + `services/deduplication`. Do not add
+new upward calls. `content_type.py` and `game_signals.py` are leaf modules — they may be
+imported from any layer.
 
 ---
 
@@ -75,8 +94,8 @@ No upward calls. `sync.py` may call `services/metadata.py` for enrichment (one p
 
 Every function must do exactly ONE thing:
 - `calculate_metrix_score` — computes the score, nothing else.
-- `_bayesian_adjust` — computes adjusted score + reliability, nothing else.
-- `_confidence` — computes confidence from scoring context, nothing else.
+- `_score_reliability_factor` — computes the reliability multiplier, nothing else.
+- `weighted_source_average` — averages one set of sources, nothing else.
 - `dedupe_near_duplicates` — deduplicates a list, nothing else.
 - Each `filter_by_*` function — one filter condition, nothing else.
 - `clean_game_summary` — sanitizes text, nothing else.
@@ -95,11 +114,11 @@ If a function needs a docstring to explain what ELSE it does, split it.
 
 Follow this checklist in order — do not skip steps:
 
-1. Add a `SourceDef` entry to `source_registry.py` with correct `weight`, `is_primary`, `requires_pc`, `prior_count`, and `display_priority`.
-2. Add the same `prior_count` value to `PRIOR_VOTE_COUNTS` in `sync.py` and the same `weight` to `SOURCE_WEIGHTS`.
+1. Add a `SourceDef` entry to `source_registry.py` with correct `weight`, `is_primary`, `requires_pc`, and `display_priority`.
+2. Nothing to add in `sync/` — `SOURCE_WEIGHTS` is derived from the registry. A non-rating source must have `weight=0.0`.
 3. Create `integrations/<source>.py` — thin HTTP client, returns raw dict.
 4. Create `integrations/<source>_service.py` — converts raw dict to `NormalizedGame` / `ExternalScore`.
-5. Register in `refresh_game_sources()` in `sync.py`, guarded by `game.is_pc_applicable` if `requires_pc=True`.
+5. Register a fetch task in `integrations/sync/fetching.py`, guarded by `game.is_pc_applicable` if `requires_pc=True`.
 6. Add a health-check entry to `provider_status.py`.
 7. Update `frontend/src/types/game.ts` if new fields are exposed in the API response.
 8. If the source is non-rating (price, popularity), `weight=0.0` and it must never enter `calculate_metrix_score()`.
@@ -108,12 +127,21 @@ Follow this checklist in order — do not skip steps:
 
 ## 5. Scoring Algorithm Rules
 
-- Bayesian formula: `adjusted = (70 * prior_count + raw * review_count) / (prior_count + review_count)`
-- Confidence formula: `min(1.0, 0.15 + 0.35*coverage + 0.50*evidence)` — evidence outweighs coverage.
-- `_bayesian_adjust` and `_confidence` are separate functions — keep them that way.
-- `confidence_level` tiers: `Strong`, `Solid`, `Limited`, `Catalog`. Defined in `models.py`. Do not add tiers without user approval.
+The score is a **reliability-adjusted weighted average**, not Bayesian prior shrinkage.
+(An earlier Bayesian `prior_count` model was replaced; do not reintroduce its vocabulary.)
+
+- Weighted average of the four primaries, then shrunk toward a neutral baseline:
+  `adjusted = raw*reliability + 70*(1-reliability) - (1-reliability)*6`
+- `reliability = clamp(coverage + balance + volume, 0.46, max_for_coverage)` where:
+  - **coverage** — how many of the 4 primaries are live (4→1.00, 3→0.90, 2→0.78, 1→0.62, 0→0.40)
+  - **balance** — critic *and* user (+0.03), critic only (−0.04), user only (−0.06), neither (−0.10)
+  - **volume** — total review count (≥100k +0.04, ≥10k +0.02, ≥500 +0.01, 0 −0.04, else −0.02)
+- All of these live in `integrations/sync/scoring.py` as named constants. Each is a published-score input.
+- `_score_reliability_factor` and `calculate_metrix_score` are separate functions — keep them that way.
+- `confidence_level` tiers (`Strong`/`Solid`/`Limited`/`Catalog`) live in `game_signals.py`, exposed via `Game.confidence_level`. Do not add tiers without user approval.
 - Source weights must sum to ~1.0 across primary sources. Verify after any weight change.
 - When changing the algorithm, test against: Elden Ring, Stardew Valley, a console-only game, a low-review indie.
+- Any change here must be checked with a parity harness over `calculate_metrix_score` before and after.
 
 ---
 
@@ -160,7 +188,7 @@ Follow this checklist in order — do not skip steps:
 - **No feature flags or backward-compat shims** — delete old code; git history is the backup.
 - **No `os.getenv` outside `config.py`** — always use `get_settings()`.
 - Function signatures: prefer explicit typed parameters over `**kwargs`.
-- Keep `sync.py` functions focused: `calculate_metrix_score` only scores; `refresh_game_sources` only orchestrates.
+- Keep `sync/` functions focused: `calculate_metrix_score` only scores; `refresh_game_sources` only orchestrates.
 
 ---
 
@@ -217,7 +245,7 @@ Follow this checklist in order — do not skip steps:
 
 Before reporting a task as done:
 
-- [ ] `source_registry.py` `prior_count` and `weight` are in sync with `sync.py` `PRIOR_VOTE_COUNTS` and `SOURCE_WEIGHTS` if touched.
+- [ ] Source `weight` changes were made in `source_registry.py` only — never re-declared in `sync/constants.py`.
 - [ ] `frontend/src/types/game.ts` matches any new API response fields.
 - [ ] No `any` types introduced in TypeScript.
 - [ ] No hardcoded source name strings outside `source_registry.py`.

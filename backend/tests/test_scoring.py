@@ -1,6 +1,6 @@
 import pytest
 
-from app.integrations import sync as sync_module
+from app.integrations.sync import fetching as sync_fetching
 from app.integrations.sync import SOURCE_WEIGHTS, calculate_metrix_score
 from app.integrations.types import ExternalScore
 from app.models import Game
@@ -106,12 +106,12 @@ async def test_cached_database_score_does_not_consume_provider_budget(monkeypatc
             return True
 
     limiter = FakeLimiter()
-    monkeypatch.setattr(sync_module, "get_rate_limiter", lambda: limiter)
+    monkeypatch.setattr(sync_fetching, "get_rate_limiter", lambda: limiter)
 
     async def fetch() -> ExternalScore:
         return ExternalScore(source="Metacritic", score=88, review_count=40)
 
-    result = await sync_module._resolve_score(
+    result = await sync_fetching.resolve_score(
         "Metacritic",
         None,
         fetch,
@@ -127,7 +127,7 @@ async def test_provider_exception_details_never_expose_request_secrets() -> None
     async def fetch() -> ExternalScore:
         raise RuntimeError("https://api.rawg.io/games?key=super-secret")
 
-    result = await sync_module._resolve_score(
+    result = await sync_fetching.resolve_score(
         "Metacritic",
         None,
         fetch,

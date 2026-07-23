@@ -26,8 +26,6 @@ class SourceDef:
     is_primary: bool
     # True = only applicable when a game has a PC/Steam platform entry
     requires_pc: bool
-    # Prior vote count used in Bayesian shrinkage (mirrors PRIOR_VOTE_COUNTS in sync.py)
-    prior_count: int
     # Lower number = shown first in UI source breakdown
     display_priority: int
 
@@ -40,7 +38,6 @@ REGISTRY: dict[str, SourceDef] = {
         weight=0.32,
         is_primary=True,
         requires_pc=False,
-        prior_count=10,
         display_priority=1,
     ),
     "OpenCritic": SourceDef(
@@ -50,7 +47,6 @@ REGISTRY: dict[str, SourceDef] = {
         weight=0.28,
         is_primary=True,
         requires_pc=False,
-        prior_count=10,
         display_priority=2,
     ),
     "IGDB": SourceDef(
@@ -60,7 +56,6 @@ REGISTRY: dict[str, SourceDef] = {
         weight=0.15,
         is_primary=True,
         requires_pc=False,
-        prior_count=15,
         display_priority=3,
     ),
     "Steam": SourceDef(
@@ -70,7 +65,6 @@ REGISTRY: dict[str, SourceDef] = {
         weight=0.25,
         is_primary=True,
         requires_pc=True,
-        prior_count=800,
         display_priority=4,
     ),
     "RAWG": SourceDef(
@@ -80,7 +74,6 @@ REGISTRY: dict[str, SourceDef] = {
         weight=0.0,
         is_primary=False,
         requires_pc=False,
-        prior_count=150,
         display_priority=5,
     ),
     # ── Non-rating support sources — weight 0.0, never enter GameMetrix Score ─
@@ -91,7 +84,6 @@ REGISTRY: dict[str, SourceDef] = {
         weight=0.0,
         is_primary=False,
         requires_pc=True,
-        prior_count=0,
         display_priority=99,
     ),
     "CheapShark": SourceDef(
@@ -101,7 +93,6 @@ REGISTRY: dict[str, SourceDef] = {
         weight=0.0,
         is_primary=False,
         requires_pc=True,
-        prior_count=0,
         display_priority=99,
     ),
     "FreeToGame": SourceDef(
@@ -111,7 +102,6 @@ REGISTRY: dict[str, SourceDef] = {
         weight=0.0,
         is_primary=False,
         requires_pc=False,
-        prior_count=0,
         display_priority=99,
     ),
     "ITAD": SourceDef(
@@ -121,7 +111,6 @@ REGISTRY: dict[str, SourceDef] = {
         weight=0.0,
         is_primary=False,
         requires_pc=True,
-        prior_count=0,
         display_priority=99,
     ),
 }

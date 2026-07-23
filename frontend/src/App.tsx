@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import './App.css'
-import { CatalogWorkspace } from './components/CatalogWorkspace'
+import { CatalogWorkspace } from './components/catalog-workspace'
 import type { ViewMode } from './components/CatalogToolbar'
 import { MobileTabBar } from './components/MobileTabBar'
 import { SideRail } from './components/SideRail'

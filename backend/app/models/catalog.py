@@ -1,11 +1,15 @@
+"""Catalog tables: games and the source data attached to them."""
+
 from datetime import date, datetime
 
-from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Integer, JSON, String, Text, UniqueConstraint
+from sqlalchemy import (
+    Boolean, Date, DateTime, Float, ForeignKey, Integer, JSON, String, Text,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from . import game_signals
-from .database import Base
-from .integrations.source_registry import PC_PLATFORM_KEYS, applicable_for_game
+from .. import game_signals
+from ..database import Base
+from ..integrations.source_registry import PC_PLATFORM_KEYS, applicable_for_game
 
 
 class Game(Base):
@@ -188,152 +192,6 @@ class SourceSnapshot(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
-class VisitEvent(Base):
-    """Page-view event with stable hashes and optional short-lived raw network data."""
-
-    __tablename__ = "visit_events"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    user_id: Mapped[str | None] = mapped_column(
-        String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
-    )
-    visitor_id_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
-    session_id_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
-    ip_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
-    ip_address: Mapped[str | None] = mapped_column(String(45), nullable=True)
-    country_code: Mapped[str | None] = mapped_column(String(2), nullable=True)
-    user_agent_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    user_agent: Mapped[str | None] = mapped_column(String(500), nullable=True)
-    language: Mapped[str | None] = mapped_column(String(35), nullable=True)
-    timezone: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    path: Mapped[str] = mapped_column(String(500), nullable=False, index=True)
-    referrer: Mapped[str | None] = mapped_column(String(500), nullable=True)
-    title: Mapped[str | None] = mapped_column(String(200), nullable=True)
-    screen_width: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    screen_height: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
-
-
-class User(Base):
-    """Normal product account. Admin credentials intentionally live outside this table."""
-
-    __tablename__ = "users"
-
-    id: Mapped[str] = mapped_column(String(36), primary_key=True)
-    email: Mapped[str] = mapped_column(String(320), nullable=False, unique=True, index=True)
-    display_name: Mapped[str] = mapped_column(String(80), nullable=False)
-    password_hash: Mapped[str | None] = mapped_column(Text, nullable=True)
-    email_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-
-
-class OAuthIdentity(Base):
-    __tablename__ = "oauth_identities"
-    __table_args__ = (
-        UniqueConstraint("provider", "provider_subject", name="uq_oauth_provider_subject"),
-    )
-
-    id: Mapped[str] = mapped_column(String(36), primary_key=True)
-    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
-    provider: Mapped[str] = mapped_column(String(32), nullable=False)
-    provider_subject: Mapped[str] = mapped_column(String(255), nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-
-
-class AccountSession(Base):
-    __tablename__ = "account_sessions"
-
-    id: Mapped[str] = mapped_column(String(36), primary_key=True)
-    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
-    token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
-    csrf_hash: Mapped[str] = mapped_column(String(64), nullable=False)
-    ip_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    user_agent_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
-    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-
-
-class AccountToken(Base):
-    __tablename__ = "account_tokens"
-
-    id: Mapped[str] = mapped_column(String(36), primary_key=True)
-    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
-    purpose: Mapped[str] = mapped_column(String(24), nullable=False, index=True)
-    token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
-    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-
-
-class UserCollection(Base):
-    __tablename__ = "user_collections"
-    __table_args__ = (
-        UniqueConstraint("user_id", "game_id", "collection_type", name="uq_user_collection_game_type"),
-    )
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
-    game_id: Mapped[int] = mapped_column(Integer, ForeignKey("games.id", ondelete="CASCADE"), nullable=False, index=True)
-    collection_type: Mapped[str] = mapped_column(String(24), nullable=False, index=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-
-
-class UserPreference(Base):
-    __tablename__ = "user_preferences"
-
-    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
-    alert_min_discount: Mapped[int] = mapped_column(Integer, nullable=False, default=20)
-    alert_min_score: Mapped[int] = mapped_column(Integer, nullable=False, default=80)
-    alert_upcoming_days: Mapped[int] = mapped_column(Integer, nullable=False, default=45)
-    email_digest_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    marketing_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    settings: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-
-
-class UserAlertState(Base):
-    __tablename__ = "user_alert_states"
-    __table_args__ = (
-        UniqueConstraint("user_id", "alert_key", name="uq_user_alert_state_key"),
-    )
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
-    alert_key: Mapped[str] = mapped_column(String(240), nullable=False)
-    state: Mapped[str] = mapped_column(String(16), nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-
-
-class NotificationDelivery(Base):
-    __tablename__ = "notification_deliveries"
-    __table_args__ = (
-        UniqueConstraint("user_id", "fingerprint", name="uq_notification_delivery_fingerprint"),
-    )
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
-    fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
-    channel: Mapped[str] = mapped_column(String(16), nullable=False, default="email")
-    delivered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-
-
-class AnalyticsEvent(Base):
-    __tablename__ = "analytics_events"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    event_type: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
-    visitor_id_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
-    user_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
-    path: Mapped[str | None] = mapped_column(String(500), nullable=True)
-    properties: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
-
-
 class PriceSnapshot(Base):
     """Current + historical price data per game/store, sourced from ITAD or CheapShark."""
 
@@ -363,72 +221,3 @@ class PriceSnapshot(Base):
     itad_id: Mapped[str | None] = mapped_column(String(200), nullable=True, index=True)
 
     game: Mapped["Game"] = relationship("Game", back_populates="price_snapshots")
-
-
-class ApiRequestBudget(Base):
-    """Persistent daily request counter for one upstream API source."""
-
-    __tablename__ = "api_request_budgets"
-    __table_args__ = (
-        UniqueConstraint("source", "bucket_date", name="uq_api_request_budgets_source_date"),
-    )
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    source: Mapped[str] = mapped_column(String(60), nullable=False, index=True)
-    bucket_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
-    request_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    daily_limit: Mapped[int] = mapped_column(Integer, nullable=False, default=100)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-
-
-class ApiRequestWindow(Base):
-    """Persistent provider quota counter for non-daily fixed windows."""
-
-    __tablename__ = "api_request_windows"
-    __table_args__ = (
-        UniqueConstraint("source", "window_kind", "window_start", name="uq_api_request_window"),
-    )
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    source: Mapped[str] = mapped_column(String(60), nullable=False, index=True)
-    window_kind: Mapped[str] = mapped_column(String(24), nullable=False)
-    window_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
-    window_seconds: Mapped[int] = mapped_column(Integer, nullable=False)
-    request_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    request_limit: Mapped[int] = mapped_column(Integer, nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-
-
-class AdminAuditLog(Base):
-    """Who did what on the admin surface: every /admin/* request plus login attempts."""
-
-    __tablename__ = "admin_audit_logs"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    username: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
-    action: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
-    method: Mapped[str] = mapped_column(String(8), nullable=False)
-    path: Mapped[str] = mapped_column(String(500), nullable=False, index=True)
-    query: Mapped[str | None] = mapped_column(String(500), nullable=True)
-    status_code: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
-    success: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, index=True)
-    ip_address: Mapped[str | None] = mapped_column(String(45), nullable=True)
-    user_agent: Mapped[str | None] = mapped_column(String(300), nullable=True)
-    duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
-
-
-class DataFillRun(Base):
-    """Audit row for full catalog/data fill runs."""
-
-    __tablename__ = "data_fill_runs"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    status: Mapped[str] = mapped_column(String(32), nullable=False, default="queued", index=True)
-    force: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    target_total: Mapped[int] = mapped_column(Integer, nullable=False, default=10000)
-    result: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
-    error: Mapped[str | None] = mapped_column(Text, nullable=True)
-    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-

@@ -5,8 +5,6 @@ All filter functions accept list[Game] and return a filtered list[Game].
 Each function does exactly one thing.
 
 Public API:
-  normalized_title(value)         -> str
-  canonical_title(value)          -> str
   escape_like(value)              -> str
   dedupe_near_duplicates(games)   -> list[Game]
   filter_by_genre                 -> list[Game]
@@ -26,12 +24,7 @@ Public API:
 from ..game_signals import safe_review_count, valid_score
 from ..models import Game
 from ..integrations.source_registry import CRITIC_SOURCES
-from .deduplication import (
-    canonical_title,
-    dedupe_games_in_memory,
-    normalized_title,
-    total_review_count,
-)
+from .deduplication import dedupe_games_in_memory, total_review_count
 
 
 LIKE_ESCAPE_CHAR = "\\"

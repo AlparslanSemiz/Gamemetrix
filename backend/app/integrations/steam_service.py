@@ -20,11 +20,8 @@ from datetime import date
 import httpx
 
 from .rate_limiter import get_rate_limiter
-from .steam import (
-    _clean_requirement_block,
-    _lookup_steam_app_id,
-    _parse_steam_release_date,
-)
+from .steam.parsing import clean_requirement_block, parse_release_date
+from .steam.reviews import lookup_steam_app_id
 from .types import NormalizedGame, SourceHealth
 
 log = logging.getLogger(__name__)
@@ -39,7 +36,7 @@ _STEAM_APP_ID_RE = re.compile(r"(?:steam/apps/|/app/|^|[-_])(\d{3,})(?:/|$)")
 def _release_date(raw: dict) -> date | None:
     release_data = raw.get("release_date")
     value = release_data.get("date") if isinstance(release_data, dict) else None
-    return _parse_steam_release_date(value) if value else None
+    return parse_release_date(value) if value else None
 
 
 def _platforms(raw: dict) -> list[str]:
@@ -84,11 +81,11 @@ def _system_requirements(raw: dict) -> list[dict[str, str]]:
     ):
         raw_requirement = raw.get(key) or {}
         if isinstance(raw_requirement, str):
-            minimum = _clean_requirement_block(raw_requirement)
+            minimum = clean_requirement_block(raw_requirement)
             recommended = ""
         elif isinstance(raw_requirement, dict):
-            minimum = _clean_requirement_block(raw_requirement.get("minimum"))
-            recommended = _clean_requirement_block(raw_requirement.get("recommended"))
+            minimum = clean_requirement_block(raw_requirement.get("minimum"))
+            recommended = clean_requirement_block(raw_requirement.get("recommended"))
         else:
             continue
         if minimum or recommended:
@@ -165,7 +162,7 @@ class SteamService:
             return None
         try:
             async with httpx.AsyncClient(timeout=10) as client:
-                return await _lookup_steam_app_id(title, client)
+                return await lookup_steam_app_id(title, client)
         except Exception as exc:
             log.warning("Steam app ID lookup failed for %r: %s", title, exc)
             return None

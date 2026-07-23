@@ -6,7 +6,7 @@ import {
   ScoreAndCatalogPanels,
   SummaryPanels,
   TrafficPanel,
-} from './admin/AdminDashboardPanels'
+} from './admin/panels'
 import { AdminLogin } from './admin/AdminLogin'
 import { useAdminDashboard } from './admin/useAdminDashboard'
 import './AdminPage.css'

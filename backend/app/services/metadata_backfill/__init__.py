@@ -16,7 +16,7 @@ from .gaps import (
     metadata_gap_score,
 )
 from .persistence import upsert_external_id
-from .sanitize import safe_url
+from .sanitize import safe_url, system_requirements_need_repair
 from .sources import refresh_game_metadata
 
 __all__ = [
@@ -27,5 +27,6 @@ __all__ = [
     "metadata_gap_score",
     "refresh_game_metadata",
     "safe_url",
+    "system_requirements_need_repair",
     "upsert_external_id",
 ]

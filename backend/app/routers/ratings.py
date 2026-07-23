@@ -49,9 +49,18 @@ def integration_status() -> list[dict[str, str]]:
     return get_provider_statuses()
 
 
+def _rating_source_weights() -> dict[str, dict[str, float]]:
+    """Only the rating sources are tunable; support sources are pinned at 0.0."""
+    return {
+        "weights": {
+            source: value for source, value in SOURCE_WEIGHTS.items() if source in RATING_SOURCES
+        }
+    }
+
+
 @router.get("/api/score-weights", response_model=ScoreWeightsResponse)
 def get_score_weights() -> dict[str, dict[str, float]]:
-    return {"weights": {source: value for source, value in SOURCE_WEIGHTS.items() if source in RATING_SOURCES}}
+    return _rating_source_weights()
 
 
 @router.put("/api/score-weights", response_model=ScoreWeightsResponse)
@@ -65,7 +74,7 @@ def update_score_weights(
         if not math.isfinite(value):
             raise HTTPException(status_code=422, detail=f"Invalid score weight for {source}")
         SOURCE_WEIGHTS[source] = max(0.0, min(float(value), 1.0))
-    return {"weights": SOURCE_WEIGHTS}
+    return _rating_source_weights()
 
 
 @router.post("/api/score-weights/recalculate", response_model=RecalculateResponse)

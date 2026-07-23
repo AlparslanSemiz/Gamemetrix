@@ -3,7 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
-from ipaddress import ip_address
 from secrets import compare_digest, token_urlsafe
 from urllib.parse import urlparse
 from uuid import uuid4
