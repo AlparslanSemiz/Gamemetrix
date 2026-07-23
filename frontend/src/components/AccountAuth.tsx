@@ -1,4 +1,10 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react'
+import {
+  useEffect,
+  useRef,
+  useState,
+  type FormEvent,
+  type RefObject,
+} from 'react'
 import { ArrowLeft, KeyRound, LogIn, Mail, UserPlus, X } from 'lucide-react'
 import { Link, useNavigate, useSearchParams } from 'react-router'
 import {
@@ -22,26 +28,9 @@ const TITLES: Record<AuthMode, string> = {
   verify: 'Verify email',
 }
 
-export function AccountAuth({ mode }: { mode: AuthMode }) {
+function useAuthNavigation(mode: AuthMode, actionToken: string) {
   const navigate = useNavigate()
-  const [searchParams] = useSearchParams()
-  const [actionToken] = useState(() => {
-    const queryToken = searchParams.get('token') ?? ''
-    if (queryToken || typeof window === 'undefined') return queryToken
-    return new URLSearchParams(window.location.hash.slice(1)).get('token') ?? ''
-  })
-  const { account, login } = useAccount()
-  const firstInput = useRef<HTMLInputElement>(null)
-  const [displayName, setDisplayName] = useState('')
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [message, setMessage] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [isSubmitting, setIsSubmitting] = useState(false)
-
-  useEffect(() => {
-    firstInput.current?.focus()
-  }, [mode])
+  const { account } = useAccount()
 
   useEffect(() => {
     if (actionToken && mode === 'reset') window.history.replaceState(window.history.state, '', '/reset-password')
@@ -59,6 +48,27 @@ export function AccountAuth({ mode }: { mode: AuthMode }) {
     window.addEventListener('keydown', close)
     return () => window.removeEventListener('keydown', close)
   }, [navigate])
+
+  return navigate
+}
+
+function useAuthForm(
+  mode: AuthMode,
+  actionToken: string,
+  navigate: ReturnType<typeof useNavigate>,
+  firstInput: RefObject<HTMLInputElement | null>,
+) {
+  const { login } = useAccount()
+  const [displayName, setDisplayName] = useState('')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [message, setMessage] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  useEffect(() => {
+    firstInput.current?.focus()
+  }, [firstInput, mode])
 
   const submit = async (event: FormEvent) => {
     event.preventDefault()
@@ -96,6 +106,82 @@ export function AccountAuth({ mode }: { mode: AuthMode }) {
     }
   }
 
+  return {
+    displayName,
+    email,
+    error,
+    isSubmitting,
+    message,
+    password,
+    setDisplayName,
+    setEmail,
+    setPassword,
+    submit,
+  }
+}
+
+type AuthForm = ReturnType<typeof useAuthForm>
+
+function AuthFields({
+  firstInput,
+  form,
+  mode,
+}: {
+  firstInput: RefObject<HTMLInputElement | null>
+  form: AuthForm
+  mode: AuthMode
+}) {
+  return (
+    <>
+      {mode === 'register' ? (
+        <label>
+          <span>Name</span>
+          <input ref={firstInput} name="name" autoComplete="name" minLength={2} maxLength={80} required value={form.displayName} onChange={(event) => form.setDisplayName(event.target.value)} />
+        </label>
+      ) : null}
+      {mode === 'login' || mode === 'register' || mode === 'forgot' ? (
+        <label>
+          <span>Email</span>
+          <input ref={mode !== 'register' ? firstInput : undefined} type="email" name="email" autoComplete="email" maxLength={320} required value={form.email} onChange={(event) => form.setEmail(event.target.value)} />
+        </label>
+      ) : null}
+      {mode === 'login' || mode === 'register' || mode === 'reset' || mode === 'verify' ? (
+        <label>
+          <span>Password</span>
+          <input ref={mode === 'reset' || mode === 'verify' ? firstInput : undefined} type="password" name="password" autoComplete={mode === 'login' || mode === 'verify' ? 'current-password' : 'new-password'} minLength={mode === 'login' ? 1 : 12} maxLength={128} required value={form.password} onChange={(event) => form.setPassword(event.target.value)} />
+        </label>
+      ) : null}
+    </>
+  )
+}
+
+function AuthLinks({ mode }: { mode: AuthMode }) {
+  return (
+    <div className="account-auth-links">
+      {mode === 'login' ? <><Link to="/register">Create an account</Link><Link to="/forgot-password">Forgot password?</Link></> : null}
+      {mode === 'register' ? <Link to="/login">Already have an account?</Link> : null}
+      {mode === 'forgot' || mode === 'reset' || mode === 'verify' ? <Link to="/login">Back to login</Link> : null}
+    </div>
+  )
+}
+
+function authIcon(mode: AuthMode) {
+  if (mode === 'register') return <UserPlus size={22} />
+  if (mode === 'forgot' || mode === 'reset') return <KeyRound size={22} />
+  if (mode === 'verify') return <Mail size={22} />
+  return <LogIn size={22} />
+}
+
+export function AccountAuth({ mode }: { mode: AuthMode }) {
+  const [searchParams] = useSearchParams()
+  const [actionToken] = useState(() => {
+    const queryToken = searchParams.get('token') ?? ''
+    if (queryToken || typeof window === 'undefined') return queryToken
+    return new URLSearchParams(window.location.hash.slice(1)).get('token') ?? ''
+  })
+  const navigate = useAuthNavigation(mode, actionToken)
+  const firstInput = useRef<HTMLInputElement>(null)
+  const form = useAuthForm(mode, actionToken, navigate, firstInput)
   const googleUrl = `/api/account/oauth/google/start?return_to=${encodeURIComponent('/account')}`
   const oauthError = searchParams.get('oauth') === 'cancelled' ? 'Google sign-in was cancelled.' : null
 
@@ -108,33 +194,16 @@ export function AccountAuth({ mode }: { mode: AuthMode }) {
           <button type="button" className="account-auth-close" onClick={() => navigate('/')} aria-label="Close"><X size={18} /></button>
         </div>
         <div className="account-auth-icon" aria-hidden="true">
-          {mode === 'register' ? <UserPlus size={22} /> : mode === 'forgot' || mode === 'reset' ? <KeyRound size={22} /> : mode === 'verify' ? <Mail size={22} /> : <LogIn size={22} />}
+          {authIcon(mode)}
         </div>
         <h1 id="account-auth-title">{TITLES[mode]}</h1>
 
-        <form onSubmit={submit} className="account-auth-form">
-          {mode === 'register' ? (
-            <label>
-              <span>Name</span>
-              <input ref={firstInput} name="name" autoComplete="name" minLength={2} maxLength={80} required value={displayName} onChange={(event) => setDisplayName(event.target.value)} />
-            </label>
-          ) : null}
-          {mode === 'login' || mode === 'register' || mode === 'forgot' ? (
-            <label>
-              <span>Email</span>
-              <input ref={mode !== 'register' ? firstInput : undefined} type="email" name="email" autoComplete="email" maxLength={320} required value={email} onChange={(event) => setEmail(event.target.value)} />
-            </label>
-          ) : null}
-          {mode === 'login' || mode === 'register' || mode === 'reset' || mode === 'verify' ? (
-            <label>
-              <span>Password</span>
-              <input ref={mode === 'reset' || mode === 'verify' ? firstInput : undefined} type="password" name="password" autoComplete={mode === 'login' || mode === 'verify' ? 'current-password' : 'new-password'} minLength={mode === 'login' ? 1 : 12} maxLength={128} required value={password} onChange={(event) => setPassword(event.target.value)} />
-            </label>
-          ) : null}
-          {error || oauthError ? <p className="account-auth-status is-error" role="alert">{error ?? oauthError}</p> : null}
-          {message ? <p className="account-auth-status is-success" role="status">{message}</p> : null}
-          <button type="submit" className="account-auth-submit" disabled={isSubmitting}>
-            {isSubmitting ? 'Working...' : TITLES[mode]}
+        <form onSubmit={form.submit} className="account-auth-form">
+          <AuthFields firstInput={firstInput} form={form} mode={mode} />
+          {form.error || oauthError ? <p className="account-auth-status is-error" role="alert">{form.error ?? oauthError}</p> : null}
+          {form.message ? <p className="account-auth-status is-success" role="status">{form.message}</p> : null}
+          <button type="submit" className="account-auth-submit" disabled={form.isSubmitting}>
+            {form.isSubmitting ? 'Working...' : TITLES[mode]}
           </button>
         </form>
 
@@ -145,11 +214,7 @@ export function AccountAuth({ mode }: { mode: AuthMode }) {
           </>
         ) : null}
 
-        <div className="account-auth-links">
-          {mode === 'login' ? <><Link to="/register">Create an account</Link><Link to="/forgot-password">Forgot password?</Link></> : null}
-          {mode === 'register' ? <Link to="/login">Already have an account?</Link> : null}
-          {mode === 'forgot' || mode === 'reset' || mode === 'verify' ? <Link to="/login">Back to login</Link> : null}
-        </div>
+        <AuthLinks mode={mode} />
       </section>
     </main>
   )

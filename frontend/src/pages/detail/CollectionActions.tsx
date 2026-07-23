@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type RefObject } from 'react'
 import {
   Check,
   CheckCircle2,
@@ -14,7 +14,10 @@ import {
 } from 'lucide-react'
 import { trackProductEvent } from '../../services/analytics'
 import type { CollectionKey } from '../../state/collections'
-import { useCollectionActions } from '../../state/useCollectionActions'
+import {
+  useCollectionActions,
+  type CollectionSets,
+} from '../../state/useCollectionActions'
 
 // The four states that live behind "Save to collection" — the two headline
 // actions (library, wishlist) get their own buttons.
@@ -24,6 +27,50 @@ const MENU_ITEMS: { key: CollectionKey; label: string; icon: typeof Star }[] = [
   { key: 'liked', label: 'Liked', icon: Heart },
   { key: 'favorites', label: 'Favorite', icon: Star },
 ]
+
+function CollectionMenu({
+  collectionSets,
+  menuOpen,
+  menuRef,
+  onToggle,
+  onToggleMenu,
+  slug,
+}: {
+  collectionSets: CollectionSets
+  menuOpen: boolean
+  menuRef: RefObject<HTMLDivElement | null>
+  onToggle: (collection: CollectionKey, slug: string) => void
+  onToggleMenu: () => void
+  slug: string
+}) {
+  const savedCount = MENU_ITEMS.filter(
+    (item) => collectionSets[item.key].has(slug),
+  ).length
+  return (
+    <div className="dp-menu-wrap" ref={menuRef}>
+      <button type="button" className={`dp-btn${savedCount > 0 ? ' is-active' : ''}`} aria-expanded={menuOpen} aria-haspopup="true" onClick={onToggleMenu}>
+        <FolderPlus size={15} aria-hidden="true" />
+        Save to collection
+        {savedCount > 0 ? <span className="dp-menu-count">{savedCount}</span> : null}
+        <ChevronDown size={13} aria-hidden="true" />
+      </button>
+      {menuOpen ? (
+        <div className="dp-menu" role="menu">
+          {MENU_ITEMS.map(({ key, label, icon: Icon }) => {
+            const active = collectionSets[key].has(slug)
+            return (
+              <button key={key} type="button" role="menuitemcheckbox" aria-checked={active} className={`dp-menu-item${active ? ' is-active' : ''}`} onClick={() => onToggle(key, slug)}>
+                <Icon size={15} aria-hidden="true" />
+                <span>{label}</span>
+                {active ? <Check size={14} aria-hidden="true" /> : null}
+              </button>
+            )
+          })}
+        </div>
+      ) : null}
+    </div>
+  )
+}
 
 export function CollectionActions({ slug, onOpenTrailer }: { slug: string; onOpenTrailer: () => void }) {
   const { collectionSets, toggle } = useCollectionActions()
@@ -56,7 +103,6 @@ export function CollectionActions({ slug, onOpenTrailer }: { slug: string; onOpe
 
   const inLibrary = collectionSets.seen.has(slug)
   const inWishlist = collectionSets.watchlist.has(slug)
-  const savedCount = MENU_ITEMS.filter((item) => collectionSets[item.key].has(slug)).length
 
   return (
     <div className="dp-actions">
@@ -80,41 +126,14 @@ export function CollectionActions({ slug, onOpenTrailer }: { slug: string; onOpe
         {inWishlist ? 'On wishlist' : 'Add to wishlist'}
       </button>
 
-      <div className="dp-menu-wrap" ref={menuRef}>
-        <button
-          type="button"
-          className={`dp-btn${savedCount > 0 ? ' is-active' : ''}`}
-          aria-expanded={menuOpen}
-          aria-haspopup="true"
-          onClick={() => setMenuOpen((open) => !open)}
-        >
-          <FolderPlus size={15} aria-hidden="true" />
-          Save to collection
-          {savedCount > 0 ? <span className="dp-menu-count">{savedCount}</span> : null}
-          <ChevronDown size={13} aria-hidden="true" />
-        </button>
-        {menuOpen && (
-          <div className="dp-menu" role="menu">
-            {MENU_ITEMS.map(({ key, label, icon: Icon }) => {
-              const active = collectionSets[key].has(slug)
-              return (
-                <button
-                  key={key}
-                  type="button"
-                  role="menuitemcheckbox"
-                  aria-checked={active}
-                  className={`dp-menu-item${active ? ' is-active' : ''}`}
-                  onClick={() => toggle(key, slug)}
-                >
-                  <Icon size={15} aria-hidden="true" />
-                  <span>{label}</span>
-                  {active ? <Check size={14} aria-hidden="true" /> : null}
-                </button>
-              )
-            })}
-          </div>
-        )}
-      </div>
+      <CollectionMenu
+        collectionSets={collectionSets}
+        menuOpen={menuOpen}
+        menuRef={menuRef}
+        onToggle={toggle}
+        onToggleMenu={() => setMenuOpen((open) => !open)}
+        slug={slug}
+      />
 
       <button type="button" className="dp-btn dp-btn-primary" onClick={onOpenTrailer}>
         <Play size={14} aria-hidden="true" />

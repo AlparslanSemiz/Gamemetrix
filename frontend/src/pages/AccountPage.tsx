@@ -6,15 +6,86 @@ import { trackProductEvent } from '../services/analytics'
 import { useAccount } from '../state/useAccount'
 import './AccountPage.css'
 
-export function AccountPage() {
-  const navigate = useNavigate()
-  const [searchParams] = useSearchParams()
-  const oauthEventTracked = useRef(false)
-  const { account, accountState, clearAccount, isLoading, logout, updatePreferences } = useAccount()
+function useAccountOperations(
+  accountContext: Pick<
+    ReturnType<typeof useAccount>,
+    'clearAccount' | 'logout' | 'updatePreferences'
+  >,
+  navigate: ReturnType<typeof useNavigate>,
+) {
   const [error, setError] = useState<string | null>(null)
   const [deleteText, setDeleteText] = useState('')
   const [currentPassword, setCurrentPassword] = useState('')
   const [busy, setBusy] = useState(false)
+
+  const run = async (operation: () => Promise<void>) => {
+    setError(null)
+    setBusy(true)
+    try {
+      await operation()
+    } catch (caught) {
+      setError(
+        caught instanceof AccountApiError || caught instanceof Error
+          ? caught.message
+          : 'The request failed.',
+      )
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const downloadExport = () => run(async () => {
+    const data = await exportAccountData()
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const anchor = document.createElement('a')
+    anchor.href = url
+    anchor.download = `gamemetrix-account-${new Date().toISOString().slice(0, 10)}.json`
+    anchor.click()
+    URL.revokeObjectURL(url)
+  })
+
+  const setEmailPreference = (
+    key: 'email_digest_enabled' | 'marketing_enabled',
+    enabled: boolean,
+  ) => run(async () => {
+    await accountContext.updatePreferences({ [key]: enabled })
+    if (key === 'email_digest_enabled' && enabled) {
+      trackProductEvent('alert_enabled', { kind: 'daily_digest' })
+    }
+  })
+
+  const logout = () => run(async () => {
+    await accountContext.logout()
+    navigate('/')
+  })
+  const deleteAccount = () => run(async () => {
+    await deleteAccountData(currentPassword)
+    accountContext.clearAccount()
+    navigate('/')
+  })
+
+  return {
+    busy,
+    currentPassword,
+    deleteAccount,
+    deleteText,
+    downloadExport,
+    error,
+    logout,
+    setCurrentPassword,
+    setDeleteText,
+    setEmailPreference,
+  }
+}
+
+export function AccountPage() {
+  const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const oauthEventTracked = useRef(false)
+  const accountContext = useAccount()
+  const { account, accountState, isLoading } = accountContext
+  const operations = useAccountOperations(accountContext, navigate)
 
   useEffect(() => {
     if (!isLoading && !account) navigate('/login', { replace: true })
@@ -32,31 +103,6 @@ export function AccountPage() {
 
   if (isLoading || !account) return <main className="account-page"><p>Loading account...</p></main>
 
-  const run = async (operation: () => Promise<void>) => {
-    setError(null)
-    setBusy(true)
-    try { await operation() }
-    catch (caught) { setError(caught instanceof AccountApiError || caught instanceof Error ? caught.message : 'The request failed.') }
-    finally { setBusy(false) }
-  }
-
-  const downloadExport = () => run(async () => {
-    const data = await exportAccountData()
-    const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }))
-    const anchor = document.createElement('a')
-    anchor.href = url
-    anchor.download = `gamemetrix-account-${new Date().toISOString().slice(0, 10)}.json`
-    anchor.click()
-    URL.revokeObjectURL(url)
-  })
-
-  const setEmailPreference = (key: 'email_digest_enabled' | 'marketing_enabled', enabled: boolean) => run(async () => {
-    await updatePreferences({ [key]: enabled })
-    if (key === 'email_digest_enabled' && enabled) {
-      trackProductEvent('alert_enabled', { kind: 'daily_digest' })
-    }
-  })
-
   return (
     <main className="account-page">
       <header className="account-page-head">
@@ -70,7 +116,7 @@ export function AccountPage() {
           <span className={account.email_verified ? 'is-verified' : 'is-pending'}>{account.email_verified ? 'Verified' : 'Verification pending'}</span>
         </div>
 
-        {error ? <p className="account-page-error" role="alert">{error}</p> : null}
+        {operations.error ? <p className="account-page-error" role="alert">{operations.error}</p> : null}
 
         <section className="account-section">
           <h2>Synchronization</h2>
@@ -80,30 +126,26 @@ export function AccountPage() {
         <section className="account-section">
           <h2>Email alerts</h2>
           <label className="account-toggle">
-            <input type="checkbox" checked={accountState?.preferences.email_digest_enabled ?? false} onChange={(event) => void setEmailPreference('email_digest_enabled', event.target.checked)} />
+            <input type="checkbox" checked={accountState?.preferences.email_digest_enabled ?? false} onChange={(event) => void operations.setEmailPreference('email_digest_enabled', event.target.checked)} />
             <span>Daily wishlist deal, free game, release and score digest</span>
           </label>
           <label className="account-toggle">
-            <input type="checkbox" checked={accountState?.preferences.marketing_enabled ?? false} onChange={(event) => void setEmailPreference('marketing_enabled', event.target.checked)} />
+            <input type="checkbox" checked={accountState?.preferences.marketing_enabled ?? false} onChange={(event) => void operations.setEmailPreference('marketing_enabled', event.target.checked)} />
             <span>Product news and marketing email</span>
           </label>
         </section>
 
         <section className="account-section account-actions">
           <h2>Account data</h2>
-          <button type="button" onClick={() => void downloadExport()} disabled={busy}><Download size={17} /> Export JSON</button>
-          <button type="button" onClick={() => void run(async () => { await logout(); navigate('/') })} disabled={busy}><LogOut size={17} /> Log out</button>
+          <button type="button" onClick={() => void operations.downloadExport()} disabled={operations.busy}><Download size={17} /> Export JSON</button>
+          <button type="button" onClick={() => void operations.logout()} disabled={operations.busy}><LogOut size={17} /> Log out</button>
         </section>
 
         <section className="account-section account-danger">
           <h2>Delete account</h2>
-          <input aria-label="Type DELETE to confirm" placeholder="Type DELETE" value={deleteText} onChange={(event) => setDeleteText(event.target.value)} />
-          <input aria-label="Current password" type="password" autoComplete="current-password" placeholder="Current password, if set" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} />
-          <button type="button" disabled={busy || deleteText !== 'DELETE'} onClick={() => void run(async () => {
-            await deleteAccountData(currentPassword)
-            clearAccount()
-            navigate('/')
-          })}><Trash2 size={17} /> Delete account</button>
+          <input aria-label="Type DELETE to confirm" placeholder="Type DELETE" value={operations.deleteText} onChange={(event) => operations.setDeleteText(event.target.value)} />
+          <input aria-label="Current password" type="password" autoComplete="current-password" placeholder="Current password, if set" value={operations.currentPassword} onChange={(event) => operations.setCurrentPassword(event.target.value)} />
+          <button type="button" disabled={operations.busy || operations.deleteText !== 'DELETE'} onClick={() => void operations.deleteAccount()}><Trash2 size={17} /> Delete account</button>
         </section>
       </div>
     </main>

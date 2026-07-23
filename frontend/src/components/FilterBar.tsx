@@ -41,6 +41,31 @@ const PLAYTIME_OPTIONS: Array<{ label: string; min: number | null; max: number |
   { label: '80+ hours', min: 80, max: null },
 ]
 
+function resetFiltersForRange(minYear: number, maxYear: number): GameFilters {
+  return {
+    q: '',
+    genre: '',
+    platform: '',
+    developer: '',
+    publisher: '',
+    yearMin: minYear,
+    yearMax: maxYear,
+    minScore: 0,
+    maxScore: 100,
+    minRatings: 0,
+    maxRatings: 0,
+    minLiveSources: 0,
+    requireCritic: false,
+    hasAward: false,
+    dealMode: 'all',
+    playerMode: '',
+    playtimeMinHours: null,
+    playtimeMaxHours: null,
+    sort: 'rank_score',
+    direction: 'desc',
+  }
+}
+
 interface DualRangeProps {
   min: number
   max: number
@@ -84,6 +109,155 @@ function DualRangeSlider({ min, max, valueMin, valueMax, onChangeMin, onChangeMa
   )
 }
 
+function QuickFilters({
+  facets,
+  filters,
+  onChange,
+  qualityIndex,
+}: Pick<FilterBarProps, 'facets' | 'filters' | 'onChange'> & {
+  qualityIndex: number
+}) {
+  return (
+    <div className="quick-filters">
+      <select aria-label="Genre" value={filters.genre} onChange={(event) => onChange((current) => ({ ...current, genre: event.target.value }))}>
+        <option value="">All Genres</option>
+        {facets.genres.map((genre) => <option value={genre} key={genre}>{genre}</option>)}
+      </select>
+      <select aria-label="Platform" value={filters.platform} onChange={(event) => onChange((current) => ({ ...current, platform: event.target.value }))}>
+        <option value="">All Platforms</option>
+        {facets.platforms.map((platform) => <option value={platform} key={platform}>{platform}</option>)}
+      </select>
+      <div className="pill-select-wrapper">
+        <span className="pill-label">No. of Ratings:</span>
+        <select aria-label="Minimum ratings count" value={filters.minRatings} onChange={(event) => onChange((current) => ({ ...current, minRatings: Number(event.target.value) }))}>
+          {MIN_RATINGS_OPTIONS.map((option) => (
+            <option value={option.value} key={option.value}>{option.label}</option>
+          ))}
+        </select>
+      </div>
+      <div className="pill-select-wrapper">
+        <span className="pill-label">Sources:</span>
+        <select
+          aria-label="Minimum quality sources"
+          value={qualityIndex}
+          onChange={(event) => {
+            const option = QUALITY_OPTIONS[Number(event.target.value)]
+            if (option) {
+              onChange((current) => ({
+                ...current,
+                minLiveSources: option.minSources,
+                requireCritic: option.critic,
+              }))
+            }
+          }}
+        >
+          {QUALITY_OPTIONS.map((option, index) => (
+            <option value={index} key={index}>{option.label}</option>
+          ))}
+        </select>
+      </div>
+    </div>
+  )
+}
+
+function RangeField({
+  label,
+  max,
+  min,
+  onChangeMax,
+  onChangeMin,
+  valueMax,
+  valueMin,
+}: DualRangeProps & { label: string }) {
+  return (
+    <div className="range-field">
+      <label>{label}</label>
+      <div className="range-row">
+        <DualRangeSlider
+          min={min}
+          max={max}
+          valueMin={valueMin}
+          valueMax={valueMax}
+          onChangeMin={onChangeMin}
+          onChangeMax={onChangeMax}
+        />
+      </div>
+    </div>
+  )
+}
+
+function AdvancedFilters({
+  facets,
+  filters,
+  onChange,
+  playtimeIndex,
+}: Pick<FilterBarProps, 'facets' | 'filters' | 'onChange'> & {
+  playtimeIndex: number
+}) {
+  return (
+    <div className="advanced-filters">
+      <select aria-label="Player mode" value={filters.playerMode} onChange={(event) => onChange((current) => ({ ...current, playerMode: event.target.value as PlayerMode | '' }))}>
+        {PLAYER_MODE_OPTIONS.map((option) => (
+          <option value={option.value} key={option.value || 'any'}>{option.label}</option>
+        ))}
+      </select>
+      <select aria-label="Studio" value={filters.developer} onChange={(event) => onChange((current) => ({ ...current, developer: event.target.value }))}>
+        <option value="">Any studio</option>
+        {facets.developers.map((developer) => <option value={developer} key={developer}>{developer}</option>)}
+      </select>
+      <select
+        aria-label="Playtime"
+        value={playtimeIndex}
+        onChange={(event) => {
+          const option = PLAYTIME_OPTIONS[Number(event.target.value)]
+          if (option) {
+            onChange((current) => ({
+              ...current,
+              playtimeMinHours: option.min,
+              playtimeMaxHours: option.max,
+            }))
+          }
+        }}
+      >
+        {PLAYTIME_OPTIONS.map((option, index) => (
+          <option value={index} key={option.label}>{option.label}</option>
+        ))}
+      </select>
+    </div>
+  )
+}
+
+function FilterActions({
+  onReset,
+  onToggleMore,
+  showMore,
+}: {
+  onReset: () => void
+  onToggleMore: () => void
+  showMore: boolean
+}) {
+  return (
+    <div className="filter-actions">
+      <button type="button" className="ghost-button" onClick={onReset}>
+        <RotateCcw size={14} aria-hidden="true" />
+        Reset
+      </button>
+      <button type="submit" className="apply-button">Apply</button>
+      <button type="button" className="ghost-button" onClick={onToggleMore}>
+        More Options
+        <ChevronDown
+          size={14}
+          aria-hidden="true"
+          style={{
+            transform: showMore ? 'rotate(180deg)' : undefined,
+            transition: 'transform 0.2s',
+          }}
+        />
+      </button>
+    </div>
+  )
+}
+
 export function FilterBar({ facets, filters, onChange, onApply }: FilterBarProps) {
   const [showMore, setShowMore] = useState(false)
 
@@ -103,28 +277,7 @@ export function FilterBar({ facets, filters, onChange, onApply }: FilterBarProps
     setDraftYearMax(maxYear)
     setDraftScoreMin(0)
     setDraftScoreMax(100)
-    onChange({
-      q: '',
-      genre: '',
-      platform: '',
-      developer: '',
-      publisher: '',
-      yearMin: minYear,
-      yearMax: maxYear,
-      minScore: 0,
-      maxScore: 100,
-      minRatings: 0,
-      maxRatings: 0,
-      minLiveSources: 0,
-      requireCritic: false,
-      hasAward: false,
-      dealMode: 'all',
-      playerMode: '',
-      playtimeMinHours: null,
-      playtimeMaxHours: null,
-      sort: 'rank_score',
-      direction: 'desc',
-    })
+    onChange(resetFiltersForRange(minYear, maxYear))
   }
 
   const handleApply = () => {
@@ -153,146 +306,43 @@ export function FilterBar({ facets, filters, onChange, onApply }: FilterBarProps
 
   return (
     <form className="filters" onSubmit={(e) => { e.preventDefault(); handleApply() }}>
-
-      {/* Quick-filter pill row */}
-      <div className="quick-filters">
-        <select
-          aria-label="Genre"
-          value={filters.genre}
-          onChange={(e) => onChange((c) => ({ ...c, genre: e.target.value }))}
-        >
-          <option value="">All Genres</option>
-          {facets.genres.map((g) => <option value={g} key={g}>{g}</option>)}
-        </select>
-
-        <select
-          aria-label="Platform"
-          value={filters.platform}
-          onChange={(e) => onChange((c) => ({ ...c, platform: e.target.value }))}
-        >
-          <option value="">All Platforms</option>
-          {facets.platforms.map((p) => <option value={p} key={p}>{p}</option>)}
-        </select>
-
-        {/* Min ratings pill */}
-        <div className="pill-select-wrapper">
-          <span className="pill-label">No. of Ratings:</span>
-          <select
-            aria-label="Minimum ratings count"
-            value={filters.minRatings}
-            onChange={(e) => onChange((c) => ({ ...c, minRatings: Number(e.target.value) }))}
-          >
-            {MIN_RATINGS_OPTIONS.map((o) => (
-              <option value={o.value} key={o.value}>{o.label}</option>
-            ))}
-          </select>
-        </div>
-
-        {/* Quality sources pill */}
-        <div className="pill-select-wrapper">
-          <span className="pill-label">Sources:</span>
-          <select
-            aria-label="Minimum quality sources"
-            value={qualityIndex}
-            onChange={(e) => {
-              const opt = QUALITY_OPTIONS[Number(e.target.value)]
-              if (opt) {
-                onChange((c) => ({
-                  ...c,
-                  minLiveSources: opt.minSources,
-                  requireCritic: opt.critic,
-                }))
-              }
-            }}
-          >
-            {QUALITY_OPTIONS.map((o, i) => (
-              <option value={i} key={i}>{o.label}</option>
-            ))}
-          </select>
-        </div>
-      </div>
-
-      {/* Year range */}
-      <div className="range-field">
-        <label>Year</label>
-        <div className="range-row">
-          <DualRangeSlider
-            min={minYear} max={maxYear}
-            valueMin={draftYearMin} valueMax={draftYearMax}
-            onChangeMin={setDraftYearMin} onChangeMax={setDraftYearMax}
-          />
-        </div>
-      </div>
-
-      {/* Score range (dual) */}
-      <div className="range-field">
-        <label>GameMetrix Score</label>
-        <div className="range-row">
-          <DualRangeSlider
-            min={0} max={100}
-            valueMin={draftScoreMin} valueMax={draftScoreMax}
-            onChangeMin={setDraftScoreMin} onChangeMax={setDraftScoreMax}
-          />
-        </div>
-      </div>
-
-      {/* Actions row */}
-      <div className="filter-actions">
-        <button type="button" className="ghost-button" onClick={resetFilters}>
-          <RotateCcw size={14} aria-hidden="true" />
-          Reset
-        </button>
-        <button type="submit" className="apply-button">Apply</button>
-        <button
-          type="button"
-          className="ghost-button"
-          onClick={() => setShowMore((p) => !p)}
-        >
-          More Options
-          <ChevronDown
-            size={14}
-            aria-hidden="true"
-            style={{ transform: showMore ? 'rotate(180deg)' : undefined, transition: 'transform 0.2s' }}
-          />
-        </button>
-      </div>
+      <QuickFilters
+        facets={facets}
+        filters={filters}
+        onChange={onChange}
+        qualityIndex={qualityIndex}
+      />
+      <RangeField
+        label="Year"
+        min={minYear}
+        max={maxYear}
+        valueMin={draftYearMin}
+        valueMax={draftYearMax}
+        onChangeMin={setDraftYearMin}
+        onChangeMax={setDraftYearMax}
+      />
+      <RangeField
+        label="GameMetrix Score"
+        min={0}
+        max={100}
+        valueMin={draftScoreMin}
+        valueMax={draftScoreMax}
+        onChangeMin={setDraftScoreMin}
+        onChangeMax={setDraftScoreMax}
+      />
+      <FilterActions
+        onReset={resetFilters}
+        onToggleMore={() => setShowMore((open) => !open)}
+        showMore={showMore}
+      />
 
       {showMore ? (
-        <div className="advanced-filters">
-          <select
-            aria-label="Player mode"
-            value={filters.playerMode}
-            onChange={(e) => onChange((c) => ({ ...c, playerMode: e.target.value as PlayerMode | '' }))}
-          >
-            {PLAYER_MODE_OPTIONS.map((o) => (
-              <option value={o.value} key={o.value || 'any'}>{o.label}</option>
-            ))}
-          </select>
-
-          <select
-            aria-label="Studio"
-            value={filters.developer}
-            onChange={(e) => onChange((c) => ({ ...c, developer: e.target.value }))}
-          >
-            <option value="">Any studio</option>
-            {facets.developers.map((d) => <option value={d} key={d}>{d}</option>)}
-          </select>
-
-          <select
-            aria-label="Playtime"
-            value={playtimeIndex}
-            onChange={(e) => {
-              const opt = PLAYTIME_OPTIONS[Number(e.target.value)]
-              if (opt) {
-                onChange((c) => ({ ...c, playtimeMinHours: opt.min, playtimeMaxHours: opt.max }))
-              }
-            }}
-          >
-            {PLAYTIME_OPTIONS.map((o, i) => (
-              <option value={i} key={o.label}>{o.label}</option>
-            ))}
-          </select>
-        </div>
+        <AdvancedFilters
+          facets={facets}
+          filters={filters}
+          onChange={onChange}
+          playtimeIndex={playtimeIndex}
+        />
       ) : null}
     </form>
   )

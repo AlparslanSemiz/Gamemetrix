@@ -147,14 +147,12 @@ async def import_rawg_games(
 
     async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT, headers=DEFAULT_HEADERS) as client:
         while imported < target:
-            params: dict[str, str | int] = {
-                "key": cfg.RAWG_API_KEY,
-                "page": page,
-                "page_size": min(page_size, target - imported),
-                "ordering": "-metacritic,-rating",
-            }
-            if parent_platform_ids:
-                params["parent_platforms"] = ",".join(str(platform_id) for platform_id in parent_platform_ids)
+            params = _rawg_import_params(
+                cfg.RAWG_API_KEY,
+                page,
+                min(page_size, target - imported),
+                parent_platform_ids,
+            )
 
             if not await get_rate_limiter().acquire("RAWG"):
                 log.info("RAWG import stopped: daily request budget exhausted")
@@ -177,43 +175,16 @@ async def import_rawg_games(
             if not results:
                 break
 
-            imported_before_page = imported
-            for raw_game in results:
-                game = game_from_rawg_list(raw_game)
-                existing = db.scalar(select(Game).where(Game.slug == game.slug))
-                if existing is None:
-                    existing = db.scalar(
-                        select(Game).where(func.lower(Game.title) == game.title.lower())
-                    )
-                if existing is None:
-                    existing = find_existing_duplicate(db, game)
-                if existing:
-                    if apply_rawg_metadata(existing, raw_game):
-                        db.add(existing)
-                    merge_game_data(existing, game)
-                    _upsert_rawg_external_id(db, existing, raw_game)
-                    skipped += 1
-                    continue
-
-                db.add(game)
-                db.flush()
-                _upsert_rawg_external_id(db, game, raw_game)
-                _store_rawg_snapshot(
-                    db,
-                    endpoint="/api/games",
-                    query=game.title,
-                    raw_payload=raw_game,
-                    rawg_id=str(raw_game.get("id") or ""),
-                )
-                imported += 1
-
+            page_imported, page_skipped = _store_rawg_import_page(db, results)
+            imported += page_imported
+            skipped += page_skipped
             db.commit()
             page += 1
 
             # Once the catalog already holds everything RAWG returns, `imported`
             # stops growing while the loop keeps paging — burning the whole daily
             # budget every run for zero new rows. Stop after a few barren pages.
-            if imported == imported_before_page:
+            if page_imported == 0:
                 consecutive_barren_pages += 1
                 if consecutive_barren_pages >= _MAX_CONSECUTIVE_BARREN_PAGES:
                     log.info(
@@ -225,6 +196,58 @@ async def import_rawg_games(
                 consecutive_barren_pages = 0
 
     return {"imported": imported, "skipped": skipped}
+
+
+def _rawg_import_params(
+    api_key: str,
+    page: int,
+    page_size: int,
+    parent_platform_ids: list[int] | None,
+) -> dict[str, str | int]:
+    params: dict[str, str | int] = {
+        "key": api_key,
+        "page": page,
+        "page_size": page_size,
+        "ordering": "-metacritic,-rating",
+    }
+    if parent_platform_ids:
+        params["parent_platforms"] = ",".join(
+            str(platform_id) for platform_id in parent_platform_ids
+        )
+    return params
+
+
+def _store_rawg_import_page(db: Session, results: list[dict]) -> tuple[int, int]:
+    imported = skipped = 0
+    for raw_game in results:
+        game = game_from_rawg_list(raw_game)
+        existing = db.scalar(select(Game).where(Game.slug == game.slug))
+        if existing is None:
+            existing = db.scalar(
+                select(Game).where(func.lower(Game.title) == game.title.lower())
+            )
+        if existing is None:
+            existing = find_existing_duplicate(db, game)
+        if existing:
+            if apply_rawg_metadata(existing, raw_game):
+                db.add(existing)
+            merge_game_data(existing, game)
+            _upsert_rawg_external_id(db, existing, raw_game)
+            skipped += 1
+            continue
+
+        db.add(game)
+        db.flush()
+        _upsert_rawg_external_id(db, game, raw_game)
+        _store_rawg_snapshot(
+            db,
+            endpoint="/api/games",
+            query=game.title,
+            raw_payload=raw_game,
+            rawg_id=str(raw_game.get("id") or ""),
+        )
+        imported += 1
+    return imported, skipped
 
 
 async def import_rawg_nintendo_games(db: Session, target: int = 1000, page_size: int = 40) -> dict[str, int]:
@@ -242,83 +265,138 @@ def _extract_rawg_id(game: Game, db: Session) -> str | None:
     return suffix if suffix.isdigit() else None
 
 
+async def _search_rawg_id(
+    client: httpx.AsyncClient,
+    db: Session,
+    game: Game,
+    api_key: str,
+) -> str | None:
+    search_payload: dict | None = None
+    search_resp_status = 200
+    matched: dict | None = None
+    for exact in (True, False):
+        params = {"key": api_key, "search": game.title, "page_size": 5}
+        if exact:
+            params["search_exact"] = "true"
+        response = await _budgeted_rawg_get(client, _RAWG_LIST_URL, params=params)
+        if response is None or not response.is_success:
+            continue
+        search_payload = response.json()
+        search_resp_status = response.status_code
+        matched = next(
+            (
+                item
+                for item in search_payload.get("results") or []
+                if _rawg_candidate_matches(game, item)
+            ),
+            None,
+        )
+        if matched:
+            break
+    if not matched:
+        return None
+    rawg_id = str(matched.get("id") or "")
+    if not rawg_id:
+        return None
+    _upsert_rawg_external_id(db, game, matched)
+    _store_rawg_snapshot(
+        db,
+        endpoint="/api/games",
+        query=game.title,
+        raw_payload=search_payload or {},
+        status_code=search_resp_status,
+        rawg_id=rawg_id,
+    )
+    return rawg_id
+
+
+async def _fetch_matching_rawg_detail(
+    client: httpx.AsyncClient,
+    db: Session,
+    game: Game,
+    rawg_id: str,
+    api_key: str,
+) -> tuple[str, dict | None, httpx.Response] | None:
+    response = await _budgeted_rawg_get(
+        client,
+        f"{_RAWG_LIST_URL}/{rawg_id}",
+        params={"key": api_key},
+    )
+    if response is None:
+        return None
+    if not response.is_success:
+        return rawg_id, None, response
+
+    detail = response.json()
+    if _rawg_candidate_matches(game, detail):
+        return rawg_id, detail, response
+    matched_id = await _search_rawg_id(client, db, game, api_key)
+    if not matched_id:
+        return None
+    response = await _budgeted_rawg_get(
+        client,
+        f"{_RAWG_LIST_URL}/{matched_id}",
+        params={"key": api_key},
+    )
+    if response is None or not response.is_success:
+        return None
+    detail = response.json()
+    if not _rawg_candidate_matches(game, detail):
+        return None
+    return matched_id, detail, response
+
+
+async def _fetch_rawg_related(
+    client: httpx.AsyncClient,
+    db: Session,
+    game: Game,
+    rawg_id: str,
+    api_key: str,
+    relation: str,
+) -> list[dict]:
+    response = await _budgeted_rawg_get(
+        client,
+        f"{_RAWG_LIST_URL}/{rawg_id}/{relation}",
+        params={"key": api_key, "page_size": 12},
+    )
+    if response is None or not response.is_success:
+        return []
+    payload = response.json()
+    _store_rawg_snapshot(
+        db,
+        endpoint=f"/api/games/{rawg_id}/{relation}",
+        query=game.title,
+        raw_payload=payload,
+        status_code=response.status_code,
+        rawg_id=rawg_id,
+    )
+    return payload.get("results", [])
+
+
 async def enrich_rawg_game_detail(db: Session, game: Game) -> bool:
     cfg = get_settings()
     if not cfg.rawg_configured():
         return False
 
-    rawg_id = _extract_rawg_id(game, db)
-
     changed = False
-    async def _search_rawg_id(client: httpx.AsyncClient) -> str | None:
-        search_payload: dict | None = None
-        search_resp_status = 200
-        matched: dict | None = None
-        for exact in (True, False):
-            params = {
-                "key": cfg.RAWG_API_KEY,
-                "search": game.title,
-                "page_size": 5,
-            }
-            if exact:
-                params["search_exact"] = "true"
-            search_resp = await _budgeted_rawg_get(client, _RAWG_LIST_URL, params=params)
-            if search_resp is None or not search_resp.is_success:
-                continue
-            search_payload = search_resp.json()
-            search_resp_status = search_resp.status_code
-            results = search_payload.get("results") or []
-            matched = next(
-                (item for item in results if _rawg_candidate_matches(game, item)),
-                None,
-            )
-            if matched:
-                break
-        if not matched:
-            return None
-        new_rawg_id = str(matched.get("id") or "")
-        if not new_rawg_id:
-            return None
-        _upsert_rawg_external_id(db, game, matched)
-        _store_rawg_snapshot(
-            db,
-            endpoint="/api/games",
-            query=game.title,
-            raw_payload=search_payload or {},
-            status_code=search_resp_status,
-            rawg_id=new_rawg_id,
-        )
-        return new_rawg_id
-
+    rawg_id = _extract_rawg_id(game, db)
     async with httpx.AsyncClient(timeout=_DETAIL_TIMEOUT, headers=DEFAULT_HEADERS) as client:
         if not rawg_id:
-            rawg_id = await _search_rawg_id(client)
+            rawg_id = await _search_rawg_id(client, db, game, cfg.RAWG_API_KEY)
             if not rawg_id:
                 return False
 
-        detail_resp = await _budgeted_rawg_get(
+        detail_result = await _fetch_matching_rawg_detail(
             client,
-            f"{_RAWG_LIST_URL}/{rawg_id}",
-            params={"key": cfg.RAWG_API_KEY},
+            db,
+            game,
+            rawg_id,
+            cfg.RAWG_API_KEY,
         )
-        if detail_resp is None:
+        if detail_result is None:
             return False
-        if detail_resp.is_success:
-            detail = detail_resp.json()
-            if not _rawg_candidate_matches(game, detail):
-                rawg_id = await _search_rawg_id(client)
-                if not rawg_id:
-                    return False
-                detail_resp = await _budgeted_rawg_get(
-                    client,
-                    f"{_RAWG_LIST_URL}/{rawg_id}",
-                    params={"key": cfg.RAWG_API_KEY},
-                )
-                if detail_resp is None or not detail_resp.is_success:
-                    return False
-                detail = detail_resp.json()
-                if not _rawg_candidate_matches(game, detail):
-                    return False
+        rawg_id, detail, detail_response = detail_result
+        if detail is not None:
             changed = apply_rawg_metadata(game, detail) or changed
             _upsert_rawg_external_id(db, game, detail)
             _store_rawg_snapshot(
@@ -326,41 +404,26 @@ async def enrich_rawg_game_detail(db: Session, game: Game) -> bool:
                 endpoint=f"/api/games/{rawg_id}",
                 query=game.title,
                 raw_payload=detail,
-                status_code=detail_resp.status_code,
+                status_code=detail_response.status_code,
                 rawg_id=rawg_id,
             )
 
-        additions_resp = await _budgeted_rawg_get(
+        additions = await _fetch_rawg_related(
             client,
-            f"{_RAWG_LIST_URL}/{rawg_id}/additions",
-            params={"key": cfg.RAWG_API_KEY, "page_size": 12},
+            db,
+            game,
+            rawg_id,
+            cfg.RAWG_API_KEY,
+            "additions",
         )
-        additions = additions_resp.json().get("results", []) if additions_resp and additions_resp.is_success else []
-        if additions_resp and additions_resp.is_success:
-            _store_rawg_snapshot(
-                db,
-                endpoint=f"/api/games/{rawg_id}/additions",
-                query=game.title,
-                raw_payload=additions_resp.json(),
-                status_code=additions_resp.status_code,
-                rawg_id=rawg_id,
-            )
-
-        similar_resp = await _budgeted_rawg_get(
+        similar = await _fetch_rawg_related(
             client,
-            f"{_RAWG_LIST_URL}/{rawg_id}/game-series",
-            params={"key": cfg.RAWG_API_KEY, "page_size": 12},
+            db,
+            game,
+            rawg_id,
+            cfg.RAWG_API_KEY,
+            "game-series",
         )
-        similar = similar_resp.json().get("results", []) if similar_resp and similar_resp.is_success else []
-        if similar_resp and similar_resp.is_success:
-            _store_rawg_snapshot(
-                db,
-                endpoint=f"/api/games/{rawg_id}/game-series",
-                query=game.title,
-                raw_payload=similar_resp.json(),
-                status_code=similar_resp.status_code,
-                rawg_id=rawg_id,
-            )
 
     changed = apply_rawg_related(game, additions, similar) or changed
     game.metadata_refreshed_at = datetime.now(UTC)

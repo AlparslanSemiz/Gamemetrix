@@ -15,3 +15,7 @@ export function isEndlessGame(game: Pick<Game, 'is_endless' | 'genres'>): boolea
   if (game.is_endless) return true
   return (game.genres ?? []).some((g) => ENDLESS_GENRES.has(g))
 }
+
+export function formatPlaytimeHours(minutes: number): string {
+  return `${Math.max(1, Math.round(minutes / 60))}h`
+}

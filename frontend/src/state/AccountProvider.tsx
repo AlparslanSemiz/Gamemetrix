@@ -62,8 +62,9 @@ function clearPersistedAlertState() {
   localStorage.removeItem(PREFERENCES_KEY)
 }
 
-export function AccountProvider({ children }: { children: ReactNode }) {
-  const { replaceCollections } = useCollections()
+function useAccountHydration(
+  replaceCollections: ReturnType<typeof useCollections>['replaceCollections'],
+) {
   const [account, setAccount] = useState<Account | null>(null)
   const [accountState, setAccountState] = useState<AccountState | null>(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -73,7 +74,7 @@ export function AccountProvider({ children }: { children: ReactNode }) {
     setAccountState(state)
     replaceCollections(state.collections)
     persistAlertState(state)
-  }, [replaceCollections])
+  }, [replaceCollections, setAccount, setAccountState])
 
   const hydrate = useCallback(async (mergeGuest: boolean) => {
     const current = await getAccountSession()
@@ -110,6 +111,28 @@ export function AccountProvider({ children }: { children: ReactNode }) {
     return () => { active = false }
   }, [hydrate])
 
+  return {
+    account,
+    accountState,
+    hydrate,
+    isLoading,
+    setAccount,
+    setAccountState,
+  }
+}
+
+export function AccountProvider({ children }: { children: ReactNode }) {
+  const { replaceCollections } = useCollections()
+  const state = useAccountHydration(replaceCollections)
+  const {
+    account,
+    accountState,
+    hydrate,
+    isLoading,
+    setAccount,
+    setAccountState,
+  } = state
+
   const login = useCallback(async (email: string, password: string) => {
     await loginAccount({ email, password })
     await hydrate(true)
@@ -121,7 +144,7 @@ export function AccountProvider({ children }: { children: ReactNode }) {
     setAccount(null)
     setAccountState(null)
     replaceCollections({ ...emptyCollections })
-  }, [replaceCollections])
+  }, [replaceCollections, setAccount, setAccountState])
 
   const refresh = useCallback(async () => {
     await hydrate(false)
@@ -136,14 +159,14 @@ export function AccountProvider({ children }: { children: ReactNode }) {
     if (!account) return
     const preferences = await patchAccountPreferences(next)
     setAccountState((current) => current ? { ...current, preferences } : current)
-  }, [account])
+  }, [account, setAccountState])
 
   const clearAccount = useCallback(() => {
     clearPersistedAlertState()
     setAccount(null)
     setAccountState(null)
     replaceCollections({ ...emptyCollections })
-  }, [replaceCollections])
+  }, [replaceCollections, setAccount, setAccountState])
 
   const value = useMemo(() => ({
     account,

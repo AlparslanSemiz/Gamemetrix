@@ -28,6 +28,15 @@ def _csv(value: str) -> list[str]:
 
 class Settings:
     def __init__(self) -> None:
+        self._load_runtime_settings()
+        self._load_provider_settings()
+        self._load_refresh_settings()
+        self._load_provider_budget_settings()
+        self._load_scoring_and_refresh_all_settings()
+        self._load_backfill_settings()
+        self._load_data_fill_settings()
+
+    def _load_runtime_settings(self) -> None:
         # ── Runtime / security ───────────────────────────────────────────────
         self.ENV: str = os.getenv("ENV", "development").strip().lower()
         self.JWT_SECRET_KEY: str = os.getenv("JWT_SECRET_KEY", "")
@@ -85,6 +94,8 @@ class Settings:
         self.ACCOUNT_EMAIL_DELIVERY: str = os.getenv(
             "ACCOUNT_EMAIL_DELIVERY", "smtp" if self.is_production else "log"
         ).strip().lower()
+
+    def _load_provider_settings(self) -> None:
         # ── API credentials ──────────────────────────────────────────────────
         self.IGDB_CLIENT_ID: str = os.getenv("IGDB_CLIENT_ID", "")
         self.IGDB_CLIENT_SECRET: str = os.getenv("IGDB_CLIENT_SECRET", "")
@@ -109,6 +120,8 @@ class Settings:
             else "http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174,https://gamemetrix.me"
         )
         self.CORS_ALLOW_ORIGINS: list[str] = _csv(os.getenv("CORS_ALLOW_ORIGINS", default_origins))
+
+    def _load_refresh_settings(self) -> None:
         # ── Background refresh tuning ─────────────────────────────────────────
         self.DAILY_RATING_REFRESH_LIMIT: int = int(
             os.getenv("DAILY_RATING_REFRESH_LIMIT", "250")
@@ -128,6 +141,8 @@ class Settings:
         self.RAWG_GAMES_URL: str = os.getenv(
             "RAWG_GAMES_URL", "https://api.rawg.io/api/games"
         )
+
+    def _load_provider_budget_settings(self) -> None:
         # ── Per-source daily request budgets ─────────────────────────────────
         # Override these when on a paid API plan.
         # OpenCritic (RapidAPI) is a METERED plan — exceeding it is billed, so its
@@ -159,6 +174,8 @@ class Settings:
         self.METERED_BUDGET_RESERVE_PERCENT: int = max(
             0, min(50, int(os.getenv("METERED_BUDGET_RESERVE_PERCENT", "30")))
         )
+
+    def _load_scoring_and_refresh_all_settings(self) -> None:
         # ── Per-source score weights (relative; default 1.0 = equal) ─────────
         # Higher values increase that source's share of the GameMetrix score.
         # Example: SCORE_WEIGHT_METACRITIC=2 gives Metacritic double influence.
@@ -174,6 +191,8 @@ class Settings:
         self.REFRESH_ALL_INTER_GAME_DELAY: float = float(
             os.getenv("REFRESH_ALL_INTER_GAME_DELAY", "0.3")
         )
+
+    def _load_backfill_settings(self) -> None:
         # ── Metadata backfill scheduling ─────────────────────────────────────
         # Small source-aware batches fill missing covers, summaries, media,
         # external IDs, and store/detail metadata without exhausting API quotas.
@@ -220,6 +239,8 @@ class Settings:
         # otherwise candidates are quarantined by content_type, never removed.
         self.NONGAME_AUTODELETE_ENABLED: bool = os.getenv("NONGAME_AUTODELETE_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
         self.NONGAME_CLEANUP_BATCH_SIZE: int = int(os.getenv("NONGAME_CLEANUP_BATCH_SIZE", "40"))
+
+    def _load_data_fill_settings(self) -> None:
         # ── Data fill orchestration ─────────────────────────────────────────
         self.DATA_FILL_ENABLED: bool = os.getenv("DATA_FILL_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"}
         self.DATA_FILL_TARGET_TOTAL: int = int(os.getenv("DATA_FILL_TARGET_TOTAL", "10000"))
@@ -249,6 +270,14 @@ class Settings:
 
     def validate(self) -> None:
         errors: list[str] = []
+        self._validate_core_settings(errors)
+        self._validate_numeric_settings(errors)
+        if self.is_production:
+            self._validate_production_settings(errors)
+        if errors:
+            raise RuntimeError("Invalid GameMetrix configuration: " + "; ".join(errors))
+
+    def _validate_core_settings(self, errors: list[str]) -> None:
         if self.ENV not in {"development", "test", "production"}:
             errors.append("ENV must be development, test, or production")
         if not self.DATABASE_URL.startswith("postgresql+psycopg://"):
@@ -268,6 +297,8 @@ class Settings:
             errors.append("SMTP_PORT must be between 1 and 65535")
         if bool(self.GOOGLE_CLIENT_ID) != bool(self.GOOGLE_CLIENT_SECRET):
             errors.append("GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET must be configured together")
+
+    def _validate_numeric_settings(self, errors: list[str]) -> None:
         nonnegative_values = {
             "DAILY_RATING_REFRESH_LIMIT": self.DAILY_RATING_REFRESH_LIMIT,
             "STARTUP_RATING_REFRESH_LIMIT": self.STARTUP_RATING_REFRESH_LIMIT,
@@ -334,35 +365,34 @@ class Settings:
             errors.append("REFRESH_ALL_CONCURRENCY must be between 1 and 32")
         if not 0 <= self.HEAVY_JOB_BLOCK_START_HOUR <= 23 or not 0 <= self.HEAVY_JOB_BLOCK_END_HOUR <= 23:
             errors.append("HEAVY_JOB_BLOCK hours must be between 0 and 23")
-        if self.is_production:
-            if len(self.JWT_SECRET_KEY) < 32:
-                errors.append("JWT_SECRET_KEY must contain at least 32 characters")
-            if not self.ADMIN_USERNAME or not self.ADMIN_PASSWORD_HASH:
-                errors.append("ADMIN_USERNAME and ADMIN_PASSWORD_HASH are required")
-            elif not self.ADMIN_PASSWORD_HASH.startswith(("$2a$", "$2b$", "$2y$")):
-                errors.append("ADMIN_PASSWORD_HASH must be a bcrypt hash")
-            if not self.JWT_ISSUER or not self.JWT_AUDIENCE:
-                errors.append("JWT_ISSUER and JWT_AUDIENCE are required")
-            parsed = urlparse(self.ACCOUNT_BASE_URL)
-            if parsed.scheme != "https" or not parsed.netloc or parsed.path not in {"", "/"}:
-                errors.append("ACCOUNT_BASE_URL must be an absolute HTTPS URL")
-            if self.ACCOUNT_AUTH_ENABLED and self.ACCOUNT_EMAIL_DELIVERY != "smtp":
-                errors.append("ACCOUNT_EMAIL_DELIVERY must be smtp when accounts are enabled")
-            if self.ACCOUNT_AUTH_ENABLED and not self.SMTP_HOST:
-                errors.append("SMTP_HOST is required when accounts are enabled")
-            if not self.CORS_ALLOW_ORIGINS or any(
-                urlparse(origin).scheme != "https"
-                or not urlparse(origin).netloc
-                or urlparse(origin).path not in {"", "/"}
-                for origin in self.CORS_ALLOW_ORIGINS
-            ):
-                errors.append("CORS_ALLOW_ORIGINS must contain HTTPS origins only")
-            if self.GOOGLE_CLIENT_ID:
-                redirect = urlparse(self.GOOGLE_REDIRECT_URI)
-                if redirect.scheme != "https" or redirect.netloc != parsed.netloc:
-                    errors.append("GOOGLE_REDIRECT_URI must use the account HTTPS origin")
-        if errors:
-            raise RuntimeError("Invalid GameMetrix configuration: " + "; ".join(errors))
+
+    def _validate_production_settings(self, errors: list[str]) -> None:
+        if len(self.JWT_SECRET_KEY) < 32:
+            errors.append("JWT_SECRET_KEY must contain at least 32 characters")
+        if not self.ADMIN_USERNAME or not self.ADMIN_PASSWORD_HASH:
+            errors.append("ADMIN_USERNAME and ADMIN_PASSWORD_HASH are required")
+        elif not self.ADMIN_PASSWORD_HASH.startswith(("$2a$", "$2b$", "$2y$")):
+            errors.append("ADMIN_PASSWORD_HASH must be a bcrypt hash")
+        if not self.JWT_ISSUER or not self.JWT_AUDIENCE:
+            errors.append("JWT_ISSUER and JWT_AUDIENCE are required")
+        parsed = urlparse(self.ACCOUNT_BASE_URL)
+        if parsed.scheme != "https" or not parsed.netloc or parsed.path not in {"", "/"}:
+            errors.append("ACCOUNT_BASE_URL must be an absolute HTTPS URL")
+        if self.ACCOUNT_AUTH_ENABLED and self.ACCOUNT_EMAIL_DELIVERY != "smtp":
+            errors.append("ACCOUNT_EMAIL_DELIVERY must be smtp when accounts are enabled")
+        if self.ACCOUNT_AUTH_ENABLED and not self.SMTP_HOST:
+            errors.append("SMTP_HOST is required when accounts are enabled")
+        if not self.CORS_ALLOW_ORIGINS or any(
+            urlparse(origin).scheme != "https"
+            or not urlparse(origin).netloc
+            or urlparse(origin).path not in {"", "/"}
+            for origin in self.CORS_ALLOW_ORIGINS
+        ):
+            errors.append("CORS_ALLOW_ORIGINS must contain HTTPS origins only")
+        if self.GOOGLE_CLIENT_ID:
+            redirect = urlparse(self.GOOGLE_REDIRECT_URI)
+            if redirect.scheme != "https" or redirect.netloc != parsed.netloc:
+                errors.append("GOOGLE_REDIRECT_URI must use the account HTTPS origin")
 
     def analytics_salt(self) -> str:
         """Salt for visitor/session pseudonyms; falls back to the JWT secret."""

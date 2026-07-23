@@ -11,6 +11,7 @@ Public API:
 """
 
 import re
+from dataclasses import dataclass
 from datetime import date
 from functools import lru_cache
 
@@ -213,111 +214,189 @@ def _text_signals(game: Game) -> set[str]:
     ))
 
 
-def _genre_similarity_score(source: Game, candidate: Game) -> float:
-    source_genres = _meaningful_genres(source)
-    candidate_genres = _meaningful_genres(candidate)
-    source_genre_set = set(source_genres)
-    candidate_genre_set = set(candidate_genres)
-    source_signals = _text_signals(source)
-    candidate_signals = _text_signals(candidate)
+@dataclass(frozen=True)
+class _SimilarityContext:
+    source_genres: frozenset[str]
+    candidate_genres: frozenset[str]
+    source_signals: frozenset[str]
+    candidate_signals: frozenset[str]
 
+
+def _similarity_context(source: Game, candidate: Game) -> _SimilarityContext:
+    return _SimilarityContext(
+        source_genres=frozenset(_meaningful_genres(source)),
+        candidate_genres=frozenset(_meaningful_genres(candidate)),
+        source_signals=frozenset(_text_signals(source)),
+        candidate_signals=frozenset(_text_signals(candidate)),
+    )
+
+
+def _genre_similarity_score(source: Game, candidate: Game) -> float:
+    context = _similarity_context(source, candidate)
+    score, strong_matches = _shared_genre_score(context)
+    signal_score, signal_matches = _shared_signal_score(context)
+    score += signal_score
+    strong_matches += signal_matches
+    score += _conflicting_signal_penalty(context)
+    if strong_matches == 0 and context.source_genres & context.candidate_genres:
+        score -= 18
+
+    shared_specialized = _shared_specialized_signal_count(context)
+    if shared_specialized >= 2:
+        score += (shared_specialized - 1) * 7
+
+    if {"survival", "horror"} <= context.source_signals and {"survival", "horror"} <= context.candidate_signals:
+        score += 10
+    if {"cinematic", "narrative"} <= context.source_signals and {"cinematic", "narrative"} <= context.candidate_signals:
+        score += 10
+    if "postApocalyptic" in context.source_signals and "postApocalyptic" in context.candidate_signals:
+        score += 12
+
+    score += _crpg_profile_score(context)
+    if _is_deep_rpg_profile(source):
+        score += _deep_rpg_profile_score(context)
+    score += _profile_mismatch_penalty(context)
+    score += _catalog_context_score(source, candidate)
+    return score
+
+
+def _shared_genre_score(context: _SimilarityContext) -> tuple[float, int]:
     score = 0.0
     strong_matches = 0
-
-    for genre in candidate_genre_set:
-        if genre not in source_genre_set:
-            continue
+    for genre in context.candidate_genres & context.source_genres:
         weight = GENRE_WEIGHTS.get(genre, 7 if genre in LOW_SIGNAL_GENRES else 13)
         score += weight
         if weight >= 16:
             strong_matches += 1
+    return score, strong_matches
 
-    for signal in candidate_signals:
-        if signal not in source_signals or signal in candidate_genre_set:
-            continue
-        score += GENRE_WEIGHTS.get(signal, 18)
-        strong_matches += 1
 
+def _shared_signal_score(context: _SimilarityContext) -> tuple[float, int]:
+    shared_signals = (
+        context.candidate_signals
+        & context.source_signals
+        - context.candidate_genres
+    )
+    return sum(GENRE_WEIGHTS.get(signal, 18) for signal in shared_signals), len(shared_signals)
+
+
+def _conflicting_signal_penalty(context: _SimilarityContext) -> float:
+    penalty = 0.0
     for left, right in CONFLICTING_GROUPS:
-        if left in source_signals and right in candidate_signals and right not in source_signals:
-            score -= 26
-        if right in source_signals and left in candidate_signals and left not in source_signals:
-            score -= 26
+        if (
+            left in context.source_signals
+            and right in context.candidate_signals
+            and right not in context.source_signals
+        ):
+            penalty -= 26
+        if (
+            right in context.source_signals
+            and left in context.candidate_signals
+            and left not in context.source_signals
+        ):
+            penalty -= 26
+    return penalty
 
-    broad_only = strong_matches == 0 and any(g in source_genre_set for g in candidate_genres)
-    if broad_only:
-        score -= 18
 
-    shared_specialized = _shared_specialized_signals(source, candidate)
-    if shared_specialized >= 2:
-        score += (shared_specialized - 1) * 7
+def _shared_specialized_signal_count(context: _SimilarityContext) -> int:
+    return sum(
+        signal in context.source_signals and signal in context.candidate_signals
+        for signal in SPECIALIZED_SIGNAL_GROUPS
+    )
 
-    if {"survival", "horror"} <= source_signals and {"survival", "horror"} <= candidate_signals:
-        score += 10
-    if {"cinematic", "narrative"} <= source_signals and {"cinematic", "narrative"} <= candidate_signals:
-        score += 10
-    if "postApocalyptic" in source_signals and "postApocalyptic" in candidate_signals:
+
+def _crpg_profile_score(context: _SimilarityContext) -> float:
+    if not ({"crpg", "tactical", "isometric"} & context.source_signals):
+        return 0.0
+    score = 0.0
+    structure = {
+        "tactical", "isometric", "turn-based", "turn based", "party",
+    } & context.candidate_signals
+    if "rpg" not in context.candidate_genres and "rpg" not in context.candidate_signals:
+        score -= 48
+    if "isometric" in context.candidate_signals:
+        score += 24
+    if {"tactical", "turn-based", "turn based"} & context.candidate_signals:
+        score += 24
+    if "party" in context.candidate_signals:
         score += 12
+    if {"strategy", "rpg"} <= context.candidate_genres:
+        score += 12
+    if "action" in context.candidate_genres and not structure:
+        score -= 22
+    return score
 
-    if "crpg" in source_signals or "tactical" in source_signals or "isometric" in source_signals:
-        crpg_structure = {"tactical", "isometric", "turn-based", "turn based", "party"} & candidate_signals
-        if "rpg" not in candidate_genre_set and "rpg" not in candidate_signals:
-            score -= 48
-        if "isometric" in candidate_signals:
-            score += 24
-        if "tactical" in candidate_signals or "turn-based" in candidate_signals or "turn based" in candidate_signals:
-            score += 24
-        if "party" in candidate_signals:
-            score += 12
-        if "strategy" in candidate_genre_set and "rpg" in candidate_genre_set:
-            score += 12
-        if "action" in candidate_genre_set and not crpg_structure:
-            score -= 22
 
-    if _is_deep_rpg_profile(source):
-        deep_structure = {
-            "crpg", "party", "isometric", "tactical", "turn-based", "turn based",
-            "dialogueRpg", "detective", "nonCombat",
-        } & candidate_signals
-        if "rpg" not in candidate_genre_set and "rpg" not in candidate_signals:
-            score -= 90
-        if deep_structure:
-            score += len(deep_structure) * 16
-        if "strategy" in candidate_genre_set and ("rpg" in candidate_genre_set or "rpg" in candidate_signals):
-            score += 14
-        if "narrative" in candidate_signals and ("rpg" in candidate_genre_set or "rpg" in candidate_signals):
-            score += 10
-        if "jrpg" in candidate_signals and "jrpg" not in source_signals:
-            score -= 30
-        if "casual" in candidate_genre_set and not deep_structure:
-            score -= 45
-        if "action" in candidate_genre_set and not deep_structure and "party" not in candidate_signals:
-            score -= 35
-        if "platformer" in candidate_signals or "shooter" in candidate_signals:
-            score -= 18
-
-    if "thirdPerson" in source_signals and "firstPerson" in candidate_signals and "thirdPerson" not in candidate_signals:
-        score -= 24
-    if "roguelike" in candidate_signals and "roguelike" not in source_genre_set:
-        score -= 14
+def _deep_rpg_profile_score(context: _SimilarityContext) -> float:
+    score = 0.0
+    structure = {
+        "crpg", "party", "isometric", "tactical", "turn-based", "turn based",
+        "dialogueRpg", "detective", "nonCombat",
+    } & context.candidate_signals
+    candidate_has_rpg = (
+        "rpg" in context.candidate_genres
+        or "rpg" in context.candidate_signals
+    )
+    if not candidate_has_rpg:
+        score -= 90
+    if structure:
+        score += len(structure) * 16
+    if "strategy" in context.candidate_genres and candidate_has_rpg:
+        score += 14
+    if "narrative" in context.candidate_signals and candidate_has_rpg:
+        score += 10
+    if "jrpg" in context.candidate_signals and "jrpg" not in context.source_signals:
+        score -= 30
+    if "casual" in context.candidate_genres and not structure:
+        score -= 45
     if (
-        "shooter" in candidate_signals
-        and {"cinematic", "thirdPerson", "narrative"} & source_signals
-        and not ({"horror", "survival", "stealth", "narrative", "cinematic", "postApocalyptic"} & candidate_signals)
+        "action" in context.candidate_genres
+        and not structure
+        and "party" not in context.candidate_signals
     ):
-        score -= 16
+        score -= 35
+    if {"platformer", "shooter"} & context.candidate_signals:
+        score -= 18
+    return score
 
-    shared_platforms = len([p for p in candidate.platforms if p in source.platforms])
-    score += min(shared_platforms, 3) * 2
 
+def _profile_mismatch_penalty(context: _SimilarityContext) -> float:
+    penalty = 0.0
+    if (
+        "thirdPerson" in context.source_signals
+        and "firstPerson" in context.candidate_signals
+        and "thirdPerson" not in context.candidate_signals
+    ):
+        penalty -= 24
+    if (
+        "roguelike" in context.candidate_signals
+        and "roguelike" not in context.source_genres
+    ):
+        penalty -= 14
+    if (
+        "shooter" in context.candidate_signals
+        and {"cinematic", "thirdPerson", "narrative"} & context.source_signals
+        and not (
+            {
+                "horror", "survival", "stealth", "narrative", "cinematic",
+                "postApocalyptic",
+            }
+            & context.candidate_signals
+        )
+    ):
+        penalty -= 16
+    return penalty
+
+
+def _catalog_context_score(source: Game, candidate: Game) -> float:
+    shared_platforms = sum(platform in source.platforms for platform in candidate.platforms)
+    score = min(shared_platforms, 3) * 2
     if source.developer and candidate.developer and source.developer == candidate.developer:
         score += 30
     source_series = _title_series_key(source.title)
     if source_series and source_series == _title_series_key(candidate.title):
         score += 110
-    score += min(max(candidate.rank_score or candidate.metrix_score or 0, 0), 100) / 25
-
-    return score
+    return score + min(max(candidate.rank_score or candidate.metrix_score or 0, 0), 100) / 25
 
 
 def _shared_specialized_signals(source: Game, candidate: Game) -> int:
@@ -353,92 +432,155 @@ def _is_deep_rpg_profile(game: Game) -> bool:
 
 
 def _passes_similarity_gate(source: Game, candidate: Game) -> bool:
-    source_genres = _meaningful_genres(source)
-    candidate_genres = _meaningful_genres(candidate)
-    source_signals = _text_signals(source)
-    candidate_signals = _text_signals(candidate)
+    context = _similarity_context(source, candidate)
     same_series = _is_same_series(source, candidate)
     same_developer = bool(source.developer and candidate.developer and source.developer == candidate.developer)
 
     if same_series or same_developer:
         return True
 
+    if _is_cinematic_to_systemic_mismatch(context):
+        return False
+
+    if _is_deep_rpg_profile(source) and not _passes_deep_rpg_gate(context):
+        return False
+
+    if (
+        "rpg" in context.source_genres
+        and "rpg" not in context.candidate_genres
+        and "crpg" not in context.candidate_signals
+    ):
+        return False
+
+    if not _passes_crpg_gate(context):
+        return False
+    return _passes_specialized_signal_gate(context)
+
+
+def _is_cinematic_to_systemic_mismatch(context: _SimilarityContext) -> bool:
     source_is_cinematic_action = bool(
-        {"cinematic", "thirdPerson", "postApocalyptic", "survival", "horror"} & source_signals
-        and ("action" in source_genres or "actionAdventure" in source_signals)
+        {
+            "cinematic", "thirdPerson", "postApocalyptic", "survival", "horror",
+        }
+        & context.source_signals
+        and (
+            "action" in context.source_genres
+            or "actionAdventure" in context.source_signals
+        )
     )
     candidate_is_systemic_rpg = bool(
-        {"crpg", "tactical", "isometric"} & candidate_signals
+        {"crpg", "tactical", "isometric"} & context.candidate_signals
         or (
-            "rpg" in candidate_genres
-            and "action" not in candidate_genres
-            and "shooter" not in candidate_signals
-            and "horror" not in candidate_signals
-            and "survival" not in candidate_signals
+            "rpg" in context.candidate_genres
+            and "action" not in context.candidate_genres
+            and "shooter" not in context.candidate_signals
+            and "horror" not in context.candidate_signals
+            and "survival" not in context.candidate_signals
         )
     )
-    if source_is_cinematic_action and candidate_is_systemic_rpg:
+    return source_is_cinematic_action and candidate_is_systemic_rpg
+
+
+def _passes_deep_rpg_gate(context: _SimilarityContext) -> bool:
+    candidate_has_rpg = (
+        "rpg" in context.candidate_genres
+        or "rpg" in context.candidate_signals
+    )
+    deep_overlap = bool(
+        {
+            "crpg", "party", "isometric", "tactical", "turn-based", "turn based",
+            "dialogueRpg", "detective", "nonCombat",
+        }
+        & context.candidate_signals
+        or ("strategy" in context.candidate_genres and candidate_has_rpg)
+    )
+    if not candidate_has_rpg:
         return False
-
-    if _is_deep_rpg_profile(source):
-        candidate_has_rpg = "rpg" in candidate_genres or "rpg" in candidate_signals
-        candidate_has_deep_overlap = bool(
-            {"crpg", "party", "isometric", "tactical", "turn-based", "turn based",
-             "dialogueRpg", "detective", "nonCombat"} & candidate_signals
-            or ("strategy" in candidate_genres and candidate_has_rpg)
-        )
-        if not candidate_has_rpg:
-            return False
-        if "casual" in candidate_genres and not candidate_has_deep_overlap:
-            return False
-        if "jrpg" in candidate_signals and "jrpg" not in source_signals and not candidate_has_deep_overlap:
-            return False
-        if "action" in candidate_genres and not candidate_has_deep_overlap and "party" not in candidate_signals:
-            return False
-
-    if "rpg" in source_genres and "rpg" not in candidate_genres and "crpg" not in candidate_signals:
+    if "casual" in context.candidate_genres and not deep_overlap:
         return False
-
     if (
-        ("crpg" in source_signals or "tactical" in source_signals or "isometric" in source_signals)
-        and not (CRPG_COMPATIBLE_SIGNALS & candidate_signals)
+        "jrpg" in context.candidate_signals
+        and "jrpg" not in context.source_signals
+        and not deep_overlap
     ):
         return False
-    if "crpg" in source_signals or "tactical" in source_signals or "isometric" in source_signals:
-        candidate_has_crpg_structure = (
-            "rpg" in candidate_genres
-            and (
-                "strategy" in candidate_genres
-                or "isometric" in candidate_genres
-                or bool({"crpg", "tactical", "isometric", "turn-based", "turn based", "party"} & candidate_signals)
+    return not (
+        "action" in context.candidate_genres
+        and not deep_overlap
+        and "party" not in context.candidate_signals
+    )
+
+
+def _passes_crpg_gate(context: _SimilarityContext) -> bool:
+    source_is_crpg = bool(
+        {"crpg", "tactical", "isometric"} & context.source_signals
+    )
+    if not source_is_crpg:
+        return True
+    if not (CRPG_COMPATIBLE_SIGNALS & context.candidate_signals):
+        return False
+    return (
+        "rpg" in context.candidate_genres
+        and (
+            "strategy" in context.candidate_genres
+            or "isometric" in context.candidate_genres
+            or bool(
+                {
+                    "crpg", "tactical", "isometric", "turn-based", "turn based",
+                    "party",
+                }
+                & context.candidate_signals
             )
         )
-        if not candidate_has_crpg_structure:
-            return False
-
-    if "jrpg" in source_signals and "jrpg" not in candidate_signals:
-        return False
-    if "soulslike" in source_signals and "soulslike" not in candidate_signals and "actionCombat" not in candidate_signals:
-        return False
-    if "roguelike" in source_genres and "roguelike" not in candidate_signals:
-        return False
-    source_shooter_is_primary = (
-        "shooter" in source_signals
-        and not ({"horror", "survival", "narrative", "cinematic", "thirdPerson", "stealth"} & source_signals)
     )
-    if source_shooter_is_primary and "shooter" not in candidate_signals:
-        return False
+
+
+def _passes_specialized_signal_gate(context: _SimilarityContext) -> bool:
     if (
-        "horror" in source_signals
-        and "horror" not in candidate_signals
-        and "survival" not in candidate_signals
-        and not ({"narrative", "cinematic", "stealth", "postApocalyptic", "actionAdventure"} & candidate_signals)
+        "jrpg" in context.source_signals
+        and "jrpg" not in context.candidate_signals
     ):
         return False
-    if "racing" in source_signals and "racing" not in candidate_signals:
+    if (
+        "soulslike" in context.source_signals
+        and "soulslike" not in context.candidate_signals
+        and "actionCombat" not in context.candidate_signals
+    ):
         return False
-
-    return True
+    if (
+        "roguelike" in context.source_genres
+        and "roguelike" not in context.candidate_signals
+    ):
+        return False
+    source_shooter_is_primary = (
+        "shooter" in context.source_signals
+        and not (
+            {
+                "horror", "survival", "narrative", "cinematic", "thirdPerson",
+                "stealth",
+            }
+            & context.source_signals
+        )
+    )
+    if source_shooter_is_primary and "shooter" not in context.candidate_signals:
+        return False
+    if (
+        "horror" in context.source_signals
+        and "horror" not in context.candidate_signals
+        and "survival" not in context.candidate_signals
+        and not (
+            {
+                "narrative", "cinematic", "stealth", "postApocalyptic",
+                "actionAdventure",
+            }
+            & context.candidate_signals
+        )
+    ):
+        return False
+    return not (
+        "racing" in context.source_signals
+        and "racing" not in context.candidate_signals
+    )
 
 
 def _diversify(source: Game, ranked: list[tuple[Game, float]], display_limit: int) -> list[Game]:

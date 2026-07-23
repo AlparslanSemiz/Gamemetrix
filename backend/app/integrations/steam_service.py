@@ -15,11 +15,16 @@ the store search endpoint is public.
 import logging
 import re
 import time
+from datetime import date
 
 import httpx
 
 from .rate_limiter import get_rate_limiter
-from .steam import _clean_requirement_block, _lookup_steam_app_id  # reuse existing helpers
+from .steam import (
+    _clean_requirement_block,
+    _lookup_steam_app_id,
+    _parse_steam_release_date,
+)
 from .types import NormalizedGame, SourceHealth
 
 log = logging.getLogger(__name__)
@@ -29,6 +34,77 @@ APP_DETAILS = "https://store.steampowered.com/api/appdetails"
 SMOKE_TEST_TITLES = [("portal-2", "Portal 2", 620)]
 
 _STEAM_APP_ID_RE = re.compile(r"(?:steam/apps/|/app/|^|[-_])(\d{3,})(?:/|$)")
+
+
+def _release_date(raw: dict) -> date | None:
+    release_data = raw.get("release_date")
+    value = release_data.get("date") if isinstance(release_data, dict) else None
+    return _parse_steam_release_date(value) if value else None
+
+
+def _platforms(raw: dict) -> list[str]:
+    platform_data = raw.get("platforms") if isinstance(raw.get("platforms"), dict) else {}
+    return [
+        label
+        for key, label in (("windows", "PC"), ("mac", "macOS"), ("linux", "Linux"))
+        if platform_data.get(key)
+    ]
+
+
+def _text_values(raw: dict, key: str, limit: int) -> list[str]:
+    values = raw.get(key)
+    if not isinstance(values, list):
+        return []
+    return [str(value)[:limit] for value in values if value]
+
+
+def _descriptions(raw: dict, key: str) -> list[str]:
+    values = raw.get(key) or []
+    return [
+        str(value["description"])[:100]
+        for value in values
+        if isinstance(value, dict) and value.get("description")
+    ]
+
+
+def _screenshots(raw: dict) -> list[str]:
+    return [
+        str(screenshot["path_full"])[:500]
+        for screenshot in raw.get("screenshots") or []
+        if isinstance(screenshot, dict) and screenshot.get("path_full")
+    ]
+
+
+def _system_requirements(raw: dict) -> list[dict[str, str]]:
+    requirements: list[dict[str, str]] = []
+    for key, platform in (
+        ("pc_requirements", "PC"),
+        ("mac_requirements", "Mac"),
+        ("linux_requirements", "Linux"),
+    ):
+        raw_requirement = raw.get(key) or {}
+        if isinstance(raw_requirement, str):
+            minimum = _clean_requirement_block(raw_requirement)
+            recommended = ""
+        elif isinstance(raw_requirement, dict):
+            minimum = _clean_requirement_block(raw_requirement.get("minimum"))
+            recommended = _clean_requirement_block(raw_requirement.get("recommended"))
+        else:
+            continue
+        if minimum or recommended:
+            requirements.append({
+                "platform": platform,
+                "minimum": minimum,
+                "recommended": recommended,
+            })
+    return requirements
+
+
+def _dlc_ids(raw: dict) -> list[int]:
+    values = raw.get("dlc")
+    if not isinstance(values, list):
+        return []
+    return [int(value) for value in values if str(value).isdigit()]
 
 
 class SteamService:
@@ -119,87 +195,17 @@ class SteamService:
         return f"https://store.steampowered.com/app/{app_id}/"
 
     def _normalize(self, app_id: int, raw: dict) -> NormalizedGame:
-        from datetime import date as _date
-        release_date: _date | None = None
-        release_data = raw.get("release_date")
-        rd = release_data.get("date") if isinstance(release_data, dict) else None
-        if rd:
-            from .steam import _parse_steam_release_date
-            release_date = _parse_steam_release_date(rd)
-
-        platforms = []
-        platform_data = raw.get("platforms") if isinstance(raw.get("platforms"), dict) else {}
-        if platform_data.get("windows"):
-            platforms.append("PC")
-        if platform_data.get("mac"):
-            platforms.append("macOS")
-        if platform_data.get("linux"):
-            platforms.append("Linux")
-
-        raw_developers = raw.get("developers")
-        raw_publishers = raw.get("publishers")
-        developers = [
-            str(value)[:200]
-            for value in raw_developers
-            if value
-        ] if isinstance(raw_developers, list) else []
-        publishers = [
-            str(value)[:200]
-            for value in raw_publishers
-            if value
-        ] if isinstance(raw_publishers, list) else []
-
-        genres = [
-            str(genre["description"])[:100]
-            for genre in raw.get("genres") or []
-            if isinstance(genre, dict) and genre.get("description")
-        ]
-        categories = [
-            str(category["description"])[:100]
-            for category in raw.get("categories") or []
-            if isinstance(category, dict) and category.get("description")
-        ]
-        screenshots = [
-            str(screenshot["path_full"])[:500]
-            for s in raw.get("screenshots") or []
-            if isinstance(screenshot, dict) and screenshot.get("path_full")
-        ]
-        system_requirements: list[dict[str, str]] = []
-        for key, platform in (
-            ("pc_requirements", "PC"),
-            ("mac_requirements", "Mac"),
-            ("linux_requirements", "Linux"),
-        ):
-            req = raw.get(key) or {}
-            if isinstance(req, str):
-                minimum = _clean_requirement_block(req)
-                recommended = ""
-            elif isinstance(req, dict):
-                minimum = _clean_requirement_block(req.get("minimum"))
-                recommended = _clean_requirement_block(req.get("recommended"))
-            else:
-                continue
-            if minimum or recommended:
-                system_requirements.append({
-                    "platform": platform,
-                    "minimum": minimum,
-                    "recommended": recommended,
-                })
-        raw_dlc = raw.get("dlc")
-        dlc_ids = [
-            int(item)
-            for item in raw_dlc
-            if str(item).isdigit()
-        ] if isinstance(raw_dlc, list) else []
+        developers = _text_values(raw, "developers", 200)
+        publishers = _text_values(raw, "publishers", 200)
 
         return NormalizedGame(
             source="Steam",
             external_id=str(app_id),
             name=str(raw.get("name") or "")[:500],
             external_url=self.store_url(app_id),
-            release_date=release_date,
-            platforms=platforms,
-            genres=genres,
+            release_date=_release_date(raw),
+            platforms=_platforms(raw),
+            genres=_descriptions(raw, "genres"),
             developer=developers[0] if developers else None,
             publisher=publishers[0] if publishers else None,
             summary=str(raw["short_description"])[:20_000] if raw.get("short_description") else None,
@@ -208,13 +214,13 @@ class SteamService:
                 "steam_app_id": app_id,
                 "required_age": raw.get("required_age"),
                 "is_free": raw.get("is_free"),
-                "categories": categories,
+                "categories": _descriptions(raw, "categories"),
                 "metacritic": raw.get("metacritic"),
                 "header_image": raw.get("header_image"),
                 "website": raw.get("website"),
-                "screenshots": screenshots,
-                "system_requirements": system_requirements,
-                "dlc_ids": dlc_ids,
+                "screenshots": _screenshots(raw),
+                "system_requirements": _system_requirements(raw),
+                "dlc_ids": _dlc_ids(raw),
             },
         )
 

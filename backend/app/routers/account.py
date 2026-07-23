@@ -1,9 +1,7 @@
 from __future__ import annotations
 
 import base64
-import json
 import logging
-import re
 from datetime import datetime, timedelta
 from hashlib import sha256
 from secrets import token_urlsafe
@@ -38,7 +36,7 @@ from ..account_security import (
     utcnow,
     verify_password,
 )
-from ..config import get_settings
+from ..config import Settings, get_settings
 from ..database import get_db
 from ..models import (
     AccountToken,
@@ -53,6 +51,18 @@ from ..models import (
 )
 from ..rate_limit import limiter
 from ..services.account_email import email_delivery_ready, send_account_email
+from ..services.account_state import (
+    COLLECTION_TYPES,
+    AccountStateLimitError,
+    CollectionType,
+    GuestPreferences,
+    GuestState,
+    account_payload,
+    account_state_payload,
+    get_or_create_preference,
+    merge_guest_state,
+    sanitized_settings,
+)
 
 
 log = logging.getLogger(__name__)
@@ -62,13 +72,7 @@ router = APIRouter(
     dependencies=[Depends(require_account_enabled)],
 )
 
-CollectionType = Literal["watchlist", "playing", "seen", "completed", "liked", "favorites"]
 AlertStateType = Literal["read", "dismissed"]
-COLLECTION_TYPES: tuple[CollectionType, ...] = (
-    "watchlist", "playing", "seen", "completed", "liked", "favorites"
-)
-_SLUG_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
-_RESERVED_SETTING_KEYS = frozenset({"guest_state_merged", "gm_guest_state_merged"})
 
 
 class StrictPayload(BaseModel):
@@ -188,16 +192,6 @@ class DeleteAccountPayload(StrictPayload):
     current_password: str | None = Field(default=None, max_length=128)
 
 
-def _account_payload(user: User) -> dict:
-    return {
-        "id": user.id,
-        "email": user.email,
-        "display_name": user.display_name,
-        "email_verified": user.email_verified_at is not None,
-        "created_at": user.created_at.isoformat(),
-    }
-
-
 def _new_account_token(db: Session, user: User, purpose: str, hours: int) -> str:
     now = utcnow()
     for old in db.scalars(
@@ -263,61 +257,6 @@ async def _send_verification(db: Session, user: User) -> None:
     )
 
 
-def _preference(db: Session, user_id: str) -> UserPreference:
-    value = db.get(UserPreference, user_id)
-    if value is None:
-        value = UserPreference(
-            user_id=user_id,
-            alert_min_discount=20,
-            alert_min_score=80,
-            alert_upcoming_days=45,
-            email_digest_enabled=False,
-            marketing_enabled=False,
-            settings={},
-            updated_at=utcnow(),
-        )
-        db.add(value)
-        db.flush()
-    return value
-
-
-def _state_payload(db: Session, user: User) -> dict:
-    collections: dict[str, list[str]] = {key: [] for key in COLLECTION_TYPES}
-    rows = db.execute(
-        select(UserCollection.collection_type, Game.slug)
-        .join(Game, Game.id == UserCollection.game_id)
-        .where(UserCollection.user_id == user.id)
-        .order_by(UserCollection.created_at)
-    ).all()
-    for collection_type, slug in rows:
-        if collection_type in collections:
-            collections[collection_type].append(slug)
-
-    pref = _preference(db, user.id)
-    alert_rows = db.scalars(
-        select(UserAlertState).where(UserAlertState.user_id == user.id)
-    ).all()
-    db.commit()
-    return {
-        "account": _account_payload(user),
-        "collections": collections,
-        "preferences": {
-            "min_discount": pref.alert_min_discount,
-            "min_score": pref.alert_min_score,
-            "upcoming_days": pref.alert_upcoming_days,
-            "email_digest_enabled": pref.email_digest_enabled,
-            "marketing_enabled": pref.marketing_enabled,
-            "settings": {
-                key: value
-                for key, value in (pref.settings or {}).items()
-                if key not in _RESERVED_SETTING_KEYS
-            },
-        },
-        "read_alerts": [row.alert_key for row in alert_rows if row.state == "read"],
-        "dismissed_alerts": [row.alert_key for row in alert_rows if row.state == "dismissed"],
-    }
-
-
 @router.post("/register", response_model=MessageResponse, status_code=status.HTTP_202_ACCEPTED)
 @limiter.limit(get_settings().AUTH_RATE_LIMIT)
 async def register(request: Request, payload: RegisterPayload, db: Session = Depends(get_db)) -> MessageResponse:
@@ -358,7 +297,7 @@ async def register(request: Request, payload: RegisterPayload, db: Session = Dep
         last_login_at=None,
     )
     db.add(user)
-    _preference(db, user.id)
+    get_or_create_preference(db, user.id)
     db.commit()
     try:
         await _send_verification(db, user)
@@ -397,7 +336,7 @@ def login(request: Request, response: Response, payload: LoginPayload, db: Sessi
         user.password_hash = hash_password(payload.password)
     session_token, csrf_token = create_account_session(db, user, request)
     set_account_cookies(response, session_token, csrf_token)
-    return {"account": _account_payload(user)}
+    return {"account": account_payload(user)}
 
 
 @router.post("/logout", response_model=MessageResponse)
@@ -414,14 +353,14 @@ def logout(
 
 @router.get("/me")
 def me(principal: AccountPrincipal = Depends(require_account_principal)) -> dict:
-    return {"account": _account_payload(principal.user)}
+    return {"account": account_payload(principal.user)}
 
 
 @router.get("/session")
 def account_session(
     principal: AccountPrincipal | None = Depends(optional_account_principal),
 ) -> dict:
-    return {"account": _account_payload(principal.user) if principal else None}
+    return {"account": account_payload(principal.user) if principal else None}
 
 
 @router.post("/password/forgot", response_model=MessageResponse, status_code=status.HTTP_202_ACCEPTED)
@@ -541,20 +480,7 @@ def unsubscribe_email_digest(
     return MessageResponse(message="Email watchlist updates have been disabled.")
 
 
-@router.get("/oauth/google/callback")
-# Each call makes two outbound HTTPS requests to Google, so it must be bounded.
-@limiter.limit("20/minute")
-async def google_callback(
-    request: Request,
-    code: str | None = Query(default=None, max_length=4096),
-    state: str | None = Query(default=None, max_length=256),
-    error: str | None = Query(default=None, max_length=200),
-    db: Session = Depends(get_db),
-) -> RedirectResponse:
-    cfg = get_settings()
-    if error or not code or not state:
-        return RedirectResponse(f"{cfg.ACCOUNT_BASE_URL}/login?oauth=cancelled", status_code=302)
-    encoded = request.cookies.get(OAUTH_COOKIE, "")
+def _decode_google_oauth_cookie(encoded: str, state: str) -> dict:
     try:
         oauth = jwt.decode(
             encoded,
@@ -570,7 +496,14 @@ async def google_callback(
         or not isinstance(oauth.get("verifier"), str)
     ):
         raise HTTPException(status_code=400, detail="Google login state is invalid.")
+    return oauth
 
+
+async def _fetch_google_userinfo(
+    cfg: Settings,
+    code: str,
+    verifier: str,
+) -> dict:
     async with httpx.AsyncClient(timeout=15) as client:
         token_response = await client.post(
             "https://oauth2.googleapis.com/token",
@@ -580,32 +513,56 @@ async def google_callback(
                 "client_secret": cfg.GOOGLE_CLIENT_SECRET,
                 "redirect_uri": cfg.GOOGLE_REDIRECT_URI,
                 "grant_type": "authorization_code",
-                "code_verifier": oauth["verifier"],
+                "code_verifier": verifier,
             },
         )
         if token_response.status_code != 200:
             raise HTTPException(status_code=502, detail="Google login could not be completed.")
         access_token = token_response.json().get("access_token")
-        userinfo_response = await client.get(
+        response = await client.get(
             "https://openidconnect.googleapis.com/v1/userinfo",
             headers={"Authorization": f"Bearer {access_token}"},
         )
-        if userinfo_response.status_code != 200:
+        if response.status_code != 200:
             raise HTTPException(status_code=502, detail="Google profile could not be read.")
-        userinfo = userinfo_response.json()
+        return response.json()
 
+
+def _validated_google_identity(userinfo: dict) -> tuple[str, str, str]:
     subject = str(userinfo.get("sub") or "")
     email = normalize_email(str(userinfo.get("email") or ""))
-    display_name = " ".join(str(userinfo.get("name") or email.split("@", 1)[0]).split())[:80]
-    if not subject or len(subject) > 255 or not email or len(email) > 320 or not display_name or userinfo.get("email_verified") is not True:
+    display_name = " ".join(
+        str(userinfo.get("name") or email.split("@", 1)[0]).split()
+    )[:80]
+    if (
+        not subject
+        or len(subject) > 255
+        or not email
+        or len(email) > 320
+        or not display_name
+        or userinfo.get("email_verified") is not True
+    ):
         raise HTTPException(status_code=400, detail="Google did not return a verified email.")
+    return subject, email, display_name
+
+
+def _find_or_create_google_user(
+    db: Session,
+    subject: str,
+    email: str,
+    display_name: str,
+) -> tuple[User, bool]:
     identity = db.scalar(
         select(OAuthIdentity).where(
             OAuthIdentity.provider == "google",
             OAuthIdentity.provider_subject == subject,
         )
     )
-    user = db.get(User, identity.user_id) if identity else db.scalar(select(User).where(User.email == email))
+    user = (
+        db.get(User, identity.user_id)
+        if identity
+        else db.scalar(select(User).where(User.email == email))
+    )
     created_account = user is None
     now = utcnow()
     if user is None:
@@ -621,32 +578,42 @@ async def google_callback(
             last_login_at=None,
         )
         db.add(user)
-        _preference(db, user.id)
+        get_or_create_preference(db, user.id)
         db.flush()
     if not user.is_active:
         raise HTTPException(status_code=403, detail="This account is disabled.")
     if user.email_verified_at is None:
-        # A pending password was chosen before ownership of this email was
-        # proven. A verified Google identity may adopt the address, but must not
-        # inherit that untrusted credential or any outstanding account tokens.
+        # A verified Google identity may adopt a pending local address, but must
+        # not inherit its untrusted password or outstanding account tokens.
         _discard_unverified_local_credentials(db, user, now)
     user.email_verified_at = user.email_verified_at or now
     if identity is None:
-        db.add(
-            OAuthIdentity(
-                id=str(uuid4()),
-                user_id=user.id,
-                provider="google",
-                provider_subject=subject,
-                created_at=now,
-            )
-        )
+        db.add(OAuthIdentity(
+            id=str(uuid4()),
+            user_id=user.id,
+            provider="google",
+            provider_subject=subject,
+            created_at=now,
+        ))
     db.commit()
+    return user, created_account
+
+
+def _google_login_response(
+    db: Session,
+    cfg: Settings,
+    oauth: dict,
+    user: User,
+    request: Request,
+    created_account: bool,
+) -> RedirectResponse:
     session_token, csrf_token = create_account_session(db, user, request)
     return_to = _safe_return_to(str(oauth.get("return_to") or "/account"))
     return_parts = urlsplit(return_to)
     return_query = dict(parse_qsl(return_parts.query, keep_blank_values=True))
-    return_query["account_event"] = "signup_completed" if created_account else "login_completed"
+    return_query["account_event"] = (
+        "signup_completed" if created_account else "login_completed"
+    )
     return_to = urlunsplit(("", "", return_parts.path, urlencode(return_query), ""))
     response = RedirectResponse(f"{cfg.ACCOUNT_BASE_URL}{return_to}", status_code=302)
     set_account_cookies(response, session_token, csrf_token)
@@ -654,16 +621,47 @@ async def google_callback(
     return response
 
 
+@router.get("/oauth/google/callback")
+# Each call makes two outbound HTTPS requests to Google, so it must be bounded.
+@limiter.limit("20/minute")
+async def google_callback(
+    request: Request,
+    code: str | None = Query(default=None, max_length=4096),
+    state: str | None = Query(default=None, max_length=256),
+    error: str | None = Query(default=None, max_length=200),
+    db: Session = Depends(get_db),
+) -> RedirectResponse:
+    cfg = get_settings()
+    if error or not code or not state:
+        return RedirectResponse(f"{cfg.ACCOUNT_BASE_URL}/login?oauth=cancelled", status_code=302)
+    oauth = _decode_google_oauth_cookie(
+        request.cookies.get(OAUTH_COOKIE, ""),
+        state,
+    )
+    userinfo = await _fetch_google_userinfo(cfg, code, oauth["verifier"])
+    subject, email, display_name = _validated_google_identity(userinfo)
+    user, created_account = _find_or_create_google_user(
+        db,
+        subject,
+        email,
+        display_name,
+    )
+    return _google_login_response(
+        db,
+        cfg,
+        oauth,
+        user,
+        request,
+        created_account,
+    )
+
+
 @router.get("/state")
 def account_state(
     principal: AccountPrincipal = Depends(require_account_principal),
     db: Session = Depends(get_db),
 ) -> dict:
-    return _state_payload(db, principal.user)
-
-
-def _valid_slugs(values: list[str]) -> set[str]:
-    return {value for value in values if len(value) <= 180 and _SLUG_RE.fullmatch(value)}
+    return account_state_payload(db, principal.user)
 
 
 @router.post("/state/merge")
@@ -672,72 +670,26 @@ def merge_account_state(
     principal: AccountPrincipal = Depends(require_csrf),
     db: Session = Depends(get_db),
 ) -> dict:
-    all_slugs = set().union(*(_valid_slugs(getattr(payload.collections, key)) for key in COLLECTION_TYPES))
-    games = {game.slug: game for game in db.scalars(select(Game).where(Game.slug.in_(all_slugs))).all()} if all_slugs else {}
-    existing = {
-        (row.game_id, row.collection_type)
-        for row in db.scalars(select(UserCollection).where(UserCollection.user_id == principal.user.id)).all()
-    }
-    now = utcnow()
-    for collection_type in COLLECTION_TYPES:
-        for slug in _valid_slugs(getattr(payload.collections, collection_type)):
-            game = games.get(slug)
-            if game and (game.id, collection_type) not in existing:
-                db.add(
-                    UserCollection(
-                        user_id=principal.user.id,
-                        game_id=game.id,
-                        collection_type=collection_type,
-                        created_at=now,
-                    )
-                )
-                existing.add((game.id, collection_type))
-
-    pref = _preference(db, principal.user.id)
-    settings = dict(pref.settings or {})
-    if not (settings.get("gm_guest_state_merged") or settings.get("guest_state_merged")):
-        pref.alert_min_discount = payload.preferences.min_discount
-        pref.alert_min_score = payload.preferences.min_score
-        pref.alert_upcoming_days = payload.preferences.upcoming_days
-        pref.email_digest_enabled = payload.preferences.email_digest_enabled
-        pref.marketing_enabled = payload.preferences.marketing_enabled
-        if len(json.dumps(payload.preferences.settings)) <= 10_000:
-            settings.update({
-                key: value
-                for key, value in payload.preferences.settings.items()
-                if key not in _RESERVED_SETTING_KEYS
-            })
-        settings.pop("guest_state_merged", None)
-        settings["gm_guest_state_merged"] = True
-        pref.settings = settings
-        pref.updated_at = now
-
-    current_alerts = {
-        row.alert_key: row
-        for row in db.scalars(select(UserAlertState).where(UserAlertState.user_id == principal.user.id)).all()
-    }
-    incoming_alert_keys = {
-        key
-        for keys in (payload.read_alerts, payload.dismissed_alerts)
-        for key in keys
-        if key and len(key) <= 240
-    }
-    if len(current_alerts) + len(incoming_alert_keys - set(current_alerts)) > 10_000:
-        raise HTTPException(status_code=422, detail="Account alert history limit reached.")
-    for state_name, keys in (("read", payload.read_alerts), ("dismissed", payload.dismissed_alerts)):
-        for key in set(keys):
-            if not key or len(key) > 240:
-                continue
-            row = current_alerts.get(key)
-            if row is None:
-                row = UserAlertState(user_id=principal.user.id, alert_key=key, state=state_name, updated_at=now)
-                db.add(row)
-                current_alerts[key] = row
-            elif state_name == "dismissed" or row.state != "dismissed":
-                row.state = state_name
-                row.updated_at = now
-    db.commit()
-    return _state_payload(db, principal.user)
+    state = GuestState(
+        collections={
+            collection_type: getattr(payload.collections, collection_type)
+            for collection_type in COLLECTION_TYPES
+        },
+        preferences=GuestPreferences(
+            min_discount=payload.preferences.min_discount,
+            min_score=payload.preferences.min_score,
+            upcoming_days=payload.preferences.upcoming_days,
+            email_digest_enabled=payload.preferences.email_digest_enabled,
+            marketing_enabled=payload.preferences.marketing_enabled,
+            settings=dict(payload.preferences.settings),
+        ),
+        read_alerts=payload.read_alerts,
+        dismissed_alerts=payload.dismissed_alerts,
+    )
+    try:
+        return merge_guest_state(db, principal.user, state)
+    except AccountStateLimitError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.put("/collections/{collection_type}/{slug}", status_code=status.HTTP_204_NO_CONTENT)
@@ -787,7 +739,7 @@ def update_preferences(
     principal: AccountPrincipal = Depends(require_csrf),
     db: Session = Depends(get_db),
 ) -> dict:
-    pref = _preference(db, principal.user.id)
+    pref = get_or_create_preference(db, principal.user.id)
     if payload.min_discount is not None:
         pref.alert_min_discount = payload.min_discount
     if payload.min_score is not None:
@@ -799,18 +751,16 @@ def update_preferences(
     if payload.marketing_enabled is not None:
         pref.marketing_enabled = payload.marketing_enabled
     if payload.settings is not None:
-        if len(json.dumps(payload.settings)) > 10_000:
-            raise HTTPException(status_code=422, detail="Settings payload is too large.")
-        merged = dict(pref.settings or {})
-        merged.update({
-            key: value
-            for key, value in payload.settings.items()
-            if key not in _RESERVED_SETTING_KEYS
-        })
-        pref.settings = merged
+        try:
+            pref.settings = sanitized_settings(
+                dict(pref.settings or {}),
+                dict(payload.settings),
+            )
+        except AccountStateLimitError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
     pref.updated_at = utcnow()
     db.commit()
-    return _state_payload(db, principal.user)["preferences"]
+    return account_state_payload(db, principal.user)["preferences"]
 
 
 @router.put("/alert-state", status_code=status.HTTP_204_NO_CONTENT)
@@ -882,7 +832,10 @@ def export_account(
     principal: AccountPrincipal = Depends(require_account_principal),
     db: Session = Depends(get_db),
 ) -> dict:
-    return {"exported_at": utcnow().isoformat(), **_state_payload(db, principal.user)}
+    return {
+        "exported_at": utcnow().isoformat(),
+        **account_state_payload(db, principal.user),
+    }
 
 
 @router.delete("")

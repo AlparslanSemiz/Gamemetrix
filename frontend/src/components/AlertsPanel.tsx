@@ -1,4 +1,10 @@
-import { useEffect, useMemo, useState } from 'react'
+import {
+  useEffect,
+  useMemo,
+  useState,
+  type Dispatch,
+  type SetStateAction,
+} from 'react'
 import { Bell, CalendarDays, CheckCheck, ExternalLink, Percent, RefreshCw, Sparkles, X } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import {
@@ -143,35 +149,17 @@ function AlertIcon({ kind }: { kind: GameAlert['kind'] }) {
   return <Bell size={17} aria-hidden="true" />
 }
 
-interface AlertsPanelContentProps {
-  watchlistSlugs: string[]
-  account: Account | null
-  accountState: AccountState | null
-  updatePreferences: (preferences: Partial<AccountPreferences>) => Promise<void>
+function persistSet(key: string, values: Set<string>) {
+  localStorage.setItem(key, JSON.stringify(Array.from(values)))
 }
 
-function AlertsPanelContent({
-  watchlistSlugs,
-  account,
-  accountState,
-  updatePreferences,
-}: AlertsPanelContentProps) {
-  const [games, setGames] = useState<Game[]>([])
-  const [isLoading, setIsLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [refreshKey, setRefreshKey] = useState(0)
-  const [readIds, setReadIds] = useState(() => (
-    accountState ? new Set(accountState.read_alerts) : loadStringSet(READ_KEY)
-  ))
-  const [dismissedIds, setDismissedIds] = useState(() => (
-    accountState ? new Set(accountState.dismissed_alerts) : loadStringSet(DISMISSED_KEY)
-  ))
-  const [preferences, setPreferences] = useState<AlertPreferences>(() => accountState ? {
-    minDiscount: accountState.preferences.min_discount,
-    minScore: accountState.preferences.min_score,
-    upcomingDays: accountState.preferences.upcoming_days,
-  } : loadPreferences())
-
+function useAlertPreferenceSync(
+  account: Account | null,
+  accountState: AccountState | null,
+  preferences: AlertPreferences,
+  updatePreferences: (preferences: Partial<AccountPreferences>) => Promise<void>,
+  setError: (message: string | null) => void,
+) {
   useEffect(() => {
     localStorage.setItem(PREFERENCES_KEY, JSON.stringify(preferences))
     if (!account) return
@@ -188,7 +176,16 @@ function AlertsPanelContent({
       }).catch(() => setError('Alert preferences could not be synchronized.'))
     }, 500)
     return () => window.clearTimeout(timer)
-  }, [account, accountState, preferences, updatePreferences])
+  }, [account, accountState, preferences, setError, updatePreferences])
+}
+
+function useWatchlistAlertGames(
+  watchlistSlugs: string[],
+  refreshKey: number,
+  setError: (message: string | null) => void,
+) {
+  const [games, setGames] = useState<Game[]>([])
+  const [isLoading, setIsLoading] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -208,9 +205,13 @@ function AlertsPanelContent({
       const loaded: Game[] = []
       for (let index = 0; index < uniqueSlugs.length; index += 8) {
         const batch = await Promise.allSettled(
-          uniqueSlugs.slice(index, index + 8).map((slug) => getGameBySlug(slug, false)),
+          uniqueSlugs.slice(index, index + 8).map(
+            (slug) => getGameBySlug(slug, false),
+          ),
         )
-        loaded.push(...batch.flatMap((result) => result.status === 'fulfilled' ? [result.value] : []))
+        loaded.push(...batch.flatMap(
+          (result) => result.status === 'fulfilled' ? [result.value] : [],
+        ))
         if (cancelled) return
       }
       if (!cancelled) {
@@ -221,19 +222,169 @@ function AlertsPanelContent({
     }
 
     void loadWatchlistGames()
-    return () => { cancelled = true }
-  }, [refreshKey, watchlistSlugs])
+    return () => {
+      cancelled = true
+    }
+  }, [refreshKey, setError, watchlistSlugs])
 
-  const alerts = useMemo(
-    () => buildAlerts(games, preferences).filter((alert) => !dismissedIds.has(alert.id)),
-    [dismissedIds, games, preferences],
+  return { games, isLoading }
+}
+
+function AlertPreferencesForm({
+  preferences,
+  setPreferences,
+}: {
+  preferences: AlertPreferences
+  setPreferences: Dispatch<SetStateAction<AlertPreferences>>
+}) {
+  const updateNumber = (
+    field: keyof AlertPreferences,
+    value: string,
+    min: number,
+    max: number,
+  ) => setPreferences((current) => ({
+    ...current,
+    [field]: boundedNumber(value, min, max, current[field]),
+  }))
+
+  return (
+    <div className="alerts-preferences">
+      <label>
+        <span>Deal</span>
+        <input type="number" min="1" max="90" value={preferences.minDiscount} onChange={(event) => updateNumber('minDiscount', event.target.value, 1, 90)} />
+        <small>%</small>
+      </label>
+      <label>
+        <span>Score</span>
+        <input type="number" min="1" max="100" value={preferences.minScore} onChange={(event) => updateNumber('minScore', event.target.value, 1, 100)} />
+      </label>
+      <label>
+        <span>Release</span>
+        <input type="number" min="1" max="365" value={preferences.upcomingDays} onChange={(event) => updateNumber('upcomingDays', event.target.value, 1, 365)} />
+        <small>days</small>
+      </label>
+    </div>
   )
-  const unreadCount = alerts.filter((alert) => !readIds.has(alert.id)).length
+}
 
-  const persistSet = (key: string, values: Set<string>) => {
-    localStorage.setItem(key, JSON.stringify(Array.from(values)))
-  }
+function AlertList({
+  alerts,
+  readIds,
+  onDismiss,
+  onOpen,
+}: {
+  alerts: GameAlert[]
+  readIds: Set<string>
+  onDismiss: (id: string) => void
+  onOpen: (id: string) => void
+}) {
+  return (
+    <div className="alerts-list">
+      {alerts.map((alert) => (
+        <article className={`alert-item${readIds.has(alert.id) ? ' is-read' : ''}`} key={alert.id}>
+          <span className={`alert-kind alert-kind-${alert.kind}`}><AlertIcon kind={alert.kind} /></span>
+          <div>
+            <strong>{alert.title}</strong>
+            <p>{alert.detail}</p>
+          </div>
+          <div className="alert-item-actions">
+            <Link
+              to={`/game/${alert.game.slug}`}
+              title={`Open ${alert.game.title}`}
+              onClick={() => onOpen(alert.id)}
+            >
+              <ExternalLink size={15} aria-hidden="true" />
+            </Link>
+            <button type="button" title="Dismiss alert" onClick={() => onDismiss(alert.id)}>
+              <X size={15} aria-hidden="true" />
+            </button>
+          </div>
+        </article>
+      ))}
+    </div>
+  )
+}
 
+function AlertsToolbar({
+  isLoading,
+  onMarkAllRead,
+  onRefresh,
+  unreadCount,
+  watchlistCount,
+}: {
+  isLoading: boolean
+  onMarkAllRead: () => void
+  onRefresh: () => void
+  unreadCount: number
+  watchlistCount: number
+}) {
+  return (
+    <div className="alerts-toolbar">
+      <div className="alerts-summary">
+        <strong>{unreadCount} unread</strong>
+        <span>{watchlistCount} wishlist games monitored</span>
+      </div>
+      <div className="alerts-actions">
+        <button type="button" title="Refresh alerts" onClick={onRefresh} disabled={isLoading}>
+          <RefreshCw size={16} aria-hidden="true" />
+        </button>
+        <button type="button" title="Mark all as read" onClick={onMarkAllRead} disabled={!unreadCount}>
+          <CheckCheck size={16} aria-hidden="true" />
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function AlertsStatus({
+  alertCount,
+  error,
+  isLoading,
+  watchlistCount,
+}: {
+  alertCount: number
+  error: string | null
+  isLoading: boolean
+  watchlistCount: number
+}) {
+  return (
+    <>
+      {error ? <p className="status status-error">{error}</p> : null}
+      {isLoading ? <p className="status">Loading alerts...</p> : null}
+      {!isLoading && !alertCount ? (
+        <div className="alerts-empty">
+          <Bell size={22} aria-hidden="true" />
+          <p>{watchlistCount ? 'No wishlist games currently match your alert rules.' : 'Add games to your wishlist to start monitoring them.'}</p>
+        </div>
+      ) : null}
+    </>
+  )
+}
+
+interface AlertsPanelContentProps {
+  watchlistSlugs: string[]
+  account: Account | null
+  accountState: AccountState | null
+  updatePreferences: (preferences: Partial<AccountPreferences>) => Promise<void>
+}
+
+function useAlertReadActions({
+  account,
+  alerts,
+  dismissedIds,
+  readIds,
+  setDismissedIds,
+  setError,
+  setReadIds,
+}: {
+  account: Account | null
+  alerts: GameAlert[]
+  dismissedIds: Set<string>
+  readIds: Set<string>
+  setDismissedIds: Dispatch<SetStateAction<Set<string>>>
+  setError: Dispatch<SetStateAction<string | null>>
+  setReadIds: Dispatch<SetStateAction<Set<string>>>
+}) {
   const markAllRead = () => {
     const next = new Set(readIds)
     alerts.forEach((alert) => next.add(alert.id))
@@ -246,81 +397,100 @@ function AlertsPanelContent({
       ).catch(() => setError('Read status could not be synchronized.'))
     }
   }
-
   const dismiss = (id: string) => {
     const next = new Set(dismissedIds).add(id)
     setDismissedIds(next)
     persistSet(DISMISSED_KEY, next)
-    if (account) void setAccountAlertState(id, 'dismissed').catch(() => setError('Dismissal could not be synchronized.'))
+    if (account) {
+      void setAccountAlertState(id, 'dismissed')
+        .catch(() => setError('Dismissal could not be synchronized.'))
+    }
   }
+  const open = (id: string) => {
+    const next = new Set(readIds).add(id)
+    setReadIds(next)
+    persistSet(READ_KEY, next)
+    if (account) void setAccountAlertState(id, 'read').catch(() => undefined)
+  }
+  return { dismiss, markAllRead, open }
+}
+
+function AlertsPanelContent({
+  watchlistSlugs,
+  account,
+  accountState,
+  updatePreferences,
+}: AlertsPanelContentProps) {
+  const [error, setError] = useState<string | null>(null)
+  const [refreshKey, setRefreshKey] = useState(0)
+  const [readIds, setReadIds] = useState(() => (
+    accountState ? new Set(accountState.read_alerts) : loadStringSet(READ_KEY)
+  ))
+  const [dismissedIds, setDismissedIds] = useState(() => (
+    accountState ? new Set(accountState.dismissed_alerts) : loadStringSet(DISMISSED_KEY)
+  ))
+  const [preferences, setPreferences] = useState<AlertPreferences>(() => accountState ? {
+    minDiscount: accountState.preferences.min_discount,
+    minScore: accountState.preferences.min_score,
+    upcomingDays: accountState.preferences.upcoming_days,
+  } : loadPreferences())
+
+  useAlertPreferenceSync(
+    account,
+    accountState,
+    preferences,
+    updatePreferences,
+    setError,
+  )
+  const { games, isLoading } = useWatchlistAlertGames(
+    watchlistSlugs,
+    refreshKey,
+    setError,
+  )
+
+  const alerts = useMemo(
+    () => buildAlerts(games, preferences).filter((alert) => !dismissedIds.has(alert.id)),
+    [dismissedIds, games, preferences],
+  )
+  const unreadCount = alerts.filter((alert) => !readIds.has(alert.id)).length
+  const actions = useAlertReadActions({
+    account,
+    alerts,
+    dismissedIds,
+    readIds,
+    setDismissedIds,
+    setError,
+    setReadIds,
+  })
 
   return (
     <div className="alerts-panel">
-      <div className="alerts-toolbar">
-        <div className="alerts-summary">
-          <strong>{unreadCount} unread</strong>
-          <span>{watchlistSlugs.length} wishlist games monitored</span>
-        </div>
-        <div className="alerts-actions">
-          <button type="button" title="Refresh alerts" onClick={() => setRefreshKey((value) => value + 1)} disabled={isLoading}>
-            <RefreshCw size={16} aria-hidden="true" />
-          </button>
-          <button type="button" title="Mark all as read" onClick={markAllRead} disabled={!unreadCount}>
-            <CheckCheck size={16} aria-hidden="true" />
-          </button>
-        </div>
-      </div>
+      <AlertsToolbar
+        isLoading={isLoading}
+        onMarkAllRead={actions.markAllRead}
+        onRefresh={() => setRefreshKey((value) => value + 1)}
+        unreadCount={unreadCount}
+        watchlistCount={watchlistSlugs.length}
+      />
 
-      <div className="alerts-preferences">
-        <label>
-          <span>Deal</span>
-          <input type="number" min="1" max="90" value={preferences.minDiscount} onChange={(event) => setPreferences((current) => ({ ...current, minDiscount: boundedNumber(event.target.value, 1, 90, current.minDiscount) }))} />
-          <small>%</small>
-        </label>
-        <label>
-          <span>Score</span>
-          <input type="number" min="1" max="100" value={preferences.minScore} onChange={(event) => setPreferences((current) => ({ ...current, minScore: boundedNumber(event.target.value, 1, 100, current.minScore) }))} />
-        </label>
-        <label>
-          <span>Release</span>
-          <input type="number" min="1" max="365" value={preferences.upcomingDays} onChange={(event) => setPreferences((current) => ({ ...current, upcomingDays: boundedNumber(event.target.value, 1, 365, current.upcomingDays) }))} />
-          <small>days</small>
-        </label>
-      </div>
+      <AlertPreferencesForm
+        preferences={preferences}
+        setPreferences={setPreferences}
+      />
 
-      {error ? <p className="status status-error">{error}</p> : null}
-      {isLoading ? <p className="status">Loading alerts...</p> : null}
-      {!isLoading && !alerts.length ? (
-        <div className="alerts-empty">
-          <Bell size={22} aria-hidden="true" />
-          <p>{watchlistSlugs.length ? 'No wishlist games currently match your alert rules.' : 'Add games to your wishlist to start monitoring them.'}</p>
-        </div>
-      ) : null}
+      <AlertsStatus
+        alertCount={alerts.length}
+        error={error}
+        isLoading={isLoading}
+        watchlistCount={watchlistSlugs.length}
+      />
 
-      <div className="alerts-list">
-        {alerts.map((alert) => (
-          <article className={`alert-item${readIds.has(alert.id) ? ' is-read' : ''}`} key={alert.id}>
-            <span className={`alert-kind alert-kind-${alert.kind}`}><AlertIcon kind={alert.kind} /></span>
-            <div>
-              <strong>{alert.title}</strong>
-              <p>{alert.detail}</p>
-            </div>
-            <div className="alert-item-actions">
-              <Link to={`/game/${alert.game.slug}`} title={`Open ${alert.game.title}`} onClick={() => {
-                const next = new Set(readIds).add(alert.id)
-                setReadIds(next)
-                persistSet(READ_KEY, next)
-                if (account) void setAccountAlertState(alert.id, 'read').catch(() => undefined)
-              }}>
-                <ExternalLink size={15} aria-hidden="true" />
-              </Link>
-              <button type="button" title="Dismiss alert" onClick={() => dismiss(alert.id)}>
-                <X size={15} aria-hidden="true" />
-              </button>
-            </div>
-          </article>
-        ))}
-      </div>
+      <AlertList
+        alerts={alerts}
+        readIds={readIds}
+        onDismiss={actions.dismiss}
+        onOpen={actions.open}
+      />
     </div>
   )
 }

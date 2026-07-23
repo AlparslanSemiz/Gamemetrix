@@ -34,14 +34,54 @@ export function useCatalogScroll(): CatalogScroll {
   const lastScrollYRef = useRef(0)
   const scrollDirectionRef = useRef<{ sign: -1 | 0 | 1; distance: number }>({ sign: 0, distance: 0 })
   const scrollFrameRef = useRef<number | null>(null)
-  const topScrollFrameRef = useRef<number | null>(null)
-  const topScrollCleanupRef = useRef<(() => void) | null>(null)
 
   const setMastheadVisibility = useCallback((next: boolean) => {
     mastheadVisibleRef.current = next
     setMastheadVisible(next)
   }, [])
 
+  useMastheadAutoHide({
+    lastScrollYRef,
+    mastheadRef,
+    mastheadVisibleRef,
+    scrollDirectionRef,
+    scrollFrameRef,
+    setMastheadVisible,
+  })
+  const scrollToTop = useAnimatedScrollToTop({
+    lastScrollYRef,
+    mastheadVisibleRef,
+    scrollDirectionRef,
+    setMastheadVisible,
+  })
+
+  return {
+    mastheadVisible,
+    mastheadVisibleRef,
+    lastScrollYRef,
+    mastheadRef,
+    setMastheadVisibility,
+    scrollToTop,
+  }
+}
+
+interface MastheadAutoHideProps {
+  lastScrollYRef: RefObject<number>
+  mastheadRef: RefObject<HTMLElement | null>
+  mastheadVisibleRef: RefObject<boolean>
+  scrollDirectionRef: RefObject<{ sign: -1 | 0 | 1; distance: number }>
+  scrollFrameRef: RefObject<number | null>
+  setMastheadVisible: (next: boolean) => void
+}
+
+function useMastheadAutoHide({
+  lastScrollYRef,
+  mastheadRef,
+  mastheadVisibleRef,
+  scrollDirectionRef,
+  scrollFrameRef,
+  setMastheadVisible,
+}: MastheadAutoHideProps) {
   useEffect(() => {
     lastScrollYRef.current = window.scrollY
 
@@ -94,8 +134,31 @@ export function useCatalogScroll(): CatalogScroll {
         window.cancelAnimationFrame(scrollFrameRef.current)
       }
     }
-  }, [])
+  }, [
+    lastScrollYRef,
+    mastheadRef,
+    mastheadVisibleRef,
+    scrollDirectionRef,
+    scrollFrameRef,
+    setMastheadVisible,
+  ])
+}
 
+interface AnimatedScrollProps {
+  lastScrollYRef: RefObject<number>
+  mastheadVisibleRef: RefObject<boolean>
+  scrollDirectionRef: RefObject<{ sign: -1 | 0 | 1; distance: number }>
+  setMastheadVisible: (next: boolean) => void
+}
+
+function useAnimatedScrollToTop({
+  lastScrollYRef,
+  mastheadVisibleRef,
+  scrollDirectionRef,
+  setMastheadVisible,
+}: AnimatedScrollProps) {
+  const topScrollFrameRef = useRef<number | null>(null)
+  const topScrollCleanupRef = useRef<(() => void) | null>(null)
   const cancelTopScroll = useCallback(() => {
     if (topScrollFrameRef.current !== null) {
       window.cancelAnimationFrame(topScrollFrameRef.current)
@@ -104,7 +167,7 @@ export function useCatalogScroll(): CatalogScroll {
     topScrollCleanupRef.current?.()
     topScrollCleanupRef.current = null
     lastScrollYRef.current = window.scrollY
-  }, [])
+  }, [lastScrollYRef])
 
   useEffect(() => () => cancelTopScroll(), [cancelTopScroll])
 
@@ -161,14 +224,13 @@ export function useCatalogScroll(): CatalogScroll {
     }
 
     topScrollFrameRef.current = window.requestAnimationFrame(step)
-  }, [cancelTopScroll])
-
-  return {
-    mastheadVisible,
-    mastheadVisibleRef,
+  }, [
+    cancelTopScroll,
     lastScrollYRef,
-    mastheadRef,
-    setMastheadVisibility,
-    scrollToTop,
-  }
+    mastheadVisibleRef,
+    scrollDirectionRef,
+    setMastheadVisible,
+  ])
+
+  return scrollToTop
 }

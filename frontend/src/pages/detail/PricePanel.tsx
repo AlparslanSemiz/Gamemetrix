@@ -87,15 +87,13 @@ function buildStoreOffers(prices: PriceSnapshot[], game: Game): StoreOffer[] {
   return [...byStore.values()].sort((a, b) => (a.amount ?? Number.POSITIVE_INFINITY) - (b.amount ?? Number.POSITIVE_INFINITY))
 }
 
-export function PricePanel({ prices, game }: { prices: PriceSnapshot[]; game: Game }) {
+function buildPricePanelModel(prices: PriceSnapshot[], game: Game) {
   const ordered = sortedPrices(prices)
   const offers = buildStoreOffers(prices, game)
   if (offers.length === 0) return null
 
   const best = ordered[0]
   const bestOffer = offers[0]
-  const current = bestOffer?.priceLabel ?? 'N/A'
-  const hasDiscount = Boolean(best?.discount_percent && best.discount_percent > 0)
   const historicalLow = ordered
     .filter((price) => price.historical_low !== null && price.historical_low !== undefined)
     .sort((a, b) => (a.historical_low ?? Number.POSITIVE_INFINITY) - (b.historical_low ?? Number.POSITIVE_INFINITY))[0]
@@ -110,9 +108,35 @@ export function PricePanel({ prices, game }: { prices: PriceSnapshot[]; game: Ga
     { label: 'Low', value: historicalLow?.historical_low ?? null, text: historicalLow ? formatMoney(historicalLow.historical_low, historicalLow.currency) : 'N/A' },
   ]
   const chartMax = Math.max(1, ...chartItems.map((item) => item.value ?? 0))
+  return {
+    best,
+    bestOffer,
+    chartItems,
+    chartMax,
+    current: bestOffer?.priceLabel ?? 'N/A',
+    hasDiscount: Boolean(best?.discount_percent && best.discount_percent > 0),
+    historicalLow,
+    offers,
+    priceRange,
+  }
+}
 
+type PricePanelModel = NonNullable<ReturnType<typeof buildPricePanelModel>>
+
+function PriceOverview({ model }: { model: PricePanelModel }) {
+  const {
+    best,
+    bestOffer,
+    chartItems,
+    chartMax,
+    current,
+    hasDiscount,
+    historicalLow,
+    offers,
+    priceRange,
+  } = model
   return (
-    <div className="dp-price-panel">
+    <>
       <div className="dp-price-top">
         <div className="dp-price-primary">
           <span>Best current price</span>
@@ -149,43 +173,48 @@ export function PricePanel({ prices, game }: { prices: PriceSnapshot[]; game: Ga
           <small>priced stores</small>
         </div>
       </div>
-      {offers.length > 0 ? (
-        <div className="dp-store-list">
-          {offers.slice(0, 10).map((offer) => {
-            const content = (
-              <>
-                <span className="dp-store-name">
-                  <i>{storeInitials(offer.store)}</i>
-                  <span>
-                    <strong>{offer.store}</strong>
-                    <small>{offer.platform}{offer.meta ? ` · ${offer.meta}` : ''}</small>
-                  </span>
-                </span>
-                <span className="dp-store-price">
-                  <strong>{offer.priceLabel}</strong>
-                  {offer.discount && offer.discount > 0 ? <small>-{offer.discount}%</small> : null}
-                </span>
-              </>
-            )
-            return offer.url ? (
-              <a
-                key={offer.id}
-                href={offer.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="dp-store-row"
-                onClick={() => trackProductEvent('store_outbound', { game_slug: game.slug, store: offer.store })}
-              >
-                {content}
-              </a>
-            ) : (
-              <div key={offer.id} className="dp-store-row">
-                {content}
-              </div>
-            )
-          })}
-        </div>
-      ) : null}
+    </>
+  )
+}
+
+function StoreOfferList({ gameSlug, offers }: { gameSlug: string; offers: StoreOffer[] }) {
+  return (
+    <div className="dp-store-list">
+      {offers.slice(0, 10).map((offer) => {
+        const content = (
+          <>
+            <span className="dp-store-name">
+              <i>{storeInitials(offer.store)}</i>
+              <span>
+                <strong>{offer.store}</strong>
+                <small>{offer.platform}{offer.meta ? ` · ${offer.meta}` : ''}</small>
+              </span>
+            </span>
+            <span className="dp-store-price">
+              <strong>{offer.priceLabel}</strong>
+              {offer.discount && offer.discount > 0 ? <small>-{offer.discount}%</small> : null}
+            </span>
+          </>
+        )
+        return offer.url ? (
+          <a key={offer.id} href={offer.url} target="_blank" rel="noopener noreferrer" className="dp-store-row" onClick={() => trackProductEvent('store_outbound', { game_slug: gameSlug, store: offer.store })}>
+            {content}
+          </a>
+        ) : (
+          <div key={offer.id} className="dp-store-row">{content}</div>
+        )
+      })}
+    </div>
+  )
+}
+
+export function PricePanel({ prices, game }: { prices: PriceSnapshot[]; game: Game }) {
+  const model = buildPricePanelModel(prices, game)
+  if (!model) return null
+  return (
+    <div className="dp-price-panel">
+      <PriceOverview model={model} />
+      <StoreOfferList gameSlug={game.slug} offers={model.offers} />
     </div>
   )
 }

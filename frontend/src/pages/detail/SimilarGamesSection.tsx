@@ -7,6 +7,52 @@ import { normalizeSignal } from './format'
 
 export const SIMILAR_DISPLAY_LIMIT = 10
 
+function CatalogSimilarCard({ game }: { game: Game }) {
+  return (
+    <Link to={`/game/${game.slug}`} prefetch="intent" className="dp-similar-card">
+      <div className="dp-similar-cover">
+        {game.cover_url || game.image_url ? (
+          <img src={game.cover_url || game.image_url || ''} alt="" loading="lazy" />
+        ) : null}
+        <span className="dp-similar-score" style={{ '--score-color': scoreColor(Math.round(game.metrix_score)) } as CSSProperties}>
+          {Math.round(game.metrix_score)}
+        </span>
+      </div>
+      <div className="dp-similar-body">
+        <strong>{game.title}</strong>
+        <span>{game.release_year > 1970 ? game.release_year : 'TBA'}</span>
+      </div>
+    </Link>
+  )
+}
+
+type ExternalSimilarGame = Game['similar_games'][number]
+
+function ExternalSimilarCard({ game }: { game: ExternalSimilarGame }) {
+  const url = safeExternalUrl(game.url)
+  const content = (
+    <>
+      <div className="dp-similar-cover">
+        {game.cover_url ? <img src={game.cover_url} alt="" loading="lazy" /> : null}
+        {game.metacritic_score ? (
+          <span className="dp-similar-score" style={{ '--score-color': scoreColor(Math.round(game.metacritic_score)) } as CSSProperties}>
+            {Math.round(game.metacritic_score)}
+          </span>
+        ) : null}
+      </div>
+      <div className="dp-similar-body">
+        <strong>{game.title}</strong>
+        <span>{game.release_year && game.release_year > 1970 ? game.release_year : 'TBA'}</span>
+      </div>
+    </>
+  )
+  return url ? (
+    <a href={url} target="_blank" rel="noreferrer" className="dp-similar-card">
+      {content}
+    </a>
+  ) : <div className="dp-similar-card">{content}</div>
+}
+
 export function SimilarGamesSection({
   game,
   catalogGames,
@@ -45,66 +91,14 @@ export function SimilarGamesSection({
       </div>
       <div className="dp-similar-grid">
         {catalogDisplayItems.map((item) => (
-          <Link
-            key={item.slug}
-            to={`/game/${item.slug}`}
-            prefetch="intent"
-            className="dp-similar-card"
-          >
-            <div className="dp-similar-cover">
-              {item.cover_url || item.image_url ? (
-                <img src={item.cover_url || item.image_url || ''} alt="" loading="lazy" />
-              ) : null}
-              <span
-                className="dp-similar-score"
-                style={{ '--score-color': scoreColor(Math.round(item.metrix_score)) } as CSSProperties}
-              >
-                {Math.round(item.metrix_score)}
-              </span>
-            </div>
-            <div className="dp-similar-body">
-              <strong>{item.title}</strong>
-              <span>{item.release_year > 1970 ? item.release_year : 'TBA'}</span>
-            </div>
-          </Link>
+          <CatalogSimilarCard game={item} key={item.slug} />
         ))}
-        {rawgDisplayItems.map((item) => {
-          const itemUrl = safeExternalUrl(item.url)
-          const content = (
-            <>
-              <div className="dp-similar-cover">
-                {item.cover_url ? <img src={item.cover_url} alt="" loading="lazy" /> : null}
-                {item.metacritic_score ? (
-                  <span
-                    className="dp-similar-score"
-                    style={{ '--score-color': scoreColor(Math.round(item.metacritic_score)) } as CSSProperties}
-                  >
-                    {Math.round(item.metacritic_score)}
-                  </span>
-                ) : null}
-              </div>
-              <div className="dp-similar-body">
-                <strong>{item.title}</strong>
-                <span>{item.release_year && item.release_year > 1970 ? item.release_year : 'TBA'}</span>
-              </div>
-            </>
-          )
-          return itemUrl ? (
-            <a
-              key={`${item.title}-${item.id ?? item.slug ?? ''}`}
-              href={itemUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="dp-similar-card"
-            >
-              {content}
-            </a>
-          ) : (
-            <div key={`${item.title}-${item.id ?? item.slug ?? ''}`} className="dp-similar-card">
-              {content}
-            </div>
-          )
-        })}
+        {rawgDisplayItems.map((item) => (
+          <ExternalSimilarCard
+            game={item}
+            key={`${item.title}-${item.id ?? item.slug ?? ''}`}
+          />
+        ))}
       </div>
     </section>
   )

@@ -9,6 +9,7 @@ Default region: EU / EUR.
 
 import logging
 import time
+from dataclasses import dataclass
 from datetime import UTC, date, datetime
 
 import httpx
@@ -27,6 +28,71 @@ SMOKE_TEST_TITLES = ["Hades", "Portal 2", "Celeste", "Elden Ring", "Baldur's Gat
 
 def _auth_header() -> dict[str, str]:
     return {"ITAD-API-Key": get_settings().ITAD_API_KEY}
+
+
+@dataclass(frozen=True)
+class _DealSummary:
+    store: str
+    currency: str
+    list_price: float | None
+    sale_price: float | None
+    discount_percent: int | None
+
+
+def _best_deal_summary(deals: list[dict]) -> _DealSummary:
+    priced_deals: list[tuple[dict, float]] = []
+    for deal in deals:
+        price = deal.get("price")
+        amount = bounded_float(
+            price.get("amount") if isinstance(price, dict) else None,
+            maximum=1_000_000.0,
+        )
+        if amount is not None:
+            priced_deals.append((deal, amount))
+    best, sale_price = (
+        min(priced_deals, key=lambda item: item[1])
+        if priced_deals
+        else ({}, None)
+    )
+    shop = best.get("shop") if best else None
+    store = str(shop.get("name") or "")[:120] if isinstance(shop, dict) else ""
+    price_block = best.get("price") if best else None
+    raw_currency = price_block.get("currency") if isinstance(price_block, dict) else None
+    currency = str(raw_currency or "EUR").upper()
+    if len(currency) != 3 or not currency.isalpha():
+        currency = "EUR"
+
+    regular = best.get("regular") if best else None
+    list_price = bounded_float(
+        regular.get("amount") if isinstance(regular, dict) else None,
+        maximum=1_000_000.0,
+    )
+    list_price = list_price if list_price is not None else sale_price
+    if sale_price is not None and list_price is not None and sale_price > list_price:
+        list_price = sale_price
+    discount_percent = bounded_int(best.get("cut"), maximum=100) if best else None
+    if list_price and sale_price is not None:
+        discount_percent = round(max(0.0, (list_price - sale_price) / list_price) * 100)
+    if not discount_percent:
+        discount_percent = None
+    return _DealSummary(store, currency, list_price, sale_price, discount_percent)
+
+
+def _history_low(low: dict | None) -> tuple[float | None, date | None]:
+    if not low:
+        return None, None
+    low_price = low.get("price")
+    amount = bounded_float(
+        low_price.get("amount") if isinstance(low_price, dict) else None,
+        maximum=1_000_000.0,
+    )
+    raw_date = low.get("recorded")
+    if not raw_date:
+        return amount, None
+    try:
+        return amount, datetime.fromisoformat(str(raw_date)).date()
+    except (TypeError, ValueError):
+        return amount, None
 
 
 class ITADService:
@@ -271,68 +337,17 @@ class ITADService:
         if not deals and not low:
             return None
 
-        priced_deals: list[tuple[dict, float]] = []
-        for deal in deals:
-            price = deal.get("price")
-            amount = bounded_float(
-                price.get("amount") if isinstance(price, dict) else None,
-                maximum=1_000_000.0,
-            )
-            if amount is not None:
-                priced_deals.append((deal, amount))
-        best, best_sale = min(priced_deals, key=lambda item: item[1]) if priced_deals else ({}, None)
-
-        list_price: float | None = None
-        sale_price: float | None = None
-        discount_pct: int | None = None
-        shop = best.get("shop") if best else None
-        store = str(shop.get("name") or "")[:120] if isinstance(shop, dict) else ""
-        price_block = best.get("price") if best else None
-        raw_currency = price_block.get("currency") if isinstance(price_block, dict) else None
-        currency = str(raw_currency or "EUR").upper()
-        if len(currency) != 3 or not currency.isalpha():
-            currency = "EUR"
-
-        if best:
-            regular = best.get("regular")
-            sale_price = best_sale
-            list_price = bounded_float(
-                regular.get("amount") if isinstance(regular, dict) else None,
-                maximum=1_000_000.0,
-            )
-            list_price = list_price if list_price is not None else sale_price
-            if sale_price is not None and list_price is not None and sale_price > list_price:
-                list_price = sale_price
-            discount_pct = bounded_int(best.get("cut"), maximum=100)
-            if list_price and sale_price is not None:
-                discount_pct = round(max(0.0, (list_price - sale_price) / list_price) * 100)
-            if not discount_pct:
-                discount_pct = None
-
-        hist_low: float | None = None
-        hist_low_date: date | None = None
-        if low:
-            low_price = low.get("price")
-            hist_low = bounded_float(
-                low_price.get("amount") if isinstance(low_price, dict) else None,
-                maximum=1_000_000.0,
-            )
-            raw_date = low.get("recorded")
-            if raw_date:
-                try:
-                    hist_low_date = datetime.fromisoformat(str(raw_date)).date()
-                except (TypeError, ValueError):
-                    pass
-
-        is_free = sale_price == 0.0 if sale_price is not None else False
+        deal = _best_deal_summary(deals)
+        hist_low, hist_low_date = _history_low(low)
+        is_free = deal.sale_price == 0.0 if deal.sale_price is not None else False
         is_sub = len(subs) > 0
 
         return PriceData(
-            store=store,
-            currency=currency,
-            list_price=list_price,
-            sale_price=sale_price if not is_free else None,
-            discount_percent=discount_pct,
+            store=deal.store,
+            currency=deal.currency,
+            list_price=deal.list_price,
+            sale_price=deal.sale_price if not is_free else None,
+            discount_percent=deal.discount_percent,
             historical_low=hist_low,
             historical_low_date=hist_low_date,
             is_free=is_free,
