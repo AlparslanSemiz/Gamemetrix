@@ -23,7 +23,8 @@ Public API:
   sort_in_memory(games, sort, dir)-> list[Game]
 """
 
-from ..models import Game, _safe_review_count, _valid_score
+from ..game_signals import safe_review_count, valid_score
+from ..models import Game
 from ..integrations.source_registry import CRITIC_SOURCES
 from .deduplication import (
     canonical_title,
@@ -60,15 +61,15 @@ def _total_review_count(game: Game) -> int:
 
 def _live_review_count(game: Game) -> int:
     return sum(
-        _safe_review_count(s)
+        safe_review_count(s)
         for s in (game.source_scores or [])
-        if isinstance(s, dict) and _valid_score(s)
+        if isinstance(s, dict) and valid_score(s)
     )
 
 
 def _source_score(game: Game, source_name: str) -> float:
     for s in (game.source_scores or []):
-        if isinstance(s, dict) and _valid_score(s) and str(s.get("source", "")).lower() == source_name.lower():
+        if isinstance(s, dict) and valid_score(s) and str(s.get("source", "")).lower() == source_name.lower():
             return float(s.get("score", 0))
     return 0.0
 
@@ -151,7 +152,7 @@ def filter_has_critic(games: list[Game]) -> list[Game]:
         g for g in games
         if any(
             str(s.get("source")) in CRITIC_SOURCES
-            and _valid_score(s)
+            and valid_score(s)
             for s in (g.source_scores or [])
             if isinstance(s, dict)
         )

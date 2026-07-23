@@ -6,7 +6,8 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..config import get_settings
-from ..models import ExternalId, Game, infer_content_type
+from ..content_type import infer_content_type
+from ..models import ExternalId, Game
 from ..services.deduplication import find_existing_duplicate, merge_game_data
 from ..services.rawg_import import platform_family
 from .rate_limiter import get_rate_limiter

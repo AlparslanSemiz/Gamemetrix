@@ -52,7 +52,7 @@ from ..services.game_query import (
     json_array_values_statement,
 )
 from ..services.deduplication import find_existing_duplicate, merge_game_data
-from ..services.game_similarity import find_series_games, find_similar_games, series_key_for_title
+from ..services.similarity import find_series_games, find_similar_games, series_key_for_title
 from ..services.metadata_backfill import game_needs_metadata_backfill, refresh_game_metadata
 from ..services.price_backfill import fetch_and_store_prices
 from ..services.rawg_import import apply_rawg_to_game, game_from_rawg_search

@@ -1,91 +1,11 @@
 from datetime import date, datetime
-from math import isfinite
-import re
 
 from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Integer, JSON, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from . import game_signals
 from .database import Base
-from .integrations.source_registry import (
-    CRITIC_SOURCES,
-    PC_PLATFORM_KEYS,
-    PRIMARY_SOURCES as PRIMARY_RATING_SOURCES,
-    RATING_SOURCES,
-    USER_RATING_SOURCES,
-    applicable_for_game,
-)
-# Confidence level thresholds
-_STRONG_MIN_REVIEWS = 500
-_SOLID_MIN_REVIEWS = 100
-_SOLID_CRITIC_MIN_REVIEWS = 50
-_LIMITED_MIN_REVIEWS = 1
-
-# Popularity label thresholds (total review count)
-_POPULARITY_PHENOMENON = 500_000
-_POPULARITY_VERY_HIGH = 100_000
-_POPULARITY_HIGH = 25_000
-_POPULARITY_MEDIUM = 5_000
-_POPULARITY_LOW = 500
-
-
-def _valid_score(row: object) -> bool:
-    if not isinstance(row, dict) or row.get("status") != "live":
-        return False
-    try:
-        value = float(row.get("score", 0) or 0)
-    except (TypeError, ValueError):
-        return False
-    return isfinite(value) and 0 < value <= 100
-
-
-def _safe_review_count(row: object) -> int:
-    if not isinstance(row, dict):
-        return 0
-    try:
-        value = int(row.get("review_count", 0) or 0)
-    except (TypeError, ValueError, OverflowError):
-        return 0
-    return value if 0 <= value <= 2_000_000_000 else 0
-
-SOFTWARE_GENRE_TERMS = {
-    "animation",
-    "audio production",
-    "design",
-    "education",
-    "game development",
-    "photo editing",
-    "software",
-    "video production",
-    "web publishing",
-}
-KNOWN_CONTENT_TYPE_PATTERNS: tuple[tuple[str, str], ...] = (
-    (r"\baseprite\b", "software"),
-    (r"\bwallpaper engine\b", "utility"),
-    (r"\blossless scaling\b", "utility"),
-    (r"\bsoundpad\b", "utility"),
-    (r"\bvoicemod\b", "utility"),
-    (r"\bvtube studio\b", "software"),
-    (r"\bfacerig\b", "software"),
-    (r"\bblender\b", "software"),
-    (r"\bkrita\b", "software"),
-    (r"\bclip studio paint\b", "software"),
-    (r"\bsubstance\b", "software"),
-    (r"\bmarmoset toolbag\b", "software"),
-    (r"\brpg maker\b", "software"),
-    (r"\bvisual novel maker\b", "software"),
-    (r"\bgame maker\b", "software"),
-    (r"\bgamemaker\b", "software"),
-    (r"\bappgamekit\b", "software"),
-    (r"\bclickteam fusion\b", "software"),
-    (r"\bconstruct\b", "software"),
-    (r"\bgodot\b", "software"),
-    (r"\bunreal engine\b", "software"),
-    (r"\bgameguru\b", "software"),
-    (r"\bleadwerks\b", "software"),
-    (r"\bspriter\b", "software"),
-    (r"\bgame character hub\b", "software"),
-    (r"\btilesetter\b", "software"),
-)
+from .integrations.source_registry import PC_PLATFORM_KEYS, applicable_for_game
 
 
 class Game(Base):
@@ -173,58 +93,19 @@ class Game(Base):
 
     @property
     def live_primary_source_count(self) -> int:
-        applicable = self.applicable_primary_sources
-        return sum(
-            1
-            for score in (self.source_scores or [])
-            if isinstance(score, dict)
-            and score.get("source") in applicable
-            and _valid_score(score)
+        return game_signals.live_primary_source_count(
+            self.source_scores, self.applicable_primary_sources
         )
 
     @property
     def confidence_level(self) -> str:
-        applicable = self.applicable_primary_sources
-        applicable_user = applicable & USER_RATING_SOURCES
-
-        live_rating_entries = [
-            s for s in (self.source_scores or [])
-            if isinstance(s, dict)
-            and _valid_score(s)
-            and str(s.get("source")) in RATING_SOURCES
-        ]
-        live_sources: set[str] = {str(s.get("source")) for s in live_rating_entries}
-        live_primary = live_sources & applicable
-        live_critic = live_primary & CRITIC_SOURCES
-        live_user = live_primary & applicable_user
-        total_reviews = sum(
-            _safe_review_count(s)
-            for s in live_rating_entries
+        return game_signals.confidence_level(
+            self.source_scores, self.applicable_primary_sources
         )
-
-        if (
-            len(live_primary) >= min(3, len(applicable))
-            and live_critic
-            and live_user
-            and total_reviews >= _STRONG_MIN_REVIEWS
-        ):
-            return "Strong"
-        if live_critic and live_user and len(live_primary) >= 2 and total_reviews >= _SOLID_MIN_REVIEWS:
-            return "Solid"
-        if len(live_critic) >= 2 and total_reviews >= _SOLID_CRITIC_MIN_REVIEWS:
-            return "Solid"
-        if len(live_primary) >= 3:
-            return "Solid"
-        if live_primary and total_reviews >= _LIMITED_MIN_REVIEWS:
-            return "Limited"
-        if "RAWG" in live_sources:
-            return "Limited"
-        return "Catalog"
 
     @property
     def data_strength(self) -> str:
-        _map = {"Strong": "DATA_STRONG", "Solid": "DATA_SOLID", "Limited": "DATA_LIMITED", "Catalog": "CATALOG_ONLY"}
-        return _map.get(self.confidence_level, "CATALOG_ONLY")
+        return game_signals.data_strength(self.confidence_level)
 
     @property
     def rank_exclusion_reason(self) -> str | None:
@@ -240,43 +121,11 @@ class Game(Base):
 
     @property
     def score_profile(self) -> str:
-        live_sources = {
-            str(s.get("source"))
-            for s in (self.source_scores or [])
-            if isinstance(s, dict)
-            and _valid_score(s)
-            and str(s.get("source")) in RATING_SOURCES
-        }
-        has_critic = bool(live_sources & CRITIC_SOURCES)
-        has_user = bool(live_sources & USER_RATING_SOURCES)
-        if has_critic and has_user:
-            return "critic + user"
-        if has_critic:
-            return "critic-heavy"
-        if has_user:
-            return "user-heavy"
-        return "sparse"
+        return game_signals.score_profile(self.source_scores)
 
     @property
     def popularity_label(self) -> str | None:
-        count = sum(
-            _safe_review_count(s)
-            for s in (self.source_scores or [])
-            if isinstance(s, dict)
-            and _valid_score(s)
-            and str(s.get("source")) in RATING_SOURCES
-        )
-        if count >= _POPULARITY_PHENOMENON:
-            return "Phenomenon"
-        if count >= _POPULARITY_VERY_HIGH:
-            return "Very High"
-        if count >= _POPULARITY_HIGH:
-            return "High"
-        if count >= _POPULARITY_MEDIUM:
-            return "Medium"
-        if count >= _POPULARITY_LOW:
-            return "Niche"
-        return None
+        return game_signals.popularity_label(self.source_scores)
 
 
 class ExternalId(Base):
@@ -583,147 +432,3 @@ class DataFillRun(Base):
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
-
-_DLC_TITLE_RE = re.compile(
-    r"""
-    \b(?:
-        dlc                             |
-        downloadable\s+content          |
-        season\s+pass                   |
-        expansion\s+pass                |
-        booster\s+pack                  |
-        character\s+pack                |
-        costume\s+pack                  |
-        skin\s+pack                     |
-        map\s+pack                      |
-        weapon\s+pack                   |
-        armor\s+pack                    |
-        mission\s+pack                  |
-        level\s+pack                    |
-        adventure\s+pack                |
-        content\s+pack                  |
-        story\s+pack                    |
-        add-?on\s+pack
-    )\b
-    """,
-    re.IGNORECASE | re.VERBOSE,
-)
-
-# Title suffixes that indicate a sub-episode or DLC chapter
-_EPISODE_SUFFIX_RE = re.compile(
-    r"[\s\-–—]+(?:episode|chapter|part)\s+\d",
-    re.IGNORECASE,
-)
-
-# The subtitle part (after " – " or " - ") must contain one of these keywords
-# to be classified as a DLC via the parent-based heuristic.
-# We deliberately require an explicit DLC-like keyword in the subtitle to avoid
-# false-positives from games that just have a subtitle (e.g. "Eco - Global Survival Game").
-_DLC_SUBTITLE_RE = re.compile(
-    r"""
-    \b(?:
-        dlc                 |
-        expansion           |
-        add-?on             |
-        episode\s+\d        |
-        chapter\s+\d        |
-        part\s+\d           |
-        season\s+\d         |
-        prelude             |
-        prologue            |
-        echoes              |     # Outer Wilds - Echoes of the Eye
-        blood\s+dragon      |     # Far Cry 3 - Blood Dragon
-        cindered\s+shadows  |     # Fire Emblem
-        aiko.s\s+choice     |     # Shadow Tactics
-        separate\s+ways     |     # RE4
-        blood\s+and\s+wine  |     # Witcher 3
-        hearts\s+of\s+stone |     # Witcher 3
-        clone\s+carnage     |     # Destroy All Humans
-        the\s+penal\s+zone  |     # Sam & Max
-        iron\s+from\s+ice   |     # Game of Thrones
-        zer0\s+sum          |     # Tales from the Borderlands
-        toy\s+master        |     # Killing Floor
-        wildfire            |     # Jagged Alliance 2
-        rise\s+of\s+clans   |     # Hard Truck
-        dark\s+crusade      |     # Dawn of War
-        soulstorm           |     # Dawn of War
-        winter\s+assault    |     # Dawn of War
-        yuri.s\s+revenge    |     # C&C Red Alert 2
-        uprising            |     # C&C Red Alert 3
-        zero\s+hour               # C&C Generals
-    )\b
-    """,
-    re.IGNORECASE | re.VERBOSE,
-)
-
-# RAWG game_type values that indicate DLC/expansion
-_RAWG_DLC_TYPES = frozenset({"dlc", "expansion", "addon", "update"})
-
-
-def infer_content_type(game: Game, rawg_game_type: str | None = None) -> str:
-    # RAWG explicitly tells us the type — trust it
-    if rawg_game_type and rawg_game_type.lower() in _RAWG_DLC_TYPES:
-        return "dlc"
-
-    text = " ".join(
-        [
-            game.title,
-            game.slug,
-            *(game.genres or []),
-            *(game.platforms or []),
-        ]
-    ).lower()
-    for pattern, content_type in KNOWN_CONTENT_TYPE_PATTERNS:
-        if re.search(pattern, text):
-            return content_type
-    if "soundtrack" in text or re.search(r"\bost\b", text):
-        return "soundtrack"
-    if re.search(r"\b(demo|playtest)\b", text) or re.search(r"\bbeta\b", game.title, re.IGNORECASE):
-        return "demo"
-    if _DLC_TITLE_RE.search(game.title):
-        return "dlc"
-    if re.search(r"\b(dlc|downloadable content|season pass|expansion pass)\b", text):
-        return "dlc"
-    if _EPISODE_SUFFIX_RE.search(game.title):
-        return "dlc"
-    if re.search(r"\b(mod|sdk)\b", text):
-        return "mod"
-    if re.search(r"\b(utility|utilities|tool|tools)\b", text):
-        return "utility"
-    if any(term in text for term in SOFTWARE_GENRE_TERMS):
-        return "software"
-    return "game"
-
-
-def infer_content_type_with_parent(game: Game, parent_titles: frozenset[str]) -> str:
-    """
-    Extended classification that checks whether this game is a DLC/expansion of
-    a parent game already in the catalog.
-
-    Requires:
-      1. Title matches "Parent Title – Subtitle" or "Parent Title - Subtitle"
-      2. The parent title exists in the catalog
-      3. The subtitle contains a recognized DLC/expansion keyword
-
-    parent_titles: frozenset of all game titles currently in the DB (lowercase).
-    """
-    base_type = infer_content_type(game)
-    if base_type != "game":
-        return base_type
-
-    title = game.title.strip()
-    for sep in (" – ", " — ", " - "):
-        if sep not in title:
-            continue
-        idx = title.index(sep)
-        parent_candidate = title[:idx].strip()
-        subtitle = title[idx + len(sep):].strip()
-        if not subtitle or not parent_candidate:
-            continue
-        # Parent must exist in catalog
-        if parent_candidate.lower() not in parent_titles:
-            continue
-        # Subtitle must have an explicit DLC/expansion keyword
-        if _DLC_SUBTITLE_RE.search(subtitle):
-            return "dlc"
-    return "game"

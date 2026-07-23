@@ -22,6 +22,8 @@ from .models import AccountSession, User
 SESSION_COOKIE = "gm_session"
 CSRF_COOKIE = "gm_csrf"
 OAUTH_COOKIE = "gm_oauth"
+MIN_SIGNING_SECRET_LENGTH = 32
+LINK_SIGNING_ALGORITHM = "HS256"
 _PASSWORD_HASHER = PasswordHasher(time_cost=3, memory_cost=65536, parallelism=2)
 _DUMMY_PASSWORD_HASH = _PASSWORD_HASHER.hash("GameMetrix timing-only password sentinel")
 
@@ -42,6 +44,12 @@ def normalize_email(value: str) -> str:
 
 def hash_secret(value: str) -> str:
     return sha256(value.encode("utf-8")).hexdigest()
+
+
+def link_signing_secret() -> str | None:
+    """The HS256 key for signed links and OAuth state, or None if unusably short."""
+    secret = get_settings().JWT_SECRET_KEY
+    return secret if len(secret) >= MIN_SIGNING_SECRET_LENGTH else None
 
 
 def hash_password(password: str) -> str:

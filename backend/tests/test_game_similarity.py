@@ -1,8 +1,8 @@
 from app.models import Game
-from app.services.game_similarity import (
-    _genre_similarity_score,
-    _passes_similarity_gate,
+from app.services.similarity import (
+    passes_similarity_gate,
     rank_similar_games,
+    similarity_score,
 )
 
 
@@ -57,10 +57,10 @@ def test_similarity_score_keeps_specialized_profile_weighting() -> None:
         rank_score=90,
     )
 
-    assert _genre_similarity_score(source, same_series) == 453.68
-    assert _passes_similarity_gate(source, same_series) is True
-    assert _genre_similarity_score(source, shooter) == -249.4
-    assert _passes_similarity_gate(source, shooter) is False
+    assert similarity_score(source, same_series) == 453.68
+    assert passes_similarity_gate(source, same_series) is True
+    assert similarity_score(source, shooter) == -249.4
+    assert passes_similarity_gate(source, shooter) is False
 
 
 def test_similarity_fallback_order_is_stable() -> None:

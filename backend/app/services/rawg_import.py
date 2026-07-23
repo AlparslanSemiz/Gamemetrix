@@ -14,7 +14,8 @@ import re
 from datetime import UTC, date, datetime
 from urllib.parse import urlparse
 
-from ..models import Game, infer_content_type
+from ..content_type import infer_content_type
+from ..models import Game
 from ..integrations.sync import calculate_metrix_score
 from ..integrations.types import normalize_game_modes
 from .metadata import clean_game_summary, summary_needs_enrichment

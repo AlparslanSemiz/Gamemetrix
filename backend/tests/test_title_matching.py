@@ -3,7 +3,7 @@ from datetime import date
 from app.integrations.opencritic import _best_search_result, _extract_score
 from app.integrations.rawg_score import _best_rawg_result, _parse_rawg_date
 from app.integrations.title_matching import title_match_quality, titles_match
-from app.services.metadata_backfill import _safe_url
+from app.services.metadata_backfill import safe_url
 
 
 def test_title_matching_normalizes_punctuation_and_roman_numerals() -> None:
@@ -45,8 +45,8 @@ def test_opencritic_result_picker_and_score_do_not_substitute_recommendation_rat
 
 
 def test_metadata_urls_reject_credentials_whitespace_and_non_http_schemes() -> None:
-    assert _safe_url("images.example/game.jpg") == "https://images.example/game.jpg"
-    assert _safe_url("https://images.example/game.jpg") == "https://images.example/game.jpg"
-    assert _safe_url("https://user:secret@images.example/game.jpg") is None
-    assert _safe_url("https://images.example/bad image.jpg") is None
-    assert _safe_url("javascript:alert(1)") is None
+    assert safe_url("images.example/game.jpg") == "https://images.example/game.jpg"
+    assert safe_url("https://images.example/game.jpg") == "https://images.example/game.jpg"
+    assert safe_url("https://user:secret@images.example/game.jpg") is None
+    assert safe_url("https://images.example/bad image.jpg") is None
+    assert safe_url("javascript:alert(1)") is None

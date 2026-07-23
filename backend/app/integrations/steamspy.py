@@ -5,7 +5,8 @@ import httpx
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..models import Game, infer_content_type
+from ..content_type import infer_content_type
+from ..models import Game
 from ..services.deduplication import find_existing_duplicate, merge_game_data
 from .http_retry import DEFAULT_HEADERS, request_with_retry
 from .rate_limiter import get_rate_limiter

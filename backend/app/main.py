@@ -16,7 +16,8 @@ from .database import SessionLocal
 from .rate_limit import limiter
 from .integrations.steam import fetch_steam_screenshots
 from .integrations.sync import calculate_metrix_score, compute_rank_fields
-from .models import Game, infer_content_type, infer_content_type_with_parent
+from .content_type import infer_content_type, infer_content_type_with_parent
+from .models import Game
 from .seed import seed_games
 from .routers import admin
 from .routers.analytics import router as analytics_router

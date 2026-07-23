@@ -6,12 +6,13 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Literal
 
-from sqlalchemy import select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from ..account_security import utcnow
 from ..models import Game, User, UserAlertState, UserCollection, UserPreference
 
+AlertState = Literal["read", "dismissed"]
 CollectionType = Literal[
     "watchlist",
     "playing",
@@ -137,6 +138,91 @@ def merge_guest_state(
     )
     db.commit()
     return account_state_payload(db, user)
+
+
+def add_to_collection(
+    db: Session,
+    user_id: str,
+    collection_type: CollectionType,
+    slug: str,
+) -> bool:
+    """Returns False when no game owns that slug."""
+    game = db.scalar(select(Game).where(Game.slug == slug))
+    if game is None:
+        return False
+    already_present = db.scalar(
+        select(UserCollection).where(
+            UserCollection.user_id == user_id,
+            UserCollection.game_id == game.id,
+            UserCollection.collection_type == collection_type,
+        )
+    )
+    if already_present is None:
+        db.add(
+            UserCollection(
+                user_id=user_id,
+                game_id=game.id,
+                collection_type=collection_type,
+                created_at=utcnow(),
+            )
+        )
+        db.commit()
+    return True
+
+
+def remove_from_collection(
+    db: Session,
+    user_id: str,
+    collection_type: CollectionType,
+    slug: str,
+) -> None:
+    db.execute(
+        delete(UserCollection).where(
+            UserCollection.user_id == user_id,
+            UserCollection.collection_type == collection_type,
+            UserCollection.game_id == select(Game.id).where(Game.slug == slug).scalar_subquery(),
+        )
+    )
+    db.commit()
+
+
+def set_alert_states(
+    db: Session,
+    user_id: str,
+    keys: list[str],
+    state: AlertState,
+) -> None:
+    rows = {
+        row.alert_key: row
+        for row in db.scalars(
+            select(UserAlertState).where(
+                UserAlertState.user_id == user_id,
+                UserAlertState.alert_key.in_(keys),
+            )
+        ).all()
+    }
+    existing_count = db.scalar(
+        select(func.count(UserAlertState.id)).where(UserAlertState.user_id == user_id)
+    ) or 0
+    if existing_count + len(set(keys) - set(rows)) > _MAX_ACCOUNT_STATE_ROWS:
+        raise AccountStateLimitError("Account alert history limit reached.")
+
+    now = utcnow()
+    for key in keys:
+        row = rows.get(key)
+        if row is None:
+            db.add(
+                UserAlertState(
+                    user_id=user_id,
+                    alert_key=key,
+                    state=state,
+                    updated_at=now,
+                )
+            )
+        else:
+            row.state = state
+            row.updated_at = now
+    db.commit()
 
 
 def sanitized_settings(

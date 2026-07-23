@@ -11,7 +11,8 @@ from app.main import app
 from app.account_security import hash_secret
 from app.models import AccountSession, AccountToken, AnalyticsEvent, User, UserCollection, VisitEvent
 from app.rate_limit import limiter
-from app.routers.account import _discard_unverified_local_credentials, _new_account_token
+from app.services.account_tokens import issue_token
+from app.services.google_identity import discard_unverified_local_credentials
 
 
 TEST_DATABASE_URL = os.getenv("TEST_DATABASE_URL", "")
@@ -124,7 +125,7 @@ def test_state_merge_is_idempotent_and_reset_token_is_single_use(postgres_client
         db.commit()
 
         user = db.scalar(select(User).where(User.email == "user@example.com"))
-        expired_token = _new_account_token(db, user, "reset_password", -1)
+        expired_token = issue_token(db, user, "reset_password", -1)
 
     expired_reset = {"token": expired_token, "password": "a newer secure passphrase"}
     assert client.post(
@@ -144,7 +145,7 @@ def test_state_merge_is_idempotent_and_reset_token_is_single_use(postgres_client
     with sessions() as db:
         assert db.scalar(select(func.count(UserCollection.id))) == 1
         user = db.scalar(select(User).where(User.email == "user@example.com"))
-        token = _new_account_token(db, user, "reset_password", 1)
+        token = issue_token(db, user, "reset_password", 1)
 
     reset = {"token": token, "password": "a newer secure passphrase"}
     assert client.post("/api/account/password/reset", headers={"Origin": "http://localhost:5173"}, json=reset).status_code == 200
@@ -186,7 +187,7 @@ def test_email_verification_requires_the_pending_registration_password(postgres_
     assert response.status_code == 202
     with sessions() as db:
         user = db.scalar(select(User).where(User.email == "pending@example.com"))
-        token = _new_account_token(db, user, "verify_email", 1)
+        token = issue_token(db, user, "verify_email", 1)
 
     wrong = client.post(
         "/api/account/email/verify",
@@ -221,9 +222,9 @@ def test_verified_oauth_adoption_discards_unverified_local_credentials(postgres_
     with sessions() as db:
         user = db.scalar(select(User).where(User.email == "oauth@example.com"))
         assert user is not None and user.password_hash is not None
-        _new_account_token(db, user, "reset_password", 1)
+        issue_token(db, user, "reset_password", 1)
         now = datetime.now(UTC)
-        _discard_unverified_local_credentials(db, user, now)
+        discard_unverified_local_credentials(db, user, now)
         user.email_verified_at = now
         db.commit()
 
