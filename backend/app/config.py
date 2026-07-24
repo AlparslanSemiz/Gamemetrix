@@ -209,6 +209,12 @@ class Settings:
         self.ENDLESS_BACKFILL_INTERVAL_MINUTES: float = _env_float("ENDLESS_BACKFILL_INTERVAL_MINUTES", 120)
         self.ENDLESS_BACKFILL_BATCH_SIZE: int = _env_int("ENDLESS_BACKFILL_BATCH_SIZE", 60)
         self.ENDLESS_USE_AI: bool = _env_bool("ENDLESS_USE_AI", True)
+        # ── "Games like X" AI re-rank ────────────────────────────────────────
+        # Off by default: the heuristic ranker stays authoritative. When on and
+        # Groq is configured, Groq reorders the top heuristic candidates on the
+        # game detail page. Never touches any score — display order only.
+        self.SIMILARITY_USE_AI: bool = _env_bool("SIMILARITY_USE_AI", False)
+        self.SIMILARITY_AI_POOL: int = _env_int("SIMILARITY_AI_POOL", 20)
         # ── Non-game cleanup ─────────────────────────────────────────────────
         # Detect asset packs / tools / demos that slipped through bulk imports.
         # Deletion only happens when algorithm AND AI agree and this flag is on;

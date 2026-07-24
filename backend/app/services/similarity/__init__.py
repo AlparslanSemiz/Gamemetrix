@@ -9,6 +9,7 @@ Layering: taxonomy (vocabulary) → signals (one game) → profiles (two games)
 → scoring / gates → ranking → queries.
 """
 
+from .ai_rerank import rerank_with_ai
 from .gates import passes_similarity_gate
 from .queries import find_series_games, find_similar_games
 from .ranking import rank_similar_games
@@ -20,6 +21,7 @@ __all__ = [
     "find_similar_games",
     "passes_similarity_gate",
     "rank_similar_games",
+    "rerank_with_ai",
     "series_key_for_title",
     "similarity_score",
 ]

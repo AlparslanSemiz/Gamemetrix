@@ -22,7 +22,7 @@ from .accounts import (
 )
 from .analytics import AnalyticsEvent, VisitEvent
 from .catalog import ExternalId, Game, PriceSnapshot, RatingSnapshot, SourceSnapshot
-from .ops import AdminAuditLog, ApiRequestBudget, ApiRequestWindow, DataFillRun
+from .ops import AdminAuditLog, ApiRequestBudget, ApiRequestWindow, DataFillRun, JobRun
 
 __all__ = [
     "AccountSession",
@@ -34,6 +34,7 @@ __all__ = [
     "DataFillRun",
     "ExternalId",
     "Game",
+    "JobRun",
     "NotificationDelivery",
     "OAuthIdentity",
     "PriceSnapshot",

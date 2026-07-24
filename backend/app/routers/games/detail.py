@@ -17,7 +17,12 @@ from ...services.metadata_backfill import (
     refresh_game_metadata,
     system_requirements_need_repair,
 )
-from ...services.similarity import find_series_games, find_similar_games, series_key_for_title
+from ...services.similarity import (
+    find_series_games,
+    find_similar_games,
+    rerank_with_ai,
+    series_key_for_title,
+)
 from ...services.trailer_cache import cached_trailer_video_id
 from ._common import SlugPath, get_game_or_404, steam_app_id_for
 
@@ -67,14 +72,17 @@ async def _refresh_game_detail_metadata(slug: str) -> None:
 
 @router.get("/api/games/{slug}/similar", response_model=GameListResponse)
 @limiter.limit(get_settings().PUBLIC_READ_RATE_LIMIT)
-def get_similar_games(
+async def get_similar_games(
     request: Request,
     slug: SlugPath,
     limit: int = Query(default=10, ge=1, le=24),
     db: Session = Depends(get_db),
 ) -> GameListResponse:
     game = get_game_or_404(db, slug)
-    similar = find_similar_games(db, game, display_limit=limit)
+    cfg = get_settings()
+    pool_size = max(limit, cfg.SIMILARITY_AI_POOL) if cfg.SIMILARITY_USE_AI else limit
+    candidates = find_similar_games(db, game, display_limit=pool_size)
+    similar = await rerank_with_ai(game, candidates, limit)
     return GameListResponse(games=similar, total=len(similar))
 
 

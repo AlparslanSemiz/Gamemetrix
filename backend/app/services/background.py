@@ -30,6 +30,7 @@ from ..integrations.hltb import backfill_hltb_playtimes
 from ..integrations.sync import game_needs_rating_refresh, refresh_game_sources
 from ..integrations.steam import extract_steam_app_id, get_steam_release_dates
 from .endless import backfill_endless_batch
+from .job_heartbeat import record_job_run
 from .metadata import fix_game_year
 from .metadata_backfill import metadata_backfill_batch
 from .summarizer import shorten_summary_batch
@@ -231,14 +232,19 @@ async def daily_refresh_loop() -> None:
         await asyncio.sleep(interval_seconds)
         log.info("Periodic refresh starting (every %.1fh)", cfg.REFRESH_ALL_INTERVAL_HOURS)
         try:
-            await refresh_all_games(concurrency=concurrency, force=False, inter_game_delay=delay)
+            async with record_job_run("rating_refresh", interval_seconds) as run:
+                summary = await refresh_all_games(
+                    concurrency=concurrency, force=False, inter_game_delay=delay
+                )
+                if cfg.DAILY_METADATA_FIX_LIMIT > 0:
+                    try:
+                        fixed = await fix_year_batch(cfg.DAILY_METADATA_FIX_LIMIT)
+                        summary = {**summary, "year_fixed": fixed.get("fixed", 0)}
+                    except Exception:
+                        log.exception("Periodic metadata fix failed")
+                run.set(summary)
         except Exception:
             log.exception("Periodic full refresh failed")
-        if cfg.DAILY_METADATA_FIX_LIMIT > 0:
-            try:
-                await fix_year_batch(cfg.DAILY_METADATA_FIX_LIMIT)
-            except Exception:
-                log.exception("Periodic metadata fix failed")
 
 
 async def metadata_backfill_loop() -> None:
@@ -270,7 +276,8 @@ async def metadata_backfill_loop() -> None:
         await asyncio.sleep(interval_seconds)
         log.info("Periodic metadata backfill starting (every %.1fm)", cfg.METADATA_BACKFILL_INTERVAL_MINUTES)
         try:
-            await metadata_backfill_batch(limit=limit, inter_game_delay=delay)
+            async with record_job_run("metadata_backfill", interval_seconds) as run:
+                run.set(await metadata_backfill_batch(limit=limit, inter_game_delay=delay))
         except Exception:
             log.exception("Periodic metadata backfill failed")
 
@@ -321,12 +328,14 @@ async def hltb_backfill_loop() -> None:
     interval_seconds = max(60, int(cfg.HLTB_BACKFILL_INTERVAL_MINUTES * 60))
     while True:
         try:
-            with SessionLocal() as db:
-                result = await backfill_hltb_playtimes(
-                    db,
-                    target=cfg.HLTB_BACKFILL_BATCH_SIZE,
-                    delay_seconds=cfg.HLTB_BACKFILL_INTER_GAME_DELAY,
-                )
+            async with record_job_run("hltb_backfill", interval_seconds) as run:
+                with SessionLocal() as db:
+                    result = await backfill_hltb_playtimes(
+                        db,
+                        target=cfg.HLTB_BACKFILL_BATCH_SIZE,
+                        delay_seconds=cfg.HLTB_BACKFILL_INTER_GAME_DELAY,
+                    )
+                run.set(result)
             log.info(
                 "HLTB backfill: %s imported, %s skipped, %s covers repaired",
                 result["imported"],
@@ -362,8 +371,10 @@ async def summary_backfill_loop() -> None:
     while True:
         await asyncio.sleep(interval_seconds)
         try:
-            with SessionLocal() as db:
-                result = await shorten_summary_batch(db, cfg.SUMMARY_SHORTEN_BATCH_SIZE)
+            async with record_job_run("summary_backfill", interval_seconds) as run:
+                with SessionLocal() as db:
+                    result = await shorten_summary_batch(db, cfg.SUMMARY_SHORTEN_BATCH_SIZE)
+                run.set(result)
             log.info(
                 "Summary backfill: %s rewritten, %s shortened, %s skipped",
                 result["rewritten"],
@@ -387,8 +398,10 @@ async def endless_backfill_loop() -> None:
     interval_seconds = max(60, int(cfg.ENDLESS_BACKFILL_INTERVAL_MINUTES * 60))
     while True:
         try:
-            with SessionLocal() as db:
-                result = await backfill_endless_batch(db, cfg.ENDLESS_BACKFILL_BATCH_SIZE)
+            async with record_job_run("endless_backfill", interval_seconds) as run:
+                with SessionLocal() as db:
+                    result = await backfill_endless_batch(db, cfg.ENDLESS_BACKFILL_BATCH_SIZE)
+                run.set(result)
             log.info(
                 "Endless backfill: %s processed, %s endless, %s ai",
                 result["processed"],

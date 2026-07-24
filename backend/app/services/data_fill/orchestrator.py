@@ -6,8 +6,9 @@ import logging
 from ...config import get_settings
 from ...database import SessionLocal
 from ...heavy_jobs import HEAVY_JOB_LOCK
+from ..job_heartbeat import record_job_run
 from ..seo import refresh_catalog_seo_states
-from .runs import finish_run, mark_run_running, queue_data_fill_run
+from .runs import finish_run, load_run, mark_run_running, queue_data_fill_run
 from .stages import (
     clean_nongames,
     fill_catalog,
@@ -110,20 +111,49 @@ def _external_id_summary(before_missing: int) -> dict[str, int]:
     }
 
 
+def _int(value: object) -> int:
+    return value if isinstance(value, int) else 0
+
+
+def _stage(result: dict[str, object], key: str) -> dict[str, object]:
+    stage = result.get(key)
+    return stage if isinstance(stage, dict) else {}
+
+
+def _data_fill_summary(result: dict[str, object]) -> dict[str, int]:
+    """Flatten the rich per-stage run result into the counts that matter for the
+    periodic-jobs panel: what this cycle actually added or refreshed."""
+    return {
+        "catalog_total": _int(_stage(result, "catalog").get("total_games")),
+        "scores_refreshed": _int(_stage(result, "ratings").get("refreshed")),
+        "metadata_enriched": _int(_stage(result, "metadata").get("enriched")),
+        "hltb_imported": _int(_stage(result, "hltb").get("imported")),
+        "prices_stored": _int(_stage(result, "prices").get("stored")),
+        "summaries_shortened": _int(_stage(result, "summaries").get("shortened")),
+        "endless_flagged": _int(_stage(result, "endless").get("endless")),
+        "external_ids_matched": _int(_stage(result, "external_ids").get("matched")),
+    }
+
+
 async def data_fill_loop() -> None:
     cfg = get_settings()
     if not cfg.DATA_FILL_ENABLED:
         return
 
+    interval_seconds = max(
+        _MIN_LOOP_INTERVAL_SECONDS, int(cfg.DATA_FILL_INTERVAL_HOURS * _SECONDS_PER_HOUR)
+    )
     await asyncio.sleep(max(0, cfg.DATA_FILL_STARTUP_DELAY_SECONDS))
     while True:
         if HEAVY_JOB_LOCK.locked():
             await asyncio.sleep(_BUSY_RETRY_SECONDS)
             continue
-        run = queue_data_fill_run(force=False, target_total=cfg.DATA_FILL_TARGET_TOTAL)
-        await execute_data_fill_run(
-            int(run["id"]), force=False, target_total=cfg.DATA_FILL_TARGET_TOTAL
-        )
-        await asyncio.sleep(
-            max(_MIN_LOOP_INTERVAL_SECONDS, int(cfg.DATA_FILL_INTERVAL_HOURS * _SECONDS_PER_HOUR))
-        )
+        async with record_job_run("data_fill", interval_seconds) as heartbeat:
+            run = queue_data_fill_run(force=False, target_total=cfg.DATA_FILL_TARGET_TOTAL)
+            await execute_data_fill_run(
+                int(run["id"]), force=False, target_total=cfg.DATA_FILL_TARGET_TOTAL
+            )
+            finished = load_run(int(run["id"]))
+            if finished:
+                heartbeat.set(_data_fill_summary(finished.get("result") or {}))
+        await asyncio.sleep(interval_seconds)

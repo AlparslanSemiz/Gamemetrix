@@ -6,6 +6,12 @@ Edition" collapse toward the same base.
 """
 
 import re
+from functools import lru_cache
+
+# Titles/slugs repeat heavily during dedup: find_existing_duplicate re-normalizes
+# the same source title once per candidate (O(catalog) per import), so the pure
+# string transforms below are memoized. Sized to comfortably hold a full catalog.
+_TITLE_CACHE_SIZE = 16384
 
 _EDITION_SUFFIX_RE = re.compile(
     r"[\s:–—\-]+(?:"
@@ -55,17 +61,20 @@ def _normalize_roman(value: str) -> str:
     return _ROMAN_RE.sub(lambda m: _ROMAN_TO_ARABIC.get(m.group().lower(), m.group()), value)
 
 
+@lru_cache(maxsize=_TITLE_CACHE_SIZE)
 def normalized_title(value: str) -> str:
     value = value.replace("+", " plus ")
     value = _normalize_roman(value)
     return "".join(ch.casefold() for ch in value if ch.isalnum())
 
 
+@lru_cache(maxsize=_TITLE_CACHE_SIZE)
 def canonical_title(value: str) -> str:
     stripped = _EDITION_SUFFIX_RE.sub("", value).strip()
     return normalized_title(stripped)
 
 
+@lru_cache(maxsize=_TITLE_CACHE_SIZE)
 def base_title(value: str) -> str:
     """Remove year disambiguators, importer qualifiers and edition suffixes, then normalize."""
     t = _YEAR_DISAMBIG_RE.sub("", value).strip()
@@ -74,6 +83,7 @@ def base_title(value: str) -> str:
     return normalized_title(t)
 
 
+@lru_cache(maxsize=_TITLE_CACHE_SIZE)
 def slug_key(slug: str) -> str:
     """Slug stem normalized like a title, so everquest-ii and everquest-2 compare equal."""
     stem = _TRAILING_SLUG_INDEX_RE.sub("", slug.lower())

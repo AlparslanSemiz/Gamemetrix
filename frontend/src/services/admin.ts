@@ -127,6 +127,36 @@ export interface DataFillStatus {
   last_run?: DataFillRun | null
 }
 
+export interface PeriodicJob {
+  job: string
+  label: string
+  enabled: boolean
+  interval_seconds: number
+  status: string
+  started_at?: string | null
+  finished_at?: string | null
+  next_run_at?: string | null
+  result: Record<string, unknown>
+  error?: string | null
+}
+
+export interface PeriodicJobsAi {
+  provider: string
+  model: string
+  configured: boolean
+  uses: {
+    summary_rewrite: boolean
+    endless_classification: boolean
+    similar_games_rerank: boolean
+  }
+}
+
+export interface PeriodicJobs {
+  generated_at: string
+  ai: PeriodicJobsAi
+  jobs: PeriodicJob[]
+}
+
 export interface AdminAuditLog {
   id: number
   username?: string | null
@@ -232,6 +262,14 @@ export async function runDataFill(
   const query = params.toString()
   const response = await fetch(`${API_BASE_URL}/admin/data-fill/run${query ? `?${query}` : ''}`, {
     method: 'POST',
+    headers: adminHeaders(token),
+  })
+  if (!response.ok) throw await parseError(response)
+  return response.json()
+}
+
+export async function getPeriodicJobs(token: string): Promise<PeriodicJobs> {
+  const response = await fetch(`${API_BASE_URL}/admin/jobs/periodic`, {
     headers: adminHeaders(token),
   })
   if (!response.ok) throw await parseError(response)

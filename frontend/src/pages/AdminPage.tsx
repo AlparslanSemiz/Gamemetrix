@@ -3,6 +3,7 @@ import {
   ActivityPanels,
   AdminMetrics,
   DataFillPanel,
+  PeriodicJobsPanel,
   ScoreAndCatalogPanels,
   SummaryPanels,
   TrafficPanel,
@@ -76,6 +77,7 @@ export function AdminPage() {
           onStartDataFill={admin.handleStartDataFill}
           onStartPrimaryScores={admin.handleStartPrimaryScores}
         />
+        <PeriodicJobsPanel periodic={admin.periodic} />
         <ScoreAndCatalogPanels
           dashboard={admin.dashboard}
           token={admin.token}

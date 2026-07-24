@@ -21,6 +21,11 @@ def serialize_run(run: DataFillRun | None) -> dict | None:
     }
 
 
+def load_run(run_id: int) -> dict | None:
+    with SessionLocal() as db:
+        return serialize_run(db.get(DataFillRun, run_id))
+
+
 def queue_data_fill_run(*, force: bool, target_total: int) -> dict[str, object]:
     with SessionLocal() as db:
         run = DataFillRun(

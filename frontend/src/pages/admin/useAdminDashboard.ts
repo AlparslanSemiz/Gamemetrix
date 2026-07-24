@@ -11,6 +11,7 @@ import {
   getAdminAuditLogs,
   getAdminDashboard,
   getDataFillStatus,
+  getPeriodicJobs,
   loginAdmin,
   runDataFill,
   runPrimaryScores,
@@ -18,6 +19,7 @@ import {
   type AdminAuditLog,
   type AdminDashboard,
   type DataFillStatus,
+  type PeriodicJobs,
 } from '../../services/admin'
 
 const AUDIT_LOG_LIMIT = 100
@@ -52,6 +54,7 @@ export function useAdminDashboard() {
     dashboard: resources.dashboard,
     dataFill: resources.dataFill,
     dataGaps: metrics.dataGaps,
+    periodic: resources.periodic,
     error,
     handleLogin: session.login,
     handleLogout,
@@ -136,6 +139,7 @@ function useAdminResources({
   const [dashboard, setDashboard] = useState<AdminDashboard | null>(null)
   const [health, setHealth] = useState<AdminApiHealth>({})
   const [dataFill, setDataFill] = useState<DataFillStatus | null>(null)
+  const [periodic, setPeriodic] = useState<PeriodicJobs | null>(null)
   const [auditLogs, setAuditLogs] = useState<AdminAuditLog[]>([])
   const [isLoading, setIsLoading] = useState(false)
 
@@ -143,6 +147,7 @@ function useAdminResources({
     setDashboard(null)
     setHealth({})
     setDataFill(null)
+    setPeriodic(null)
     setAuditLogs([])
   }, [])
 
@@ -162,6 +167,7 @@ function useAdminResources({
       setDashboard,
       setDataFill,
       setHealth,
+      setPeriodic,
     })
     setError(failureMessage(results))
   }, [
@@ -186,6 +192,7 @@ function useAdminResources({
     health,
     isLoading,
     load,
+    periodic,
     setDataFill,
   }
 }
@@ -296,6 +303,7 @@ function loadAdminResources(
       limit: AUDIT_LOG_LIMIT,
       onlyFailures: auditOnlyFailures,
     }),
+    getPeriodicJobs(token),
   ] as const)
 }
 
@@ -308,9 +316,10 @@ function applyAdminResources(
     setDashboard: (dashboard: AdminDashboard) => void
     setDataFill: (status: DataFillStatus) => void
     setHealth: (health: AdminApiHealth) => void
+    setPeriodic: (periodic: PeriodicJobs) => void
   },
 ) {
-  const [dashboardResult, healthResult, dataFillResult, auditResult] = results
+  const [dashboardResult, healthResult, dataFillResult, auditResult, periodicResult] = results
   if (dashboardResult.status === 'fulfilled') {
     setters.setDashboard(dashboardResult.value)
   }
@@ -319,6 +328,7 @@ function applyAdminResources(
     setters.setDataFill(dataFillResult.value)
   }
   if (auditResult.status === 'fulfilled') setters.setAuditLogs(auditResult.value)
+  if (periodicResult.status === 'fulfilled') setters.setPeriodic(periodicResult.value)
 }
 
 function isUnauthorizedResult(
@@ -332,7 +342,7 @@ function isUnauthorizedResult(
 }
 
 function failureMessage(results: AdminResourceResults): string | null {
-  const labels = ['Dashboard', 'API health', 'Data fill', 'Audit log']
+  const labels = ['Dashboard', 'API health', 'Data fill', 'Audit log', 'Periodic jobs']
   const messages = results.flatMap((result, index) => {
     if (result.status === 'fulfilled') return []
     const reason: unknown = result.reason

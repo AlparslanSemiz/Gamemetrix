@@ -5,10 +5,20 @@ variant, and disambiguator-stripped match — each with its own year tolerance.
 """
 
 import re
+from typing import Protocol
 
 from ...game_signals import safe_review_count
 from ...models import Game
 from .titles import base_title, canonical_title, normalized_title, slug_key
+
+
+class TitleIdentity(Protocol):
+    """The only fields `games_are_duplicates` reads — lets the DB scan pass
+    lightweight (id, title, slug, release_year) rows instead of full Game objects."""
+
+    title: str
+    slug: str
+    release_year: int
 
 UNKNOWN_YEAR = 1970
 _SAME_TITLE_YEAR_TOLERANCE = 4
@@ -18,7 +28,7 @@ _REMAKE_RE = re.compile(r"\bremake\b", re.IGNORECASE)
 _TRAILING_INDEX_RE = re.compile(r"-\d+$")
 
 
-def duplicate_key(game: Game) -> tuple[str, str, str]:
+def duplicate_key(game: TitleIdentity) -> tuple[str, str, str]:
     return normalized_title(game.title), canonical_title(game.title), base_title(game.title)
 
 
@@ -28,7 +38,7 @@ def _years_match(left: int, right: int, tolerance: int) -> bool:
     return abs(left - right) <= tolerance
 
 
-def games_are_duplicates(left: Game, right: Game) -> bool:
+def games_are_duplicates(left: TitleIdentity, right: TitleIdentity) -> bool:
     left_norm, left_canon, left_base = duplicate_key(left)
     right_norm, right_canon, right_base = duplicate_key(right)
 
@@ -51,7 +61,7 @@ def games_are_duplicates(left: Game, right: Game) -> bool:
     return False
 
 
-def _exact_match_is_duplicate(left: Game, right: Game) -> bool:
+def _exact_match_is_duplicate(left: TitleIdentity, right: TitleIdentity) -> bool:
     if left.title.strip().casefold() == right.title.strip().casefold():
         return True
     if slug_key(left.slug) == slug_key(right.slug):
@@ -60,8 +70,8 @@ def _exact_match_is_duplicate(left: Game, right: Game) -> bool:
 
 
 def _edition_variant_verdict(
-    left: Game,
-    right: Game,
+    left: TitleIdentity,
+    right: TitleIdentity,
     left_norm: str,
     right_norm: str,
     left_canon: str,

@@ -769,3 +769,144 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* ── Periodic jobs panel ─────────────────────────────────────────────────── */
+
+.admin-dot.is-run {
+  background: #fbbf24;
+}
+
+.admin-ai-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 16px;
+  padding: 10px 12px;
+  margin-bottom: 14px;
+  border: 1px solid rgba(167, 139, 250, 0.28);
+  border-radius: 10px;
+  background: rgba(167, 139, 250, 0.06);
+}
+
+.admin-ai-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.admin-ai-head strong {
+  color: #f1f5f9;
+  font-size: 13px;
+}
+
+.admin-ai-head small {
+  color: #8c94a4;
+  font-size: 12px;
+}
+
+.admin-ai-head em {
+  color: #a78bfa;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 850;
+}
+
+.admin-job-list {
+  display: grid;
+  gap: 10px;
+}
+
+.admin-job {
+  display: grid;
+  gap: 7px;
+  padding: 11px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.015);
+}
+
+.admin-job-head {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+}
+
+.admin-job-title {
+  min-width: 0;
+}
+
+.admin-job-title strong {
+  display: block;
+  color: #f1f5f9;
+  font-size: 13px;
+}
+
+.admin-job-title small {
+  display: block;
+  margin-top: 1px;
+  color: #8c94a4;
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-job-schedule {
+  color: #8c94a4;
+  font-size: 11px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.admin-job-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  padding-left: 19px;
+  color: #b6bcc9;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.admin-job-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding-left: 19px;
+}
+
+.admin-chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: #101115;
+  color: #8c94a4;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.admin-chip strong {
+  color: #e8ebf2;
+  font-size: 11px;
+}
+
+.admin-chip.is-on {
+  background: rgba(87, 212, 109, 0.12);
+  color: #57d46d;
+}
+
+.admin-chip.is-on strong {
+  color: #57d46d;
+}
+
+.admin-chip.is-off {
+  background: rgba(107, 114, 128, 0.14);
+}
+
+.admin-job-chips .admin-empty {
+  font-size: 11px;
+  font-style: italic;
+}

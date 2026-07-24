@@ -74,3 +74,24 @@ class DataFillRun(Base):
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class JobRun(Base):
+    """Heartbeat for one periodic background loop: its most recent cycle only.
+
+    One row per job (upserted every cycle) — the admin panel reads this to show
+    when each loop last ran, when it is next due, and what that run fetched.
+    """
+
+    __tablename__ = "job_runs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    job: Mapped[str] = mapped_column(String(48), nullable=False, unique=True, index=True)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="running")
+    interval_seconds: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    result: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    next_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

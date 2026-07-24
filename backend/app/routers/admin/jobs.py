@@ -2,17 +2,20 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ...config import get_settings
+from ...config import Settings, get_settings
 from ...content_type import infer_content_type_with_parent
 from ...database import SessionLocal, get_db
 from ...heavy_jobs import HEAVY_JOB_LOCK
 from ...models import Game
 from ...services.data_fill import data_fill_status, execute_data_fill_run, queue_data_fill_run
 from ...services.deduplication import consolidate_duplicate_games, preview_duplicate_groups
+from ...services.job_heartbeat import JOB_LABELS, latest_job_runs
 from ...services.primary_score_backfill import (
     primary_score_backfill_batch,
     primary_score_coverage_status,
@@ -20,6 +23,61 @@ from ...services.primary_score_backfill import (
 from ...services.seo import refresh_catalog_seo_states
 
 router = APIRouter()
+
+
+def _job_schedule(cfg: Settings) -> dict[str, int]:
+    """Configured interval, in seconds, for each tracked periodic loop."""
+    return {
+        "data_fill": int(cfg.DATA_FILL_INTERVAL_HOURS * 3600),
+        "rating_refresh": int(cfg.REFRESH_ALL_INTERVAL_HOURS * 3600),
+        "metadata_backfill": int(cfg.METADATA_BACKFILL_INTERVAL_MINUTES * 60),
+        "hltb_backfill": int(cfg.HLTB_BACKFILL_INTERVAL_MINUTES * 60),
+        "summary_backfill": int(cfg.SUMMARY_SHORTEN_INTERVAL_MINUTES * 60),
+        "endless_backfill": int(cfg.ENDLESS_BACKFILL_INTERVAL_MINUTES * 60),
+    }
+
+
+def _ai_status(cfg: Settings) -> dict[str, object]:
+    configured = cfg.groq_configured()
+    return {
+        "provider": "Groq",
+        "model": cfg.GROQ_MODEL,
+        "configured": configured,
+        "uses": {
+            "summary_rewrite": configured,
+            "endless_classification": cfg.ENDLESS_USE_AI and configured,
+            "similar_games_rerank": cfg.SIMILARITY_USE_AI and configured,
+        },
+    }
+
+
+@router.get("/jobs/periodic")
+def get_periodic_jobs() -> dict[str, object]:
+    """Per-loop last run, next-due time, and what the last run fetched."""
+    cfg = get_settings()
+    schedule = _job_schedule(cfg)
+    runs = latest_job_runs()
+    jobs: list[dict[str, object]] = []
+    for job, label in JOB_LABELS.items():
+        run = runs.get(job, {})
+        enabled = cfg.DATA_FILL_ENABLED if job == "data_fill" else True
+        jobs.append({
+            "job": job,
+            "label": label,
+            "enabled": enabled,
+            "interval_seconds": run.get("interval_seconds") or schedule.get(job, 0),
+            "status": run.get("status", "never"),
+            "started_at": run.get("started_at"),
+            "finished_at": run.get("finished_at"),
+            "next_run_at": run.get("next_run_at"),
+            "result": run.get("result", {}),
+            "error": run.get("error"),
+        })
+    return {
+        "generated_at": datetime.now(UTC).isoformat(),
+        "ai": _ai_status(cfg),
+        "jobs": jobs,
+    }
 
 _DEFAULT_JOB_TARGET = 10000
 _MAX_JOB_TARGET = 100000

@@ -11,15 +11,19 @@ from .merge import merge_game_data
 
 
 def find_existing_duplicate(db: Session, game: Game) -> Game | None:
-    candidates = db.scalars(
-        select(Game).where(
+    # Scan on the three title columns only — loading full Game rows (with their
+    # large source_scores/screenshots JSON) for every candidate on every import
+    # made this O(catalog) in bytes. Full objects are fetched just for matches.
+    candidate_rows = db.execute(
+        select(Game.id, Game.title, Game.slug, Game.release_year).where(
             Game.content_type == game.content_type,
             Game.id != (game.id or 0),
         )
-    )
-    matches = [candidate for candidate in candidates if games_are_duplicates(candidate, game)]
-    if not matches:
+    ).all()
+    match_ids = [row.id for row in candidate_rows if games_are_duplicates(row, game)]
+    if not match_ids:
         return None
+    matches = db.scalars(select(Game).where(Game.id.in_(match_ids))).all()
     return max(matches, key=duplicate_quality_key)
 
 
