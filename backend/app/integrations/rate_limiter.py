@@ -215,6 +215,7 @@ class RateLimiter:
                     "used": daily.request_count,
                     "reserve_percent": get_settings().budget_reserve_percent(self._canonical(source)),
                     "metered": self._canonical(source) in METERED_SOURCES,
+                    "updated_at": daily.updated_at.isoformat() if daily.updated_at else None,
                     "windows": window_output,
                 }
             db.commit()

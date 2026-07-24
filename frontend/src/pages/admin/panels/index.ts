@@ -1,5 +1,6 @@
 export { ActivityPanels } from './ActivityPanels'
 export { AdminMetrics } from './AdminMetrics'
+export { ApiSourcesPanel } from './ApiSourcesPanel'
 export { DataFillPanel } from './DataFillPanel'
 export { PeriodicJobsPanel } from './PeriodicJobsPanel'
 export { ScoreAndCatalogPanels } from './ScoreAndCatalogPanels'

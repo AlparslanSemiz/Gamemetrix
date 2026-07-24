@@ -152,9 +152,12 @@ class Settings:
         # its own, much tighter bucket. See PROVIDER_BUDGET_RESERVE_PERCENT below.
         self.OPENCRITIC_DAILY_LIMIT: int = _env_int("OPENCRITIC_DAILY_LIMIT", 200)
         self.OPENCRITIC_SEARCH_DAILY_LIMIT: int = _env_int("OPENCRITIC_SEARCH_DAILY_LIMIT", 25)
-        self.IGDB_DAILY_LIMIT: int = _env_int("IGDB_DAILY_LIMIT", 400)
+        # IGDB (Twitch, ~4 req/s, no daily quota) and Steam (public endpoint, no
+        # fixed daily cap) sit far below their real ceilings, so their budgets are
+        # raised well above RAWG's to speed primary-score coverage at no cost.
+        self.IGDB_DAILY_LIMIT: int = _env_int("IGDB_DAILY_LIMIT", 3000)
         self.RAWG_DAILY_LIMIT: int = _env_int("RAWG_DAILY_LIMIT", 600)
-        self.STEAM_DAILY_LIMIT: int = _env_int("STEAM_DAILY_LIMIT", 300)
+        self.STEAM_DAILY_LIMIT: int = _env_int("STEAM_DAILY_LIMIT", 1500)
         self.STEAMSPY_DAILY_LIMIT: int = _env_int("STEAMSPY_DAILY_LIMIT", 300)
         self.CHEAPSHARK_DAILY_LIMIT: int = _env_int("CHEAPSHARK_DAILY_LIMIT", 200)
         self.FREETOGAME_DAILY_LIMIT: int = _env_int("FREETOGAME_DAILY_LIMIT", 200)

@@ -2,6 +2,7 @@ import { LogOut, RefreshCw } from 'lucide-react'
 import {
   ActivityPanels,
   AdminMetrics,
+  ApiSourcesPanel,
   DataFillPanel,
   PeriodicJobsPanel,
   ScoreAndCatalogPanels,
@@ -78,6 +79,7 @@ export function AdminPage() {
           onStartPrimaryScores={admin.handleStartPrimaryScores}
         />
         <PeriodicJobsPanel periodic={admin.periodic} />
+        <ApiSourcesPanel apiSources={admin.apiSources} />
         <ScoreAndCatalogPanels
           dashboard={admin.dashboard}
           token={admin.token}

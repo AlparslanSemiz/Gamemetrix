@@ -127,6 +127,40 @@ export interface DataFillStatus {
   last_run?: DataFillRun | null
 }
 
+export interface ApiSourceWindow {
+  remaining: number
+  limit: number
+  usable_limit?: number
+  used?: number
+  window_start?: string
+  window_seconds?: number
+}
+
+export interface ApiSource {
+  key: string
+  display_name: string
+  role: string
+  is_rating: boolean
+  weight?: number | null
+  requires_pc: boolean
+  configured: boolean
+  provider_limit: string
+  headroom: 'headroom' | 'capped' | 'metered' | 'window' | 'scrape'
+  metered: boolean
+  used: number
+  limit: number
+  usable_limit: number
+  remaining: number
+  reserve_percent: number
+  last_used_at?: string | null
+  windows: Record<string, ApiSourceWindow>
+  driven_by: string
+}
+
+export interface ApiSources {
+  sources: ApiSource[]
+}
+
 export interface PeriodicJob {
   job: string
   label: string
@@ -270,6 +304,14 @@ export async function runDataFill(
 
 export async function getPeriodicJobs(token: string): Promise<PeriodicJobs> {
   const response = await fetch(`${API_BASE_URL}/admin/jobs/periodic`, {
+    headers: adminHeaders(token),
+  })
+  if (!response.ok) throw await parseError(response)
+  return response.json()
+}
+
+export async function getApiSources(token: string): Promise<ApiSources> {
+  const response = await fetch(`${API_BASE_URL}/admin/api-sources`, {
     headers: adminHeaders(token),
   })
   if (!response.ok) throw await parseError(response)

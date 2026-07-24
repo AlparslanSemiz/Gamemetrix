@@ -14,6 +14,8 @@ from .stages import (
     fill_catalog,
     fill_endless,
     fill_hltb,
+    fill_igdb_playtime,
+    fill_metacritic,
     fill_metadata,
     fill_prices,
     fill_primary_scores,
@@ -30,10 +32,12 @@ _SECONDS_PER_HOUR = 3600
 
 _EMPTY_RESULT: dict[str, object] = {
     "catalog": {},
+    "metacritic": {},
     "ratings": {},
     "primary_scores": {},
     "metadata": {},
     "hltb": {},
+    "igdb_playtime": {},
     "endless": {},
     "summaries": {},
     "nongames": {},
@@ -74,10 +78,12 @@ async def _run_all_stages(
     result["external_ids"] = {"before_missing": before_missing}
 
     result["catalog"] = await fill_catalog(target_total)
+    result["metacritic"] = await fill_metacritic()
     result["primary_scores"] = await fill_primary_scores(force=force)
     result["ratings"] = await fill_ratings(force=force)
     result["metadata"] = await fill_metadata()
     result["hltb"] = await fill_hltb()
+    result["igdb_playtime"] = await fill_igdb_playtime()
     result["endless"] = await fill_endless()
     result["summaries"] = await fill_summaries()
     result["nongames"] = await clean_nongames()
@@ -125,9 +131,11 @@ def _data_fill_summary(result: dict[str, object]) -> dict[str, int]:
     periodic-jobs panel: what this cycle actually added or refreshed."""
     return {
         "catalog_total": _int(_stage(result, "catalog").get("total_games")),
+        "metacritic_seeded": _int(_stage(result, "metacritic").get("seeded")),
         "scores_refreshed": _int(_stage(result, "ratings").get("refreshed")),
         "metadata_enriched": _int(_stage(result, "metadata").get("enriched")),
         "hltb_imported": _int(_stage(result, "hltb").get("imported")),
+        "igdb_playtime_filled": _int(_stage(result, "igdb_playtime").get("filled")),
         "prices_stored": _int(_stage(result, "prices").get("stored")),
         "summaries_shortened": _int(_stage(result, "summaries").get("shortened")),
         "endless_flagged": _int(_stage(result, "endless").get("endless")),

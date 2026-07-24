@@ -16,7 +16,7 @@ Concerns are split one module per surface:
 from fastapi import APIRouter, Depends
 
 from ...security import require_admin_user
-from . import dashboard, diagnostics, health, jobs, matching, prices
+from . import dashboard, diagnostics, health, jobs, matching, prices, sources
 
 router = APIRouter(
     prefix="/admin",
@@ -31,6 +31,7 @@ for _sub_router in (
     diagnostics.router,
     matching.router,
     prices.router,
+    sources.router,
 ):
     router.include_router(_sub_router)
 

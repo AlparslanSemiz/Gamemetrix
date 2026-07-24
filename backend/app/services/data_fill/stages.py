@@ -17,13 +17,15 @@ from ...database import SessionLocal
 from ...integrations.cheapshark import import_cheapshark_deals
 from ...integrations.free_to_game import import_free_to_game_games
 from ...integrations.hltb import backfill_hltb_playtimes
-from ...integrations.igdb_import import import_igdb_nintendo_games
+from ...integrations.igdb_import import import_igdb_nintendo_games, import_igdb_popular_games
 from ...integrations.rate_limiter import get_rate_limiter
 from ...integrations.rawg import import_catalog_to_size
 from ...integrations.steamspy import import_steamspy_games
 from ...integrations.sync import game_needs_rating_refresh, refresh_game_sources
 from ...models import Game
 from ..endless import backfill_endless_batch
+from ..igdb_playtime_backfill import igdb_playtime_backfill_batch
+from ..metacritic_backfill import cheapshark_metacritic_backfill_batch
 from ..metadata_backfill import metadata_backfill_batch
 from ..nongame_cleanup import nongame_cleanup_batch
 from ..price_backfill import price_backfill_batch
@@ -55,6 +57,7 @@ def _game_count(db: Session) -> int:
 # source -> (per-run import cap, importer). RAWG is handled separately because it
 # takes an absolute catalog target rather than a remaining-headroom count.
 _SECONDARY_CATALOG_IMPORTS: tuple[tuple[str, int, _SecondaryImporter], ...] = (
+    ("IGDB", 8000, lambda db, target: import_igdb_popular_games(db, target=target)),
     ("IGDB", 5000, lambda db, target: import_igdb_nintendo_games(db, target=target)),
     ("FreeToGame", 1000, lambda db, target: import_free_to_game_games(db, target=target)),
     ("SteamSpy", 5000, lambda db, target: import_steamspy_games(db, target=target)),
@@ -132,6 +135,18 @@ async def fill_ratings(*, force: bool) -> dict[str, int]:
             except Exception:
                 failed += 1
     return {"refreshed": refreshed, "skipped": skipped, "failed": failed}
+
+
+async def fill_metacritic() -> dict[str, object]:
+    """Seed Metacritic from CheapShark (free) before scoring, sparing RAWG budget."""
+    cfg = get_settings()
+    if not remaining_any(("CheapShark",)):
+        return {"status": "budget_exhausted", "seeded": 0}
+    result = await cheapshark_metacritic_backfill_batch(
+        limit=cfg.DATA_FILL_METADATA_BATCH_SIZE,
+        inter_game_delay=cfg.DATA_FILL_INTER_GAME_DELAY,
+    )
+    return {"status": "ok", **result}
 
 
 async def fill_primary_scores(*, force: bool) -> dict[str, object]:
@@ -212,6 +227,18 @@ async def fill_hltb() -> dict[str, int]:
         return await backfill_hltb_playtimes(
             db, target=cfg.DATA_FILL_HLTB_TARGET, refresh_existing=False
         )
+
+
+async def fill_igdb_playtime() -> dict[str, object]:
+    """Fill playtime HLTB missed, from IGDB's official time-to-beat endpoint."""
+    cfg = get_settings()
+    if not cfg.igdb_configured() or not remaining_any(("IGDB",)):
+        return {"status": "skipped", "filled": 0}
+    result = await igdb_playtime_backfill_batch(
+        limit=cfg.DATA_FILL_HLTB_TARGET,
+        inter_game_delay=cfg.DATA_FILL_INTER_GAME_DELAY,
+    )
+    return {"status": "ok", **result}
 
 
 async def fill_endless() -> dict[str, int]:

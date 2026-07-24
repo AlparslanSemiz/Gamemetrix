@@ -84,7 +84,12 @@ def _score_fields(raw_game: dict) -> tuple[float, int, float, float]:
     return score, review_count, critic_score, user_score
 
 
-def _game_from_igdb(raw_game: dict) -> Game:
+def _game_from_igdb(
+    raw_game: dict,
+    *,
+    catalog_label: str = "IGDB",
+    default_platforms: list[str] | None = None,
+) -> Game:
     title = raw_game.get("name") or "Untitled Game"
     released = _igdb_date(raw_game.get("first_release_date"))
     cover_url = _igdb_image_url((raw_game.get("cover") or {}).get("url"), "t_cover_big_2x") or ""
@@ -113,13 +118,13 @@ def _game_from_igdb(raw_game: dict) -> Game:
             "scale": 100,
             "status": "live",
             "review_count": review_count,
-            "detail": "IGDB total rating from Nintendo catalog import.",
+            "detail": f"IGDB total rating from {catalog_label} catalog import.",
         })
     metrix_score = calculate_metrix_score(source_scores)
     game = Game(
         title=title,
         slug=f"{_slugify(title)}-{raw_game.get('id') or _slugify(title)}",
-        summary=raw_game.get("summary") or f"{title} was imported from the IGDB Nintendo catalog.",
+        summary=raw_game.get("summary") or f"{title} was imported from the IGDB {catalog_label} catalog.",
         cover_url=cover_url,
         release_date=released,
         release_year=released.year,
@@ -130,7 +135,7 @@ def _game_from_igdb(raw_game: dict) -> Game:
         critic_score=critic_score,
         user_score=user_score,
         genres=genres or ["Uncategorized"],
-        platforms=platforms or ["Nintendo"],
+        platforms=platforms or (default_platforms or ["Uncategorized"]),
         source_scores=source_scores,
         developer=developer,
         publisher=publisher,
@@ -184,38 +189,75 @@ def _existing_by_igdb_id(db: Session, raw_game: dict) -> Game | None:
     return db.get(Game, external.game_id) if external else None
 
 
+_IGDB_CREDENTIALS_REJECTED = (
+    "IGDB credentials were rejected. Add valid Twitch/IGDB credentials to backend/.env and restart."
+)
+_IGDB_IMPORT_FIELDS = (
+    "fields id,name,slug,url,first_release_date,rating,rating_count,"
+    "aggregated_rating,aggregated_rating_count,total_rating,total_rating_count,"
+    "platforms.name,genres.name,cover.url,screenshots.url,summary,"
+    "involved_companies.company.name,involved_companies.developer,"
+    "involved_companies.publisher; "
+)
+# Global-catalog import quality gate: main games only (category 0), with enough
+# rated reviews to be worth ranking. Keeps the general import from flooding the
+# catalog with the hundreds of thousands of obscure IGDB entries.
+_GENERAL_MIN_RATING_COUNT = 8
+_MAIN_GAME_CATEGORY = 0
+
+
+async def _igdb_token_or_raise(cfg) -> str:
+    try:
+        return await _get_access_token(cfg.IGDB_CLIENT_ID, cfg.IGDB_CLIENT_SECRET)
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code in (401, 403):
+            raise RuntimeError(_IGDB_CREDENTIALS_REJECTED) from exc
+        raise
+
+
+def _ingest_igdb_game(
+    db: Session,
+    raw_game: dict,
+    *,
+    catalog_label: str,
+    default_platforms: list[str] | None,
+) -> bool:
+    """Create or merge one IGDB game. Returns True when a new row was created."""
+    game = _game_from_igdb(raw_game, catalog_label=catalog_label, default_platforms=default_platforms)
+    existing = (
+        _existing_by_igdb_id(db, raw_game)
+        or db.scalar(select(Game).where(Game.slug == game.slug))
+        or db.scalar(select(Game).where(func.lower(Game.title) == game.title.lower()))
+        or find_existing_duplicate(db, game)
+    )
+    if existing:
+        merge_game_data(existing, game)
+        db.add(existing)
+        db.flush()
+        _upsert_igdb_external_id(db, existing, raw_game)
+        return False
+    db.add(game)
+    db.flush()
+    _upsert_igdb_external_id(db, game, raw_game)
+    return True
+
+
 async def import_igdb_nintendo_games(db: Session, target: int = 500, page_size: int = 50) -> dict[str, int]:
     cfg = get_settings()
     if not cfg.igdb_configured():
         raise RuntimeError("IGDB_CLIENT_ID and IGDB_CLIENT_SECRET are not configured.")
 
-    try:
-        token = await _get_access_token(cfg.IGDB_CLIENT_ID, cfg.IGDB_CLIENT_SECRET)
-    except httpx.HTTPStatusError as exc:
-        if exc.response.status_code in (401, 403):
-            raise RuntimeError("IGDB credentials were rejected. Add valid Twitch/IGDB credentials to backend/.env and restart.") from exc
-        raise
-
+    token = await _igdb_token_or_raise(cfg)
     imported = 0
     skipped = 0
-    headers = {
-        "Client-ID": cfg.IGDB_CLIENT_ID,
-        "Authorization": f"Bearer {token}",
-    }
-    fields = (
-        "fields id,name,slug,url,first_release_date,rating,rating_count,"
-        "aggregated_rating,aggregated_rating_count,total_rating,total_rating_count,"
-        "platforms.name,genres.name,cover.url,screenshots.url,summary,"
-        "involved_companies.company.name,involved_companies.developer,"
-        "involved_companies.publisher; "
-    )
+    headers = {"Client-ID": cfg.IGDB_CLIENT_ID, "Authorization": f"Bearer {token}"}
 
     async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT) as client:
         for platform_id in NINTENDO_PLATFORM_IDS:
             offset = 0
             while imported < target:
                 body = (
-                    fields +
+                    _IGDB_IMPORT_FIELDS +
                     f"where platforms = {platform_id} & version_parent = null & total_rating_count > 0; "
                     "sort total_rating_count desc; "
                     f"limit {min(page_size, target - imported)}; offset {offset};"
@@ -224,40 +266,72 @@ async def import_igdb_nintendo_games(db: Session, target: int = 500, page_size: 
                     break
                 response = await client.post(IGDB_GAMES_URL, headers=headers, content=body)
                 if response.status_code in (401, 403):
-                    raise RuntimeError("IGDB credentials were rejected. Add valid Twitch/IGDB credentials to backend/.env and restart.")
+                    raise RuntimeError(_IGDB_CREDENTIALS_REJECTED)
                 response.raise_for_status()
                 results = response.json()
                 if not results:
                     break
 
                 for raw_game in results:
-                    game = _game_from_igdb(raw_game)
-                    existing = _existing_by_igdb_id(db, raw_game)
-                    if existing is None:
-                        existing = db.scalar(select(Game).where(Game.slug == game.slug))
-                    if existing is None:
-                        existing = db.scalar(select(Game).where(func.lower(Game.title) == game.title.lower()))
-                    if existing is None:
-                        existing = find_existing_duplicate(db, game)
-
-                    if existing:
-                        merge_game_data(existing, game)
-                        db.add(existing)
-                        db.flush()
-                        _upsert_igdb_external_id(db, existing, raw_game)
+                    if _ingest_igdb_game(db, raw_game, catalog_label="Nintendo", default_platforms=["Nintendo"]):
+                        imported += 1
+                    else:
                         skipped += 1
-                        continue
-
-                    db.add(game)
-                    db.flush()
-                    _upsert_igdb_external_id(db, game, raw_game)
-                    imported += 1
 
                 db.commit()
                 offset += page_size
                 if len(results) < page_size:
                     break
             if imported >= target:
+                break
+
+    return {"imported": imported, "skipped": skipped}
+
+
+async def import_igdb_popular_games(db: Session, target: int = 1000, page_size: int = 50) -> dict[str, int]:
+    """Import the most-rated games across every platform (RAWG-free catalog growth).
+
+    Additive to the RAWG catalog import: reuses IGDB's generous budget to grow the
+    catalog so RAWG's scarce monthly quota can go to Metacritic lookups instead.
+    """
+    cfg = get_settings()
+    if not cfg.igdb_configured():
+        raise RuntimeError("IGDB_CLIENT_ID and IGDB_CLIENT_SECRET are not configured.")
+
+    token = await _igdb_token_or_raise(cfg)
+    imported = 0
+    skipped = 0
+    headers = {"Client-ID": cfg.IGDB_CLIENT_ID, "Authorization": f"Bearer {token}"}
+    offset = 0
+
+    async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT) as client:
+        while imported < target:
+            body = (
+                _IGDB_IMPORT_FIELDS +
+                f"where total_rating_count >= {_GENERAL_MIN_RATING_COUNT} "
+                f"& version_parent = null & category = {_MAIN_GAME_CATEGORY}; "
+                "sort total_rating_count desc; "
+                f"limit {min(page_size, target - imported)}; offset {offset};"
+            )
+            if not await get_rate_limiter().acquire("IGDB"):
+                break
+            response = await client.post(IGDB_GAMES_URL, headers=headers, content=body)
+            if response.status_code in (401, 403):
+                raise RuntimeError(_IGDB_CREDENTIALS_REJECTED)
+            response.raise_for_status()
+            results = response.json()
+            if not results:
+                break
+
+            for raw_game in results:
+                if _ingest_igdb_game(db, raw_game, catalog_label="popular", default_platforms=None):
+                    imported += 1
+                else:
+                    skipped += 1
+
+            db.commit()
+            offset += page_size
+            if len(results) < page_size:
                 break
 
     return {"imported": imported, "skipped": skipped}
