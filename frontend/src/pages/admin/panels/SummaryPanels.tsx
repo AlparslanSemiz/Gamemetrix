@@ -93,19 +93,19 @@ function OrganicPanel({ dashboard }: { dashboard: AdminDashboard | null }) {
           ))}
         </ListOrEmpty>
         <AdminRow
-          label="Repeat visitors"
+          label="Repeat browser IDs"
           value={dashboard?.acquisition.repeat_visitors ?? 0}
         />
         <AdminRow
-          label="Google visitors"
+          label="Google-referrer browser IDs"
           value={dashboard?.acquisition.organic_visitors ?? 0}
         />
         <AdminRow
-          label="Google signups"
+          label="Google-referrer signups"
           value={dashboard?.acquisition.organic_signups ?? 0}
         />
         <TextRow
-          label="Google conversion"
+          label="Google-referrer conversion"
           value={`${(dashboard?.acquisition.organic_signup_conversion ?? 0).toFixed(2)}%`}
         />
       </RowList>

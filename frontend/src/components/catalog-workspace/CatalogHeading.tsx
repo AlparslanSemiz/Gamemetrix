@@ -25,9 +25,10 @@ export function CatalogHeading({
   if (!isCuratedView) {
     return (
       <div className="page-heading page-heading-catalog">
-        <h1>Game rankings</h1>
+        <h1>Game scores and PC compatibility rankings</h1>
         <p>
-          Four-source ratings with current compatibility, playtime and price context.
+          GameMetrix compares four named rating sources with Linux compatibility,
+          playtime and current PC price context.
         </p>
       </div>
     )

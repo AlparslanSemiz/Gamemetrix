@@ -1,7 +1,8 @@
 from datetime import date, datetime
+import re
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 GameSort = Literal[
@@ -186,6 +187,20 @@ class GameListItem(BaseModel):
 class GameListResponse(BaseModel):
     games: list[GameListItem]
     total: int
+
+
+class GameSlugBatchRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    slugs: list[str] = Field(min_length=1, max_length=100)
+
+    @field_validator("slugs")
+    @classmethod
+    def validate_slugs(cls, values: list[str]) -> list[str]:
+        slug_pattern = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+        if any(len(value) > 180 or slug_pattern.fullmatch(value) is None for value in values):
+            raise ValueError("Every slug must be a valid game slug.")
+        return list(dict.fromkeys(values))
 
 
 class SeriesGameItem(BaseModel):

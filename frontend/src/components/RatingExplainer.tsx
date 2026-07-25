@@ -122,9 +122,19 @@ export function RatingExplainer() {
   return (
     <div className="about-rating">
       <p className="about-lead">
-        GameMetrix pulls scores from multiple independent sources and combines them into one transparent signal.
-        Here's exactly how it works.
+        GameMetrix is an independent comparison catalog. It brings named third-party
+        scores and practical PC decision signals together; no listed provider endorses
+        GameMetrix. Here is exactly how the comparison works.
       </p>
+      <div className="about-block">
+        <h3>What GameMetrix is</h3>
+        <p>
+          The catalog is designed to help people compare a game&apos;s critical reception,
+          player reception, Linux and Steam Deck compatibility, estimated playtime and
+          current price context in one place. It is a comparison tool, not a review
+          publisher, store or substitute for the linked source pages.
+        </p>
+      </div>
       <RatingSources />
       <ScoreExplanation />
       <RankExplanation />
@@ -134,6 +144,24 @@ export function RatingExplainer() {
           Steam is only counted for PC games. A Nintendo exclusive missing Steam is not penalized —
           its applicable sources are Metacritic, OpenCritic, and IGDB, and full coverage across
           those three still qualifies as <strong>Data Strong</strong>.
+        </p>
+      </div>
+      <div className="about-block">
+        <h3>How data is processed</h3>
+        <p>
+          Automated imports normalize provider identifiers, score scales and catalog
+          metadata. Every primary score stays attached to its named source; a missing
+          score remains missing instead of being estimated. Games must pass the published
+          quality checks before they enter search-facing rankings.
+        </p>
+      </div>
+      <div className="about-block">
+        <h3>Limitations and updates</h3>
+        <p>
+          Provider data can be delayed, incomplete or changed after an import. Compatibility,
+          prices and playtime are snapshots rather than guarantees. Each game page names and
+          links its sources so important decisions can be checked at the source; GameMetrix
+          refreshes available data but does not claim real-time completeness.
         </p>
       </div>
     </div>

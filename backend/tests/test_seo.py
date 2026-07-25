@@ -88,5 +88,6 @@ def test_sitemap_contains_only_supplied_canonical_urls() -> None:
     game = game_fixture(seo_indexable=True)
     document = sitemap_document([game], [2024])
     assert "https://gamemetrix.me/game/a-complete-test-game" in document
+    assert "<loc>https://gamemetrix.me/about</loc>" in document
     assert "https://gamemetrix.me/best/games/2024" in document
     assert document.startswith('<?xml version="1.0"')

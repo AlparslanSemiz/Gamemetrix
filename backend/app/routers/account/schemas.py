@@ -86,6 +86,8 @@ class CollectionsPayload(StrictPayload):
     playing: list[str] = Field(default_factory=list, max_length=MAX_COLLECTION_ENTRIES)
     seen: list[str] = Field(default_factory=list, max_length=MAX_COLLECTION_ENTRIES)
     completed: list[str] = Field(default_factory=list, max_length=MAX_COLLECTION_ENTRIES)
+    on_hold: list[str] = Field(default_factory=list, max_length=MAX_COLLECTION_ENTRIES)
+    dropped: list[str] = Field(default_factory=list, max_length=MAX_COLLECTION_ENTRIES)
     liked: list[str] = Field(default_factory=list, max_length=MAX_COLLECTION_ENTRIES)
     favorites: list[str] = Field(default_factory=list, max_length=MAX_COLLECTION_ENTRIES)
 

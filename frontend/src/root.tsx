@@ -8,6 +8,7 @@ import {
   useRouteError,
 } from 'react-router'
 import type { ReactNode } from 'react'
+import { AnalyticsConsentBanner } from './components/AnalyticsConsentBanner'
 import { PageViewTracker } from './components/PageViewTracker'
 import { AccountProvider } from './state/AccountProvider'
 import { CollectionsProvider } from './state/CollectionsProvider'
@@ -39,6 +40,7 @@ export default function Root() {
       <AccountProvider>
         <PageViewTracker />
         <Outlet />
+        <AnalyticsConsentBanner />
       </AccountProvider>
     </CollectionsProvider>
   )

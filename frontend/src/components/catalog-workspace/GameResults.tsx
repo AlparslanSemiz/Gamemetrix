@@ -76,6 +76,8 @@ export function GameResults({
             isPlaying={collectionSets.playing.has(game.slug)}
             isSeen={collectionSets.seen.has(game.slug)}
             isCompleted={collectionSets.completed.has(game.slug)}
+            isOnHold={collectionSets.on_hold.has(game.slug)}
+            isDropped={collectionSets.dropped.has(game.slug)}
             isWatchlisted={collectionSets.watchlist.has(game.slug)}
             onOpenDetail={onOpenDetail}
             onOpenTrailer={onOpenTrailer}

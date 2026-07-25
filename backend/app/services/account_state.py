@@ -18,6 +18,8 @@ CollectionType = Literal[
     "playing",
     "seen",
     "completed",
+    "on_hold",
+    "dropped",
     "liked",
     "favorites",
 ]
@@ -26,6 +28,8 @@ COLLECTION_TYPES: tuple[CollectionType, ...] = (
     "playing",
     "seen",
     "completed",
+    "on_hold",
+    "dropped",
     "liked",
     "favorites",
 )

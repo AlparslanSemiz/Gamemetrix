@@ -216,6 +216,7 @@ def sitemap_document(
         )
     static_urls = (
         f"{CANONICAL_ORIGIN}/",
+        f"{CANONICAL_ORIGIN}/about",
         *(f"{CANONICAL_ORIGIN}{path}" for path in (curated_paths or [])),
         *(f"{CANONICAL_ORIGIN}/best/games/{year}" for year in (years or [])),
     )

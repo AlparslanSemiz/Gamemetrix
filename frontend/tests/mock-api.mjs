@@ -11,7 +11,7 @@ const account = {
   created_at: now,
 }
 const emptyCollections = {
-  watchlist: [], playing: [], seen: [], completed: [], liked: [], favorites: [],
+  watchlist: [], playing: [], seen: [], completed: [], on_hold: [], dropped: [], liked: [], favorites: [],
 }
 let state = {
   account,
@@ -201,6 +201,15 @@ const server = http.createServer(async (request, response) => {
         : { ...game, id, title: `Catalog Test Game ${id}`, slug: `catalog-test-game-${id}` }
     })
     return json(response, 200, { games, total: 48 })
+  }
+  if (url.pathname === '/api/games/batch' && request.method === 'POST') {
+    const payload = await body(request)
+    const games = (payload.slugs ?? []).map((slug) => {
+      if (slug === game.slug) return game
+      const id = Number(slug.match(/(\d+)$/)?.[1] ?? 2)
+      return { ...game, id, title: `Catalog Test Game ${id}`, slug }
+    })
+    return json(response, 200, { games, total: games.length })
   }
   if (url.pathname === '/api/facets') return json(response, 200, { genres: ['RPG'], years: [2024], platforms: ['PC', 'Linux'] })
   if (url.pathname === '/api/integrations/status') return json(response, 200, [

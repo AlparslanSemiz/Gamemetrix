@@ -27,6 +27,8 @@ export function useCollectionActions(onSyncError?: (message: string) => void): C
     playing: new Set(collections.playing),
     seen: new Set(collections.seen),
     completed: new Set(collections.completed),
+    on_hold: new Set(collections.on_hold),
+    dropped: new Set(collections.dropped),
     liked: new Set(collections.liked),
     favorites: new Set(collections.favorites),
   }), [collections])

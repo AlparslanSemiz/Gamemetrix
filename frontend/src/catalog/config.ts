@@ -1,24 +1,27 @@
 import {
   Bell,
-  CheckCircle2,
+  Bookmark,
+  CirclePause,
+  CircleX,
   Compass,
-  Eye,
-  Flag,
   Gamepad2,
   Gift,
   Heart,
+  History,
   Home,
   Info,
   Search,
   Settings,
   Star,
   Tag,
+  Trophy,
 } from 'lucide-react'
 import type { CollectionKey } from '../state/collections'
 import type { GameFilters, GameSort } from '../types/game'
 
 export type MainPage =
-  | 'catalog' | 'watchlist' | 'playing' | 'seen' | 'completed' | 'liked' | 'favorites' | 'suggestions'
+  | 'catalog' | 'watchlist' | 'playing' | 'seen' | 'completed' | 'on_hold' | 'dropped'
+  | 'liked' | 'favorites' | 'suggestions'
 export type UtilityPage = 'alerts' | 'settings' | 'about'
 export type ActivePage = MainPage | UtilityPage
 
@@ -47,7 +50,8 @@ export const PAGE_SIZE = 24
 export const EARLIEST_YEAR = 1970
 
 export const ROUTABLE_MAIN_PAGES = new Set<MainPage>([
-  'watchlist', 'playing', 'seen', 'completed', 'liked', 'favorites', 'suggestions',
+  'watchlist', 'playing', 'seen', 'completed', 'on_hold', 'dropped',
+  'liked', 'favorites', 'suggestions',
 ])
 
 export const DEFAULT_FILTERS: GameFilters = {
@@ -116,10 +120,12 @@ export const mainNavItems: Array<NavItem<MainPage>> = [
 // One dedicated list entry per card action, each with its own accent colour
 // (mirrors the per-action hover colours on the game cards).
 export const collectionNavItems: Array<NavItem<CollectionKey>> = [
-  { id: 'watchlist', label: 'Wishlist', icon: CheckCircle2 },
+  { id: 'watchlist', label: 'Wishlist', icon: Bookmark },
   { id: 'playing', label: 'Playing', icon: Gamepad2 },
-  { id: 'seen', label: 'Played', icon: Eye },
-  { id: 'completed', label: 'Completed', icon: Flag },
+  { id: 'seen', label: 'Played', icon: History },
+  { id: 'completed', label: 'Completed', icon: Trophy },
+  { id: 'on_hold', label: 'On Hold', icon: CirclePause },
+  { id: 'dropped', label: 'Dropped', icon: CircleX },
   { id: 'liked', label: 'Liked', icon: Heart },
   { id: 'favorites', label: 'Favorites', icon: Star },
 ]
@@ -132,7 +138,7 @@ export const utilityNavItems: Array<NavItem<UtilityPage>> = [
 
 export const mobileNavItems: Array<NavItem<MainPage | 'alerts'>> = [
   { id: 'catalog', label: 'Home', icon: Home },
-  { id: 'watchlist', label: 'Wishlist', icon: CheckCircle2 },
+  { id: 'watchlist', label: 'Wishlist', icon: Bookmark },
   { id: 'suggestions', label: 'For You', icon: Compass },
   { id: 'alerts', label: 'Alerts', icon: Bell },
 ]
@@ -142,6 +148,8 @@ export const collectionLabels: Record<CollectionKey, string> = {
   playing: 'Playing',
   seen: 'Played',
   completed: 'Completed',
+  on_hold: 'On Hold',
+  dropped: 'Dropped',
   liked: 'Liked',
   favorites: 'Favorites',
 }
@@ -151,6 +159,8 @@ export const collectionPageMap: Partial<Record<MainPage, CollectionKey>> = {
   playing: 'playing',
   seen: 'seen',
   completed: 'completed',
+  on_hold: 'on_hold',
+  dropped: 'dropped',
   liked: 'liked',
   favorites: 'favorites',
 }

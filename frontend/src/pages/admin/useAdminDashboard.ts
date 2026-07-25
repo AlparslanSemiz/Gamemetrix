@@ -23,6 +23,7 @@ import {
   type DataFillStatus,
   type PeriodicJobs,
 } from '../../services/admin'
+import { setInternalAnalyticsTraffic } from '../../services/analyticsConsent'
 
 const AUDIT_LOG_LIMIT = 100
 const DATA_FILL_TARGET = 10_000
@@ -102,6 +103,7 @@ function useAdminSession(setError: ErrorSetter) {
     setError(null)
     try {
       const response = await loginAdmin(username.trim(), password)
+      setInternalAnalyticsTraffic(true)
       setToken(response.access_token)
       setPassword('')
     } catch (caught) {

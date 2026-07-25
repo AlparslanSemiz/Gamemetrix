@@ -1,16 +1,18 @@
 import { useEffect, useRef, useState, type RefObject } from 'react'
 import {
+  Bookmark,
   Check,
-  CheckCircle2,
   ChevronDown,
-  Eye,
-  Flag,
+  CirclePause,
+  CircleX,
   FolderPlus,
   Gamepad2,
   Heart,
+  History,
   Play,
   Share2,
   Star,
+  Trophy,
 } from 'lucide-react'
 import { trackProductEvent } from '../../services/analytics'
 import type { CollectionKey } from '../../state/collections'
@@ -23,7 +25,9 @@ import {
 // actions (library, wishlist) get their own buttons.
 const MENU_ITEMS: { key: CollectionKey; label: string; icon: typeof Star }[] = [
   { key: 'playing', label: 'Currently playing', icon: Gamepad2 },
-  { key: 'completed', label: 'Completed', icon: Flag },
+  { key: 'completed', label: 'Completed', icon: Trophy },
+  { key: 'on_hold', label: 'On Hold', icon: CirclePause },
+  { key: 'dropped', label: 'Dropped', icon: CircleX },
   { key: 'liked', label: 'Liked', icon: Heart },
   { key: 'favorites', label: 'Favorite', icon: Star },
 ]
@@ -112,7 +116,7 @@ export function CollectionActions({ slug, onOpenTrailer }: { slug: string; onOpe
         aria-pressed={inLibrary}
         onClick={() => toggle('seen', slug)}
       >
-        {inLibrary ? <Check size={15} aria-hidden="true" /> : <Eye size={15} aria-hidden="true" />}
+        {inLibrary ? <Check size={15} aria-hidden="true" /> : <History size={15} aria-hidden="true" />}
         {inLibrary ? 'In my games' : 'Add to my games'}
       </button>
 
@@ -122,7 +126,7 @@ export function CollectionActions({ slug, onOpenTrailer }: { slug: string; onOpe
         aria-pressed={inWishlist}
         onClick={() => toggle('watchlist', slug)}
       >
-        <CheckCircle2 size={15} aria-hidden="true" />
+        <Bookmark size={15} aria-hidden="true" />
         {inWishlist ? 'On wishlist' : 'Add to wishlist'}
       </button>
 

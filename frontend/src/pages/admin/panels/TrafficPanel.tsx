@@ -47,7 +47,7 @@ export function TrafficPanel({
           <div
             className="admin-traffic-day"
             key={row.date}
-            title={`${row.date}: ${row.visits} visits, ${row.visitors} visitors`}
+            title={`${row.date}: ${row.visits} page views, ${row.visitors} browser IDs`}
           >
             <div className="admin-bar-track">
               <span
@@ -97,10 +97,10 @@ function DayPicker({
 
 function TrafficTotals({ dashboard }: { dashboard: AdminDashboard | null }) {
   const totals: readonly (readonly [number, string])[] = [
-    [dashboard?.traffic.total_visits ?? 0, 'visits'],
-    [dashboard?.traffic.unique_visitors ?? 0, 'visitors'],
-    [dashboard?.traffic.unique_ips ?? 0, 'IPs'],
-    [dashboard?.traffic.unique_today ?? 0, 'unique today'],
+    [dashboard?.traffic.total_visits ?? 0, 'page views'],
+    [dashboard?.traffic.unique_visitors ?? 0, 'browser IDs'],
+    [dashboard?.traffic.unique_ips ?? 0, 'network IDs'],
+    [dashboard?.traffic.unique_today ?? 0, 'browser IDs today'],
   ]
   return (
     <div className="admin-inline-stats">

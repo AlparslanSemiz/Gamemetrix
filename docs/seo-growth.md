@@ -11,6 +11,7 @@ The only canonical origin is `https://gamemetrix.me`.
 | URL | Rendering | Index policy |
 | --- | --- | --- |
 | `/` | SSR catalog HTML | Index |
+| `/about` | SSR methodology and limitations | Index |
 | `/game/:slug` | SSR game HTML | Index only when the database quality gate passes and the page is in the initial publication set |
 | `/best/linux-games` | SSR curation | Index with at least five qualifying games |
 | `/best/steam-deck-games` | SSR curation | Index with at least five qualifying games |
@@ -44,7 +45,7 @@ A game can be published only when all checks pass:
 4. The normalized summary has at least 160 meaningful characters and is not a placeholder.
 5. At least two applicable primary sources are live: Metacritic, OpenCritic, Steam, and IGDB.
 6. At least one decision signal exists: Proton/Linux, HLTB/playtime, price, or award context.
-7. It ranks inside `SEO_INDEX_LIMIT`, initially 100.
+7. It ranks inside `SEO_INDEX_LIMIT`, initially 500.
 
 RAWG never fills one of the four primary slots. It is displayed under supplementary sources. Failing pages remain functional but receive `noindex,follow`, stay out of the XML sitemap, and show their exclusion reason in admin.
 
@@ -80,7 +81,7 @@ Do not generate combinatorial genre/platform/year pages until each page has a di
 - Every curation links to its game pages and sibling curations with ordinary `<a href>` links.
 - Every game page links its four named sources, official site when known, price destination, and relevant related games.
 - Show source coverage, data update date, Proton tier colors, HLTB, and price context visibly.
-- Add human review or original methodology notes to high-impression pages before expanding beyond the first 100 games.
+- Add human review or original methodology notes to high-impression pages before expanding beyond the first 500 games.
 - Preserve provider attribution and outbound URL requirements described in `docs/provider-access.md`.
 
 Google's [JavaScript SEO guidance](https://developers.google.com/search/docs/crawling-indexing/javascript/javascript-seo-basics) explains crawl, render, and index stages; SSR is used here so essential content is already present in the first response. Google's [helpful content guidance](https://developers.google.com/search/docs/fundamentals/creating-helpful-content) is the publication standard: pages must help people make a game decision, not exist merely to capture a query.
@@ -111,6 +112,22 @@ curl -sS https://gamemetrix.me/robots.txt
 5. Validate canonical selection, rendered HTML, structured data, mobile usability, and Core Web Vitals.
 6. Do not request indexing for pages that fail the quality gate.
 
+## GA4 setup
+
+1. Create one GA4 property for GameMetrix and one Web data stream for
+   `https://gamemetrix.me`.
+2. Put the resulting `G-...` value in the deployment environment as
+   `VITE_GA_MEASUREMENT_ID`, then rebuild the frontend image. Do not commit the
+   measurement ID to source-controlled environment files.
+3. Verify that no Google Analytics request is sent before the visitor selects
+   **Allow analytics**, and that choosing **Decline** stops later events.
+4. Mark administrator and test browsers as internal in Settings. Admin sign-in
+   does this automatically for that browser.
+5. Link the Search Console property from GA4 after both properties are verified.
+
+GA4 browser/device counts, GameMetrix browser IDs, and hashed network IDs are
+different approximations; none should be presented as an exact person count.
+
 ## Weekly CTR process
 
 Every Monday compare the last 28 days with the previous 28 days:
@@ -122,6 +139,10 @@ Every Monday compare the last 28 days with the previous 28 days:
 5. Make one attributable title/content/internal-link change per page cohort and annotate the date.
 6. Compare organic landing sessions to `signup_completed`, `wishlist_add`, `alert_enabled`, `store_outbound`, and returning visitors in admin.
 7. Expand the publication cap only when the current cohort is valid, useful, and receiving stable crawl/index coverage.
+
+After changing `SEO_INDEX_LIMIT`, run one controlled catalog SEO-state refresh so
+stored `seo_indexable` flags match the new cohort. Do not enable the full
+maintenance pass on every application boot.
 
 Performance targets are p75 LCP <= 2.5 s, INP <= 200 ms, and CLS <= 0.1.
 

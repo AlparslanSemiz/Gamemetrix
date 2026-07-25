@@ -31,6 +31,10 @@ def build_admin_dashboard(db: Session, days: int) -> dict[str, object]:
 
 
 def _catalog_metrics(db: Session) -> dict[str, object]:
+    indexable_games = _scalar_count(
+        db,
+        select(func.count(Game.id)).where(Game.seo_indexable.is_(True)),
+    )
     seo_exclusions = {
         reason or "indexable": count
         for reason, count in db.execute(
@@ -44,10 +48,8 @@ def _catalog_metrics(db: Session) -> dict[str, object]:
             db,
             select(func.count(Game.id)).where(Game.is_rankable.is_(True)),
         ),
-        "seo_indexable_games": _scalar_count(
-            db,
-            select(func.count(Game.id)).where(Game.seo_indexable.is_(True)),
-        ),
+        "seo_indexable_games": indexable_games,
+        "sitemap_game_pages": min(indexable_games, get_settings().SEO_INDEX_LIMIT),
         "seo_exclusions": seo_exclusions,
         "non_game_rows": _scalar_count(
             db,
@@ -99,6 +101,18 @@ def _traffic_metrics(
                 VisitEvent.ip_hash.is_not(None)
             ),
         ),
+        "total_sessions_all_time": _scalar_count(
+            db,
+            select(func.count(func.distinct(VisitEvent.session_id_hash))).where(
+                VisitEvent.session_id_hash.is_not(None)
+            ),
+        ),
+        "known_account_visitors": _scalar_count(
+            db,
+            select(func.count(func.distinct(VisitEvent.user_id))).where(
+                VisitEvent.user_id.is_not(None)
+            ),
+        ),
         "total_visits": _scalar_count(
             db,
             select(func.count(VisitEvent.id)).where(VisitEvent.created_at >= since),
@@ -133,6 +147,7 @@ def _traffic_metrics(
         "recent_visits": _recent_visits(db),
         "recent_ips": _recent_ips(db),
         "tracking": {
+            "bot_filtering": True,
             "raw_ip_enabled": cfg.ANALYTICS_STORE_RAW_IP,
             "trusted_proxy_headers": cfg.ANALYTICS_TRUST_PROXY_HEADERS,
             "raw_ip_retention_days": cfg.ANALYTICS_RAW_IP_RETENTION_DAYS,

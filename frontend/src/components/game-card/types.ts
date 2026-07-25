@@ -8,6 +8,8 @@ export interface GameCardCollectionState {
   isPlaying: boolean
   isSeen: boolean
   isCompleted: boolean
+  isOnHold: boolean
+  isDropped: boolean
   isWatchlisted: boolean
 }
 

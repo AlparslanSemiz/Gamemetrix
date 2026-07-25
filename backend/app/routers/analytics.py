@@ -44,6 +44,11 @@ AnalyticsEventType = Literal[
 
 _SLUG_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 _STORE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 .&'_+-]{0,79}$")
+_BOT_USER_AGENT_RE = re.compile(
+    r"(?:bot\b|crawler|spider|headlesschrome|lighthouse|pagespeed|"
+    r"pingdom|uptime|curl/|wget/|python-requests|httpx/|playwright|selenium)",
+    re.IGNORECASE,
+)
 _EVENT_PROPERTIES: dict[str, frozenset[str]] = {
     "signup_completed": frozenset({"method"}),
     "login_completed": frozenset({"method"}),
@@ -129,6 +134,10 @@ def _country_code(request: Request) -> str | None:
     return value if len(value) == 2 and value.isalpha() else None
 
 
+def _looks_like_bot(user_agent: str | None) -> bool:
+    return not user_agent or bool(_BOT_USER_AGENT_RE.search(user_agent))
+
+
 def _clean_path(path: str) -> str:
     value = path.strip()
     if value.startswith(("http://", "https://")):
@@ -173,6 +182,8 @@ def record_page_view(
     now = datetime.now(UTC)
     ip = _client_ip(request)
     user_agent = request.headers.get("user-agent", "")[:500]
+    if _looks_like_bot(user_agent):
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
     visitor_source = payload.visitor_id or f"{ip or 'unknown'}:{user_agent or 'unknown'}"
 
     # Retention is enforced by services.background.raw_analytics_retention_loop,
@@ -212,6 +223,8 @@ def record_event(
     principal: AccountPrincipal | None = Depends(optional_account_principal),
     _origin: None = Depends(require_same_origin),
 ) -> Response:
+    if _looks_like_bot(request.headers.get("user-agent")):
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
     allowed = _EVENT_PROPERTIES[payload.event_type]
     properties = {
         key: value

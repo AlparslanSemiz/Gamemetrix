@@ -128,6 +128,8 @@ html { font-size: 16px; }
 .side-rail button[data-collection="playing"] { --list-color: #a855f7; }  /* purple */
 .side-rail button[data-collection="seen"] { --list-color: #3b82f6; }  /* blue */
 .side-rail button[data-collection="completed"] { --list-color: #4ade80; }  /* green */
+.side-rail button[data-collection="on_hold"] { --list-color: #f59e0b; }  /* amber */
+.side-rail button[data-collection="dropped"] { --list-color: #f87171; }  /* red */
 .side-rail button[data-collection="liked"] { --list-color: #fb7185; }  /* rose */
 .side-rail button[data-collection="favorites"] { --list-color: #fbbf24; }  /* gold */
 
@@ -1844,6 +1846,8 @@ a.source-name-link:hover {
 }
 
 .catalog-attribution {
+  display: grid;
+  gap: 8px;
   margin-left: 82px;
   padding: 14px 24px 20px;
   color: #737986;
@@ -1854,6 +1858,24 @@ a.source-name-link:hover {
 
 .catalog-attribution a {
   color: #9ca3af;
+}
+
+.catalog-footer-nav {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px 16px;
+}
+
+.catalog-footer-nav a {
+  color: #b8bcc7;
+  font-weight: 750;
+  text-decoration: none;
+}
+
+.catalog-footer-nav a:hover {
+  color: #e5d9ff;
+  text-decoration: underline;
 }
 
 @media (max-width: 720px) {
@@ -2011,6 +2033,10 @@ a.source-name-link:hover {
 .compact-actions button[data-action="seen"] { --act-color: 59, 130, 246; }  /* blue */
 .action-column button[data-action="completed"],
 .compact-actions button[data-action="completed"] { --act-color: 74, 222, 128; }  /* green */
+.action-column button[data-action="on_hold"],
+.compact-actions button[data-action="on_hold"] { --act-color: 245, 158, 11; }  /* amber */
+.action-column button[data-action="dropped"],
+.compact-actions button[data-action="dropped"] { --act-color: 248, 113, 113; }  /* red */
 .action-column button[data-action="liked"],
 .compact-actions button[data-action="liked"] { --act-color: 251, 113, 133; }  /* rose */
 .action-column button[data-action="favorites"],
@@ -2036,6 +2062,18 @@ a.source-name-link:hover {
 
 .scroll-sentinel {
   min-height: 1px;
+}
+
+.settings-description {
+  margin: 0;
+  color: #969baa;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.settings-description strong {
+  color: #d9cfff;
+  text-transform: capitalize;
 }
 
 .load-more-error {

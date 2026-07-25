@@ -20,6 +20,7 @@ import {
   useCatalogFilterActions,
 } from './catalog/useCatalogActions'
 import { useCatalogBootstrap } from './catalog/useCatalogBootstrap'
+import { useCollectionGames } from './catalog/useCollectionGames'
 import { useCatalogScroll } from './catalog/useCatalogScroll'
 import {
   useCatalogRestoreCompletion,
@@ -144,13 +145,21 @@ export function AppContent({ initialGames = [], initialTotal = 0, initialPage }:
 
   useCatalogRestoreCompletion(restoredSnapshot, restoreInProgressRef)
 
-  useCatalogInfiniteScroll({ catalogTotal, isLoading, pagination })
-
   const { collections, collectionSets, toggle: handleToggleCollection } = useCollectionActions(setError)
+  const savedList = useCollectionGames(activePage, collections, games)
+
+  useCatalogInfiniteScroll({
+    catalogTotal,
+    enabled: savedList.collectionKey === undefined,
+    isLoading,
+    pagination,
+  })
 
   const visibleGames = useMemo(
-    () => visibleCatalogGames(activePage, collections, games),
-    [activePage, collections, games],
+    () => savedList.collectionKey
+      ? savedList.games
+      : visibleCatalogGames(activePage, collections, games),
+    [activePage, collections, games, savedList.collectionKey, savedList.games],
   )
   const pageTitle = useMemo(
     () => catalogPageTitle(activePage, activePreset, filters),
@@ -201,12 +210,12 @@ export function AppContent({ initialGames = [], initialTotal = 0, initialPage }:
         catalogTotal={catalogTotal}
         collections={collections}
         collectionSets={collectionSets}
-        error={error}
+        error={savedList.error ?? error}
         facets={facets}
         filters={filters}
         filtersOpen={filtersOpen}
         games={games}
-        isLoading={isLoading}
+        isLoading={isLoading || savedList.isLoading}
         isLoadingMore={isLoadingMore}
         libraryTotal={libraryTotal}
         loadMoreError={loadMoreError}
@@ -237,11 +246,19 @@ export function AppContent({ initialGames = [], initialTotal = 0, initialPage }:
       />
 
       <footer className="catalog-attribution">
-        Supplementary catalog metadata and imagery may be provided by{' '}
-        <a href="https://rawg.io/" target="_blank" rel="noopener noreferrer">RAWG</a>
-        {' '}and{' '}
-        <a href="https://gamebrain.co/" target="_blank" rel="noopener noreferrer">GameBrain</a>.
-        Rating and store sources are named and linked on each game.
+        <nav className="catalog-footer-nav" aria-label="GameMetrix information">
+          <a href="/about">Scoring methodology</a>
+          <a href="/best/linux-games">Best Linux games</a>
+          <a href="/best/steam-deck-games">Steam Deck games</a>
+          <a href="/deals">PC game deals</a>
+        </nav>
+        <span>
+          Supplementary catalog metadata and imagery may be provided by{' '}
+          <a href="https://rawg.io/" target="_blank" rel="noopener noreferrer">RAWG</a>
+          {' '}and{' '}
+          <a href="https://gamebrain.co/" target="_blank" rel="noopener noreferrer">GameBrain</a>.
+          Rating and store sources are named and linked on each game.
+        </span>
       </footer>
 
       {trailer.game ? (

@@ -37,6 +37,28 @@ test('home SSR and infinite catalog use the same full-catalog total', async ({ r
   expect(visibleText).not.toContain('1 / 400 loaded')
 })
 
+test('analytics starts only after an explicit privacy choice', async ({ page }) => {
+  const analyticsRequests: string[] = []
+  page.on('request', (request) => {
+    if (new URL(request.url()).pathname.startsWith('/api/analytics/')) {
+      analyticsRequests.push(request.url())
+    }
+  })
+
+  await gotoHydrated(page, '/')
+  await page.waitForTimeout(300)
+  expect(analyticsRequests).toEqual([])
+  await expect(page.getByLabel('Analytics privacy choice')).toBeVisible()
+
+  await page.getByRole('button', { name: 'Allow analytics' }).click()
+  await expect.poll(() => analyticsRequests.length).toBeGreaterThan(0)
+  await expect(page.getByLabel('Analytics privacy choice')).toHaveCount(0)
+
+  await page.getByTitle('Settings').click()
+  await expect(page.getByText(/Pseudonymous browser and session measurement is currently/)).toContainText('granted')
+  await expect(page.getByRole('button', { name: 'Allow' })).toHaveClass(/is-active/)
+})
+
 test('a stalled catalog page times out and retries without skipping it', async ({ page, request }) => {
   await request.post('http://127.0.0.1:8001/__test/catalog-delay', {
     data: { offset: 24, delay_ms: 3_000 },
@@ -52,13 +74,52 @@ test('a stalled catalog page times out and retries without skipping it', async (
   await expect(page.getByText('Catalog Test Game 25')).toBeVisible()
 })
 
+test('saved-list pages load their games directly without paging through the catalog', async ({ page }) => {
+  const catalogRequests: string[] = []
+  page.on('request', (request) => {
+    const url = new URL(request.url())
+    if (url.pathname === '/api/games') catalogRequests.push(url.search)
+  })
+  await page.addInitScript(() => {
+    localStorage.setItem('gamemetrix.collections', JSON.stringify({
+      watchlist: [],
+      playing: [],
+      seen: [],
+      completed: [],
+      on_hold: ['catalog-test-game-40'],
+      dropped: [],
+      liked: [],
+      favorites: [],
+    }))
+  })
+
+  await gotoHydrated(page, '/?view=on_hold')
+
+  await expect(page.getByRole('heading', { name: 'On Hold' })).toBeVisible()
+  await expect(page.getByText('Catalog Test Game 40')).toBeVisible()
+  await expect(page.getByText('Loading more…')).toHaveCount(0)
+  expect(catalogRequests).toHaveLength(1)
+  expect(new URLSearchParams(catalogRequests[0]).get('offset')).toBe('0')
+})
+
+test('collection icons match the meaning of each list', async ({ page }) => {
+  await gotoHydrated(page, '/')
+
+  await expect(page.getByTitle('Wishlist', { exact: true }).first().locator('svg.lucide-bookmark')).toBeVisible()
+  await expect(page.getByTitle('Played', { exact: true }).locator('svg.lucide-history')).toBeVisible()
+  await expect(page.getByTitle('Completed', { exact: true }).locator('svg.lucide-trophy')).toBeVisible()
+  await expect(page.getByTitle('On Hold', { exact: true }).locator('svg.lucide-circle-pause')).toBeVisible()
+  await expect(page.getByTitle('Dropped', { exact: true }).locator('svg.lucide-circle-x')).toBeVisible()
+  await expect(page.getByTitle('Add to wishlist').first().locator('svg.lucide-bookmark')).toBeVisible()
+})
+
 test('desktop and mobile navigation expose account controls without admin', async ({ page }) => {
   const hydrationErrors = []
   page.on('console', (message) => {
     if (message.type() === 'error' && /hydration/i.test(message.text())) hydrationErrors.push(message.text())
   })
   await gotoHydrated(page, '/')
-  await expect(page.getByRole('heading', { name: 'Game rankings' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Game scores and PC compatibility rankings' })).toBeVisible()
   await expect(page.getByTitle('Login')).toBeVisible()
   await expect(page.getByTitle('Admin')).toHaveCount(0)
   expect(hydrationErrors).toEqual([])
@@ -89,7 +150,7 @@ test('utility panels have dedicated noindex routes and return to catalog navigat
 
   await page.getByTitle('Home').click()
   await expect(page).toHaveURL('http://127.0.0.1:4173/')
-  await expect(page.getByRole('heading', { name: 'Game rankings' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Game scores and PC compatibility rankings' })).toBeVisible()
 
   await page.getByRole('button', { name: 'Wishlist', exact: true }).click()
   await expect(page).toHaveURL(/\?view=watchlist$/)
@@ -105,7 +166,7 @@ test('login merges valid guest collections and changes Login to Account', async 
   await page.evaluate(() => {
     localStorage.setItem('gamemetrix.collections', JSON.stringify({
       watchlist: ['complete-test-game', '../invalid'],
-      playing: [], seen: [], completed: [], liked: [], favorites: [],
+      playing: [], seen: [], completed: [], on_hold: [], dropped: [], liked: [], favorites: [],
     }))
   })
   await gotoHydrated(page, '/login')

@@ -178,16 +178,19 @@ function useCatalogPageLoad({
 
 export function useCatalogInfiniteScroll({
   catalogTotal,
+  enabled,
   isLoading,
   pagination,
 }: {
   catalogTotal: number
+  enabled: boolean
   isLoading: boolean
   pagination: CatalogPagination
 }) {
   const { hasMore, isLoadingMore, loaderRef, setOffset } = pagination
 
   useEffect(() => {
+    if (!enabled) return
     const element = loaderRef.current
     if (!element) return
     const observer = new IntersectionObserver(
@@ -203,5 +206,5 @@ export function useCatalogInfiniteScroll({
     )
     observer.observe(element)
     return () => observer.disconnect()
-  }, [catalogTotal, hasMore, isLoading, isLoadingMore, loaderRef, setOffset])
+  }, [catalogTotal, enabled, hasMore, isLoading, isLoadingMore, loaderRef, setOffset])
 }

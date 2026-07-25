@@ -1,3 +1,6 @@
+import { analyticsCollectionAllowed } from './analyticsConsent'
+import { trackGoogleEvent } from './googleAnalytics'
+
 const VISITOR_ID_KEY = 'gamemetrix.visitorId.v1'
 const SESSION_ID_KEY = 'gamemetrix.sessionId.v1'
 let memoryVisitorId: string | null = null
@@ -55,7 +58,7 @@ export type ProductEventType =
   | 'share'
 
 export function trackPageView(event: PageViewEvent): void {
-  if (navigator.doNotTrack === '1') return
+  if (navigator.doNotTrack === '1' || !analyticsCollectionAllowed()) return
 
   const body = JSON.stringify(event)
   const url = '/api/analytics/page-view'
@@ -78,7 +81,8 @@ export function trackProductEvent(
   eventType: ProductEventType,
   properties: Record<string, string | number | boolean | null> = {},
 ): void {
-  if (navigator.doNotTrack === '1') return
+  if (navigator.doNotTrack === '1' || !analyticsCollectionAllowed()) return
+  trackGoogleEvent(eventType, properties)
   fetch('/api/analytics/event', {
     method: 'POST',
     credentials: 'include',

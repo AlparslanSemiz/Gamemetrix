@@ -144,6 +144,16 @@
   margin-bottom: 12px;
 }
 
+.admin-identity-note {
+  max-width: 1180px;
+  margin: -2px auto 12px;
+  border-left: 2px solid rgba(167, 139, 250, 0.55);
+  color: #8d94a3;
+  font-size: 11px;
+  line-height: 1.5;
+  padding: 5px 9px;
+}
+
 .admin-metric,
 .admin-panel {
   border: 1px solid rgba(255, 255, 255, 0.075);

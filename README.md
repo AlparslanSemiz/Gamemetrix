@@ -82,6 +82,14 @@ counts. Behind the bundled nginx proxy, also set
 `ANALYTICS_TRUST_PROXY_HEADERS=true`. Do not enable trusted proxy headers when
 the backend is directly reachable from the internet.
 
+Analytics collection starts only after the visitor explicitly allows it in the
+site privacy control. Browser IDs are pseudonymous browser-storage identifiers,
+network IDs are hashed IP addresses, and neither is an exact person count.
+Automated user agents and browsers marked as internal traffic are excluded from
+newly collected metrics. Set `VITE_GA_MEASUREMENT_ID=G-...` in the root
+deployment environment to add consented GA4 collection; ad storage, Google
+signals, and advertising personalization remain disabled.
+
 ## Run Backend
 
 ```powershell

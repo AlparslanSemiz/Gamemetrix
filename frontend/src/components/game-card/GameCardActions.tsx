@@ -1,11 +1,13 @@
 import {
-  CheckCircle2,
-  Eye,
-  Flag,
+  Bookmark,
+  CirclePause,
+  CircleX,
   Gamepad2,
   Heart,
+  History,
   Share2,
   Star,
+  Trophy,
   type LucideIcon,
 } from 'lucide-react'
 import type { CollectionKey } from '../../state/collections'
@@ -23,7 +25,7 @@ const COLLECTION_ACTIONS: CollectionAction[] = [
   {
     collection: 'watchlist',
     compactSecondary: false,
-    icon: CheckCircle2,
+    icon: Bookmark,
     stateKey: 'isWatchlisted',
     title: 'Add to wishlist',
   },
@@ -37,16 +39,30 @@ const COLLECTION_ACTIONS: CollectionAction[] = [
   {
     collection: 'seen',
     compactSecondary: false,
-    icon: Eye,
+    icon: History,
     stateKey: 'isSeen',
     title: 'Mark as played',
   },
   {
     collection: 'completed',
     compactSecondary: true,
-    icon: Flag,
+    icon: Trophy,
     stateKey: 'isCompleted',
     title: 'Mark as completed',
+  },
+  {
+    collection: 'on_hold',
+    compactSecondary: true,
+    icon: CirclePause,
+    stateKey: 'isOnHold',
+    title: 'Put on hold',
+  },
+  {
+    collection: 'dropped',
+    compactSecondary: true,
+    icon: CircleX,
+    stateKey: 'isDropped',
+    title: 'Mark as dropped',
   },
   {
     collection: 'liked',

@@ -71,6 +71,25 @@ export async function getGames(
   }
 }
 
+export async function getGamesBySlugs(slugs: string[]): Promise<Game[]> {
+  if (slugs.length === 0) return []
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), catalogRequestTimeoutMs())
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/games/batch`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ slugs }),
+      signal: controller.signal,
+    })
+    if (!response.ok) throw new Error('Failed to fetch saved games')
+    const payload = await response.json() as GameListResponse
+    return payload.games
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
 export async function getGameBySlug(slug: string, refreshMetadata = false): Promise<Game> {
   const response = await fetch(`${API_BASE_URL}/api/games/${slug}?refresh=${refreshMetadata}`)
   if (!response.ok) throw new Error('Game not found')

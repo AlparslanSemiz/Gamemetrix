@@ -21,6 +21,7 @@ export interface AdminDashboard {
     total_games: number
     rankable_games: number
     seo_indexable_games: number
+    sitemap_game_pages: number
     seo_exclusions: Record<string, number>
     non_game_rows: number
     rating_snapshots: number
@@ -31,6 +32,8 @@ export interface AdminDashboard {
     total_visits_all_time: number
     total_unique_visitors: number
     total_unique_ips: number
+    total_sessions_all_time: number
+    known_account_visitors: number
     total_visits: number
     unique_visitors: number
     unique_ips: number
@@ -62,6 +65,7 @@ export interface AdminDashboard {
       last_seen: string
     }>
     tracking: {
+      bot_filtering: boolean
       raw_ip_enabled: boolean
       trusted_proxy_headers: boolean
       raw_ip_retention_days: number

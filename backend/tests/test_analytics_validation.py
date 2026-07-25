@@ -1,7 +1,13 @@
 import pytest
 from pydantic import ValidationError
 
-from app.routers.analytics import AnalyticsEventPayload, PageViewPayload, _clean_path, _clean_referrer
+from app.routers.analytics import (
+    AnalyticsEventPayload,
+    PageViewPayload,
+    _clean_path,
+    _clean_referrer,
+    _looks_like_bot,
+)
 
 
 def test_analytics_strips_query_fragments_and_referrer_credentials() -> None:
@@ -35,3 +41,25 @@ def test_analytics_accepts_only_opaque_ids_and_event_specific_values() -> None:
             event_type="store_outbound",
             properties={"game_slug": "complete-test-game", "store": "person@example.com"},
         )
+
+
+@pytest.mark.parametrize(
+    "user_agent",
+    [
+        None,
+        "",
+        "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)",
+        "Mozilla/5.0 HeadlessChrome/124.0 Lighthouse",
+        "curl/8.7.1",
+        "Playwright/1.51",
+    ],
+)
+def test_analytics_filters_automated_user_agents(user_agent: str | None) -> None:
+    assert _looks_like_bot(user_agent)
+
+
+def test_analytics_keeps_normal_browser_user_agents() -> None:
+    assert not _looks_like_bot(
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 Chrome/138.0.0.0 Safari/537.36"
+    )

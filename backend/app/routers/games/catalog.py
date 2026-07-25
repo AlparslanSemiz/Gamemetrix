@@ -10,7 +10,13 @@ from ...config import get_settings
 from ...database import get_db
 from ...models import Game
 from ...rate_limit import limiter
-from ...schemas import FacetsResponse, GameListResponse, GameSort, SortDirection
+from ...schemas import (
+    FacetsResponse,
+    GameListResponse,
+    GameSlugBatchRequest,
+    GameSort,
+    SortDirection,
+)
 from ...services.game_query import (
     CatalogFilters,
     apply_advanced_filters,
@@ -91,6 +97,24 @@ def list_games(
     total = db.scalar(count_q) or 0
     page_q = base_q.options(price_options).offset(offset).limit(limit)
     return GameListResponse(games=list(db.scalars(page_q).all()), total=total)
+
+
+@router.post("/api/games/batch", response_model=GameListResponse)
+@limiter.limit(get_settings().PUBLIC_READ_RATE_LIMIT)
+def games_by_slug(
+    request: Request,
+    payload: GameSlugBatchRequest,
+    db: Session = Depends(get_db),
+) -> GameListResponse:
+    """Resolve saved-list entries without walking every catalog page."""
+    rows = db.scalars(
+        select(Game)
+        .where(Game.slug.in_(payload.slugs))
+        .options(noload(Game.price_snapshots))
+    ).all()
+    by_slug = {game.slug: game for game in rows}
+    games = [by_slug[slug] for slug in payload.slugs if slug in by_slug]
+    return GameListResponse(games=games, total=len(games))
 
 
 @router.get("/api/facets", response_model=FacetsResponse)

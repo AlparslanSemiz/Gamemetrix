@@ -277,11 +277,10 @@ class Settings:
         self.DATA_FILL_PRICE_BATCH_SIZE: int = _env_int("DATA_FILL_PRICE_BATCH_SIZE", 48)
         self.DATA_FILL_HLTB_TARGET: int = _env_int("DATA_FILL_HLTB_TARGET", 5000)
         self.DATA_FILL_INTER_GAME_DELAY: float = _env_float("DATA_FILL_INTER_GAME_DELAY", 0.35)
-        # Ceiling on indexable game pages. This is a safety valve, not the quality
-        # gate — services/seo.py already excludes thin, unrated, or image-less
-        # entries. It defaulted to 100, which noindex'd all but the first hundred
-        # games in a ~10k catalogue and capped organic traffic by construction.
-        self.SEO_INDEX_LIMIT: int = _clamp(_env_int("SEO_INDEX_LIMIT", 50000), 1, 50_000)
+        # Publish search-facing game pages in reviewed cohorts. The quality gate
+        # still excludes thin, unrated, or image-less entries; this ceiling avoids
+        # presenting tens of thousands of API-generated pages to crawlers at once.
+        self.SEO_INDEX_LIMIT: int = _clamp(_env_int("SEO_INDEX_LIMIT", 500), 1, 50_000)
         # ── Heavy admin jobs (imports, refresh-all) — peak-hour block ────────
         # Both 0 (default) disables the block entirely. To pause heavy jobs
         # 18:00-23:00 local time, set HEAVY_JOB_BLOCK_START_HOUR=18 and
