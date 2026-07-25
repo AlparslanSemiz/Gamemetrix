@@ -28,6 +28,7 @@ let state = {
   dismissed_alerts: [],
 }
 let lastMerge = null
+let delayedCatalogPage = null
 
 const game = {
   id: 1,
@@ -120,6 +121,14 @@ async function body(request) {
 const server = http.createServer(async (request, response) => {
   const url = new URL(request.url ?? '/', 'http://127.0.0.1:8001')
   if (url.pathname === '/__test/merge') return json(response, 200, lastMerge ?? {})
+  if (url.pathname === '/__test/catalog-delay' && request.method === 'POST') {
+    const payload = await body(request)
+    delayedCatalogPage = {
+      offset: Math.max(0, Number(payload.offset ?? 0)),
+      delayMs: Math.max(0, Number(payload.delay_ms ?? 0)),
+    }
+    return json(response, 200, delayedCatalogPage)
+  }
   if (url.pathname === '/robots.txt') {
     response.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' })
     return response.end('User-agent: *\nDisallow: /api/\nSitemap: https://gamemetrix.me/sitemap.xml\n')
@@ -179,6 +188,11 @@ const server = http.createServer(async (request, response) => {
   if (url.pathname === '/api/games') {
     const offset = Math.max(0, Number(url.searchParams.get('offset') ?? 0))
     const limit = Math.max(1, Number(url.searchParams.get('limit') ?? 24))
+    if (delayedCatalogPage?.offset === offset) {
+      const { delayMs } = delayedCatalogPage
+      delayedCatalogPage = null
+      await new Promise((resolveDelay) => setTimeout(resolveDelay, delayMs))
+    }
     const pageSize = offset === 0 ? 1 : Math.min(limit, 48 - offset)
     const games = Array.from({ length: Math.max(0, pageSize) }, (_, index) => {
       const id = offset + index + 1
