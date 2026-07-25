@@ -23,7 +23,7 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from ..database import SessionLocal
 from ..models import JobRun
@@ -151,3 +151,26 @@ def latest_job_runs() -> dict[str, dict[str, object]]:
         log.debug("Job heartbeat read failed", exc_info=True)
         return {}
     return {row.job: _serialize(row) for row in rows}
+
+
+def recover_interrupted_job_runs() -> int:
+    """Close heartbeats left in ``running`` state by a backend restart."""
+    now = datetime.now(UTC)
+    try:
+        with SessionLocal() as db:
+            result = db.execute(
+                update(JobRun)
+                .where(JobRun.status == "running")
+                .values(
+                    status="failed",
+                    error="Interrupted by a backend restart.",
+                    finished_at=now,
+                    next_run_at=now,
+                    updated_at=now,
+                )
+            )
+            db.commit()
+            return int(result.rowcount or 0)
+    except Exception:
+        log.debug("Interrupted job heartbeat recovery failed", exc_info=True)
+        return 0

@@ -8,7 +8,13 @@ from ...database import SessionLocal
 from ...heavy_jobs import HEAVY_JOB_LOCK
 from ..job_heartbeat import record_job_run
 from ..seo import refresh_catalog_seo_states
-from .runs import finish_run, load_run, mark_run_running, queue_data_fill_run
+from .runs import (
+    finish_run,
+    load_run,
+    mark_run_running,
+    queue_data_fill_run,
+    save_run_progress,
+)
 from .stages import (
     audit_catalog_quality,
     fill_catalog,
@@ -58,7 +64,12 @@ async def execute_data_fill_run(run_id: int, *, force: bool, target_total: int) 
         mark_run_running(run_id)
         result = dict(_EMPTY_RESULT)
         try:
-            await _run_all_stages(result, force=force, target_total=target_total)
+            await _run_all_stages(
+                run_id,
+                result,
+                force=force,
+                target_total=target_total,
+            )
             finish_run(run_id, status="complete", result=result)
         except Exception as exc:
             log.error("Data fill run failed (%s)", type(exc).__name__)
@@ -71,6 +82,7 @@ async def execute_data_fill_run(run_id: int, *, force: bool, target_total: int) 
 
 
 async def _run_all_stages(
+    run_id: int,
     result: dict[str, object],
     *,
     force: bool,
@@ -78,23 +90,39 @@ async def _run_all_stages(
 ) -> None:
     before_missing = count_missing_external_ids()
     result["external_ids"] = {"before_missing": before_missing}
+    save_run_progress(run_id, result)
 
     result["catalog"] = await fill_catalog(target_total)
+    save_run_progress(run_id, result)
     result["quality"] = await audit_catalog_quality()
+    save_run_progress(run_id, result)
     result["repairs"] = await repair_catalog_quality()
+    save_run_progress(run_id, result)
     result["metacritic"] = await fill_metacritic()
+    save_run_progress(run_id, result)
     result["primary_scores"] = await fill_primary_scores(force=force)
+    save_run_progress(run_id, result)
     result["ratings"] = await fill_ratings(force=force)
+    save_run_progress(run_id, result)
     result["metadata"] = await fill_metadata()
+    save_run_progress(run_id, result)
     result["hltb"] = await fill_hltb()
+    save_run_progress(run_id, result)
     result["igdb_playtime"] = await fill_igdb_playtime()
+    save_run_progress(run_id, result)
     result["endless"] = await fill_endless()
+    save_run_progress(run_id, result)
     result["summaries"] = await fill_summaries()
+    save_run_progress(run_id, result)
     result["prices"] = await fill_prices()
+    save_run_progress(run_id, result)
 
     result["completeness"] = _sweep_completeness()
+    save_run_progress(run_id, result)
     result["seo"] = _refresh_seo()
+    save_run_progress(run_id, result)
     result["external_ids"] = _external_id_summary(before_missing)
+    save_run_progress(run_id, result)
 
 
 def _sweep_completeness() -> dict[str, object]:

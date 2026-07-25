@@ -1,5 +1,7 @@
 from datetime import UTC, date, datetime
 
+import pytest
+
 from app.integrations.types import NormalizedGame
 from app.models import Game
 from app.services.catalog_quality import (
@@ -13,6 +15,8 @@ from app.services.catalog_quality.remediation import (
     repair_fields,
     restore_repair,
 )
+from app.services.catalog_quality import research as research_module
+from app.services.catalog_quality import batch as quality_batch_module
 from app.services.metadata import clean_game_summary
 
 
@@ -73,6 +77,37 @@ def test_missing_developer_alone_does_not_trigger_ai_review() -> None:
     game = _game(developer=None)
 
     assert catalog_quality_signals(game) == []
+
+
+def test_missing_summary_alone_does_not_spend_an_ai_review() -> None:
+    game = _game(summary="")
+
+    assert catalog_quality_signals(game) == []
+
+
+def test_quality_scan_has_a_bounded_orm_window() -> None:
+    assert quality_batch_module._MAX_SCAN_ROWS <= 200
+
+
+@pytest.mark.asyncio
+async def test_catalog_repair_does_not_search_rawg_without_a_trusted_id(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def unexpected_search(*_args, **_kwargs):
+        pytest.fail("catalog repair must not spend RAWG on an unverified title search")
+
+    monkeypatch.setattr(
+        research_module.rawg_service,
+        "is_configured",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        research_module.rawg_service,
+        "search_game",
+        unexpected_search,
+    )
+
+    assert await research_module._research_rawg(_game(), None, True) is None
 
 
 def test_parse_quality_verdict_accepts_fenced_json_and_filters_fields() -> None:

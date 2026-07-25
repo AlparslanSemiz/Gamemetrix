@@ -113,35 +113,19 @@ async def _research_igdb(
 async def _research_rawg(
     game: Game,
     external: ExternalId | None,
-    allow_search: bool,
+    _allow_search: bool,
 ) -> ResearchedGame | None:
     if not rawg_service.is_configured():
         return None
     trusted = _trusted_numeric_id(external)
-    if trusted:
-        record = await rawg_service.get_by_rawg_id(int(external.external_id))
-    elif allow_search:
-        search = await rawg_service.search_game(game.title, release_year=_release_year(game))
-        record = (
-            await rawg_service.get_by_rawg_id(int(search.external_id))
-            if search and search.external_id.isdigit()
-            else search
-        )
-    else:
-        record = None
-    if trusted and allow_search and record and not _search_identity_matches(
+    if not trusted:
+        return None
+    record = await rawg_service.get_by_rawg_id(int(external.external_id))
+    if record is None or not _search_identity_matches(
         game, record.name, record.release_date
     ):
-        search = await rawg_service.search_game(game.title, release_year=_release_year(game))
-        record = (
-            await rawg_service.get_by_rawg_id(int(search.external_id))
-            if search and search.external_id.isdigit()
-            else search
-        )
-        trusted = False
-    if record is None or (not trusted and not _search_identity_matches(game, record.name, record.release_date)):
         return None
-    return ResearchedGame(record=record, trusted_identity=trusted)
+    return ResearchedGame(record=record, trusted_identity=True)
 
 
 async def _research_wikidata(

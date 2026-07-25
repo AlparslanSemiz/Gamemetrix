@@ -7,29 +7,36 @@ the server; the catalog remains interactive after hydration.
 
 ## Run PostgreSQL
 
+Copy `.env.example` to the gitignored root `.env` and replace its URL-safe
+PostgreSQL password. Docker Compose loads these values automatically. For a
+one-off shell session, the equivalent is:
+
 ```powershell
 $env:POSTGRES_USER="gamemetrix"
 $env:POSTGRES_PASSWORD="<choose-a-local-password>"
+$env:POSTGRES_DB="gamemetrix"
 docker compose up -d db
 ```
 
-Set `backend\.env` with a matching PostgreSQL database URL. When the backend
-runs directly on Windows:
+When the backend runs directly on Windows, set `backend\.env` with a matching
+PostgreSQL database URL:
 
 ```text
 DATABASE_URL=postgresql+psycopg://gamemetrix:<choose-a-local-password>@localhost:5432/gamemetrix
 ```
 
-When the backend runs inside Docker Compose, use the Compose service hostname:
+Docker Compose builds the container's `DATABASE_URL` from the same
+`POSTGRES_USER`, `POSTGRES_PASSWORD`, and `POSTGRES_DB` values used by the
+database service:
 
 ```text
-DATABASE_URL=postgresql+psycopg://gamemetrix:<choose-a-local-password>@db:5432/gamemetrix
+postgresql+psycopg://<POSTGRES_USER>:<POSTGRES_PASSWORD>@db:5432/<POSTGRES_DB>
 ```
 
-Keep the username, password, and database name aligned with the root Compose
-PostgreSQL settings. For always-on periodic enrichment, the Docker form (`@db`)
-is the intended `backend/.env` value. Override `DATABASE_URL` in the host shell
-when running migrations or scripts directly from Windows.
+Compose therefore overrides any host-only `DATABASE_URL` from `backend/.env`;
+provider credentials still come from that file. Use URL-safe characters in the
+Compose PostgreSQL username and password because those values are interpolated
+into the connection URL.
 
 `DATABASE_URL` is required. The backend intentionally supports one runtime
 database: PostgreSQL.
@@ -57,6 +64,16 @@ second catalog.
 Copy the non-secret settings from `backend/.env.example` and fill the provider
 credentials you use. API Health reports rejected, expired, and misrouted
 providers without returning credential values.
+
+The full 50k-row classify/rescore/deduplicate pass is intentionally disabled on
+ordinary boots (`STARTUP_CATALOG_MAINTENANCE_ENABLED=false`) so API readiness
+does not wait behind a CPU- and memory-heavy maintenance scan. Enable it for one
+controlled restart only when that complete recomputation is explicitly needed.
+
+The Compose PostgreSQL service is deliberately tuned below its 160 MiB cgroup
+limit (`shared_buffers=64MB`, `work_mem=2MB`,
+`maintenance_work_mem=32MB`, `max_connections=40`). Keep those values aligned
+with the container memory limit if deployment resources change.
 
 Visitor counts are available in the admin dashboard. To retain exact IPs for
 new visits, set `ANALYTICS_STORE_RAW_IP=true`; raw IPs are removed after

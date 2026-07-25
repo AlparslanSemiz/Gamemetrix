@@ -153,7 +153,7 @@ async def _fetch_itad_snapshot(
         source="ITAD",
         store=price_data.store or "Best tracked PC store",
         platform="PC",
-        region="EU",
+        region="DE",
         currency=price_data.currency,
         list_price=price_data.list_price,
         sale_price=price_data.sale_price,

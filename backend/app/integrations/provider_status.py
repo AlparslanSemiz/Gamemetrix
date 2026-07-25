@@ -60,6 +60,14 @@ def get_provider_statuses() -> list[dict[str, str]]:
             ),
         },
         {
+            "source": "Groq",
+            "status": "ready" if cfg.groq_configured() else "needs_credentials",
+            "detail": (
+                "Reviews suspicious catalog rows and generates bounded text under "
+                "one shared persistent free-tier budget."
+            ),
+        },
+        {
             "source": "OpenCritic",
             "status": "ready" if opencritic_ready else "needs_provider",
             "detail": "Configure an approved OpenCritic/RapidAPI/export provider before live calls.",

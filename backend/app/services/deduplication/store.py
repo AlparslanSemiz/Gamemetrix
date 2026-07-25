@@ -40,7 +40,8 @@ def build_duplicate_candidate_index(db: Session) -> DuplicateCandidateIndex:
     index: DuplicateCandidateIndex = {}
     rows = db.execute(
         select(Game.id, Game.title, Game.slug, Game.release_year, Game.content_type)
-    ).all()
+        .execution_options(yield_per=1000)
+    )
     for row in rows:
         add_duplicate_candidate(index, row)
     return index

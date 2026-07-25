@@ -121,7 +121,10 @@ class Settings:
         self.RAPIDAPI_KEY: str = _env("RAPIDAPI_KEY")
         self.RAPIDAPI_HOST: str = _env("RAPIDAPI_HOST", "opencritic-api.p.rapidapi.com")
         self.GROQ_API_KEY: str = _env("GROQ_API_KEY")
-        self.GROQ_MODEL: str = _env("GROQ_MODEL", "llama-3.1-8b-instant")
+        self.GROQ_MODEL: str = _env("GROQ_MODEL", "openai/gpt-oss-20b")
+        self.GROQ_MIN_REQUEST_INTERVAL_SECONDS: float = max(
+            12.0, _env_float("GROQ_MIN_REQUEST_INTERVAL_SECONDS", 12.0)
+        )
         self.ITAD_API_KEY: str = _env("ITAD_API_KEY")
         self.STEAM_WEB_API_KEY: str = _env("STEAM_WEB_API_KEY")
         self.GAMEBRAIN_API_KEY: str = _env("GAMEBRAIN_API_KEY")
@@ -173,6 +176,12 @@ class Settings:
         self.ITAD_DAILY_LIMIT: int = _env_int("ITAD_DAILY_LIMIT", 200)
         self.HLTB_DAILY_LIMIT: int = _env_int("HLTB_DAILY_LIMIT", 250)
         self.WIKIDATA_DAILY_LIMIT: int = _env_int("WIKIDATA_DAILY_LIMIT", 200)
+        # The free gpt-oss-20b allowance is token-limited before its 1,000 RPD
+        # ceiling for our catalog prompts. Keep one shared conservative budget
+        # across summaries, quality review, endless detection, and reranking.
+        self.GROQ_DAILY_LIMIT: int = _clamp(
+            _env_int("GROQ_DAILY_LIMIT", 150), 1, 150
+        )
         # Free GameBrain accounts get 50 tokens/day. Keep this hard default below
         # that ceiling even when the global reserve is explicitly set to zero.
         self.GAMEBRAIN_DAILY_LIMIT: int = _clamp(
@@ -230,7 +239,9 @@ class Settings:
         # ── Description shortening (summary_short) backfill ──────────────────
         self.SUMMARY_SHORTEN_INTERVAL_MINUTES: float = _env_float("SUMMARY_SHORTEN_INTERVAL_MINUTES", 30)
         self.SUMMARY_SHORTEN_BATCH_SIZE: int = _env_int("SUMMARY_SHORTEN_BATCH_SIZE", 40)
-        self.SUMMARY_SHORTEN_STARTUP_LIMIT: int = _env_int("SUMMARY_SHORTEN_STARTUP_LIMIT", 60)
+        self.SUMMARY_SHORTEN_STARTUP_LIMIT: int = _env_int(
+            "SUMMARY_SHORTEN_STARTUP_LIMIT", 0
+        )
         # ── Endless (∞) playtime classification ──────────────────────────────
         # Roguelikes/MMOs/sandbox etc. have no completion time; flag them so they
         # stop reading as "missing HLTB". Heuristic first, Groq for the unclear ones.
@@ -249,10 +260,13 @@ class Settings:
         # additionally needs a strong marker and this explicit opt-in.
         self.NONGAME_AUTODELETE_ENABLED: bool = _env_bool("NONGAME_AUTODELETE_ENABLED", False)
         self.CATALOG_QUALITY_BATCH_SIZE: int = _env_int("CATALOG_QUALITY_BATCH_SIZE", 40)
-        self.CATALOG_REPAIR_BATCH_SIZE: int = _env_int("CATALOG_REPAIR_BATCH_SIZE", 40)
+        self.CATALOG_REPAIR_BATCH_SIZE: int = _env_int("CATALOG_REPAIR_BATCH_SIZE", 10)
 
     def _load_data_fill_settings(self) -> None:
         # ── Data fill orchestration ─────────────────────────────────────────
+        self.STARTUP_CATALOG_MAINTENANCE_ENABLED: bool = _env_bool(
+            "STARTUP_CATALOG_MAINTENANCE_ENABLED", False
+        )
         self.DATA_FILL_ENABLED: bool = _env_bool("DATA_FILL_ENABLED", True)
         self.DATA_FILL_TARGET_TOTAL: int = _env_int("DATA_FILL_TARGET_TOTAL", 50000)
         self.DATA_FILL_INTERVAL_HOURS: float = _env_float("DATA_FILL_INTERVAL_HOURS", 24)
@@ -307,6 +321,7 @@ class Settings:
             "HLTB": self.HLTB_DAILY_LIMIT,
             "Wikidata": self.WIKIDATA_DAILY_LIMIT,
             "GameBrain": self.GAMEBRAIN_DAILY_LIMIT,
+            "Groq": self.GROQ_DAILY_LIMIT,
         }
 
     def provider_budget_aliases(self) -> dict[str, str]:

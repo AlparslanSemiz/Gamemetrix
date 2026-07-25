@@ -160,27 +160,35 @@ class _IGDBCatalogLookup:
     game_ids_by_igdb_id: dict[str, int]
     game_ids_by_slug: dict[str, int]
     game_ids_by_lower_title: dict[str, int]
-    external_ids_by_game_id: dict[int, ExternalId]
+    external_ids_by_game_id: dict[int, tuple[int, str]]
     duplicate_candidates: DuplicateCandidateIndex
 
 
 def _build_igdb_catalog_lookup(db: Session) -> _IGDBCatalogLookup:
-    game_rows = db.execute(
-        select(Game.id, Game.slug, Game.title).order_by(Game.id)
-    ).all()
-    external_ids = db.scalars(
-        select(ExternalId)
+    by_game_id: dict[int, tuple[int, str]] = {}
+    by_igdb_id: dict[str, int] = {}
+    external_ids = db.execute(
+        select(
+            ExternalId.id,
+            ExternalId.game_id,
+            ExternalId.external_id,
+        )
         .where(ExternalId.source == "IGDB")
         .order_by(ExternalId.id)
-    ).all()
-    by_game_id: dict[int, ExternalId] = {}
-    by_igdb_id: dict[str, int] = {}
-    for external in external_ids:
-        by_game_id.setdefault(external.game_id, external)
-        if external.external_id:
-            by_igdb_id.setdefault(external.external_id, external.game_id)
+        .execution_options(yield_per=1000)
+    )
+    for external_id, game_id, external_value in external_ids:
+        by_game_id.setdefault(game_id, (external_id, external_value))
+        if external_value:
+            by_igdb_id.setdefault(external_value, game_id)
+
     by_slug: dict[str, int] = {}
     by_lower_title: dict[str, int] = {}
+    game_rows = db.execute(
+        select(Game.id, Game.slug, Game.title)
+        .order_by(Game.id)
+        .execution_options(yield_per=1000)
+    )
     for row in game_rows:
         by_slug.setdefault(row.slug, row.id)
         by_lower_title.setdefault(row.title.lower(), row.id)
@@ -205,15 +213,19 @@ def _upsert_igdb_external_id(
         return
     now = datetime.now(UTC)
     existing = (
-        lookup.external_ids_by_game_id.get(game.id)
-        if lookup is not None
-        else db.scalar(
-            select(ExternalId).where(
-                ExternalId.game_id == game.id,
-                ExternalId.source == "IGDB",
+        db.get(ExternalId, lookup.external_ids_by_game_id[game.id][0])
+        if lookup is not None and game.id in lookup.external_ids_by_game_id
+        else None
+    )
+    if lookup is None:
+        existing = (
+            db.scalar(
+                select(ExternalId).where(
+                    ExternalId.game_id == game.id,
+                    ExternalId.source == "IGDB",
+                )
             )
         )
-    )
     if existing:
         old_external_id = existing.external_id
         existing.external_id = igdb_id
@@ -237,8 +249,9 @@ def _upsert_igdb_external_id(
         updated_at=now,
     )
     db.add(external)
+    db.flush()
     if lookup is not None:
-        lookup.external_ids_by_game_id[game.id] = external
+        lookup.external_ids_by_game_id[game.id] = (external.id, igdb_id)
         lookup.game_ids_by_igdb_id[igdb_id] = game.id
 
 

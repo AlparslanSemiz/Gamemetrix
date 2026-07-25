@@ -53,7 +53,10 @@ def catalog_quality_signals(
         signals.append("suspicious_title")
     if _URL_RE.search(title) or _REPEATED_CHAR_RE.search(title):
         signals.append("malformed_title")
-    if not summary or len(summary) < _MIN_SUMMARY_CHARS:
+    # An empty summary is a deterministic metadata gap, not an AI judgment.
+    # Keep short non-empty text in review because it can be a placeholder,
+    # truncation, or a legitimate compact description.
+    if summary and len(summary) < _MIN_SUMMARY_CHARS:
         signals.append("weak_summary")
     if _HTML_RE.search(summary):
         signals.append("raw_html_summary")
@@ -85,10 +88,6 @@ def _has_malformed_json_fields(game: Game) -> bool:
         (game.genres, str),
         (game.platforms, str),
         (game.source_scores, dict),
-        (game.screenshots, str),
-        (game.system_requirements, dict),
-        (game.dlcs, dict),
-        (game.similar_games, dict),
     )
     return any(
         not isinstance(values, list) or any(not isinstance(item, expected) for item in values)

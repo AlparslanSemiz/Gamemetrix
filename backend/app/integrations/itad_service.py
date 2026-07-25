@@ -22,12 +22,18 @@ from .value_score import PriceData
 log = logging.getLogger(__name__)
 
 ITAD_BASE = "https://api.isthereanydeal.com"
+DEFAULT_ITAD_COUNTRY = "DE"
 SMOKE_TEST_TITLE = "Hades"
 SMOKE_TEST_TITLES = ["Hades", "Portal 2", "Celeste", "Elden Ring", "Baldur's Gate 3"]
 
 
 def _auth_header() -> dict[str, str]:
     return {"ITAD-API-Key": get_settings().ITAD_API_KEY}
+
+
+def _country_code(country: str) -> str:
+    normalized = (country or "").strip().upper()
+    return normalized if len(normalized) == 2 and normalized.isalpha() else DEFAULT_ITAD_COUNTRY
 
 
 @dataclass(frozen=True)
@@ -86,7 +92,7 @@ def _history_low(low: dict | None) -> tuple[float | None, date | None]:
         low_price.get("amount") if isinstance(low_price, dict) else None,
         maximum=1_000_000.0,
     )
-    raw_date = low.get("recorded")
+    raw_date = low.get("timestamp") or low.get("recorded")
     if not raw_date:
         return amount, None
     try:
@@ -228,18 +234,23 @@ class ITADService:
             log.debug("ITAD steam appid lookup failed for %d: %s", app_id, exc)
         return None
 
-    async def get_prices(self, itad_id: str, country: str = "EU") -> list[dict]:
-        """GET /games/prices/v3 — current store prices."""
+    async def get_prices(
+        self,
+        itad_id: str,
+        country: str = DEFAULT_ITAD_COUNTRY,
+    ) -> list[dict]:
+        """POST /games/prices/v3 — current store prices."""
         if not self.is_configured() or not itad_id:
             return []
         if not await get_rate_limiter().acquire("ITAD"):
             return []
         try:
             async with httpx.AsyncClient(timeout=10) as client:
-                resp = await client.get(
+                resp = await client.post(
                     f"{ITAD_BASE}/games/prices/v3",
                     headers=_auth_header(),
-                    params={"id": itad_id, "country": country, "capacity": 20},
+                    params={"country": _country_code(country), "capacity": 20},
+                    json=[itad_id],
                 )
                 resp.raise_for_status()
             results = resp.json()
@@ -255,18 +266,23 @@ class ITADService:
             log.debug("ITAD prices failed for %s: %s", itad_id, exc)
         return []
 
-    async def get_history_low(self, itad_id: str, country: str = "EU") -> dict | None:
-        """GET /games/historylow/v1 — all-time lowest price."""
+    async def get_history_low(
+        self,
+        itad_id: str,
+        country: str = DEFAULT_ITAD_COUNTRY,
+    ) -> dict | None:
+        """POST /games/historylow/v1 — all-time lowest price."""
         if not self.is_configured() or not itad_id:
             return None
         if not await get_rate_limiter().acquire("ITAD"):
             return None
         try:
             async with httpx.AsyncClient(timeout=10) as client:
-                resp = await client.get(
+                resp = await client.post(
                     f"{ITAD_BASE}/games/historylow/v1",
                     headers=_auth_header(),
-                    params={"id": itad_id, "country": country},
+                    params={"country": _country_code(country)},
+                    json=[itad_id],
                 )
                 resp.raise_for_status()
             results = resp.json()
@@ -282,17 +298,17 @@ class ITADService:
         return None
 
     async def get_subscriptions(self, itad_id: str) -> list[str]:
-        """GET /games/subscriptions/v1 — which subscription services include the game."""
+        """POST /games/subs/v1 — which subscription services include the game."""
         if not self.is_configured() or not itad_id:
             return []
         if not await get_rate_limiter().acquire("ITAD"):
             return []
         try:
             async with httpx.AsyncClient(timeout=10) as client:
-                resp = await client.get(
-                    f"{ITAD_BASE}/games/subscriptions/v1",
+                resp = await client.post(
+                    f"{ITAD_BASE}/games/subs/v1",
                     headers=_auth_header(),
-                    params={"id": itad_id},
+                    json=[itad_id],
                 )
                 resp.raise_for_status()
             results = resp.json()
@@ -302,7 +318,7 @@ class ITADService:
                 if not isinstance(entry, dict):
                     continue
                 if str(entry.get("id")) == itad_id:
-                    subscriptions = entry.get("subscriptions", [])
+                    subscriptions = entry.get("subs", [])
                     if not isinstance(subscriptions, list):
                         return []
                     return [
@@ -317,7 +333,7 @@ class ITADService:
     async def fetch_price_data(
         self,
         title: str,
-        country: str = "EU",
+        country: str = DEFAULT_ITAD_COUNTRY,
         steam_appid: int | None = None,
     ) -> PriceData | None:
         """Full pipeline: title → ITAD ID → prices + history + subscriptions → PriceData."""

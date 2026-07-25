@@ -4,23 +4,29 @@ import asyncio
 from collections import Counter
 
 from sqlalchemy import select
-from sqlalchemy.orm import Session, noload
+from sqlalchemy.orm import Session
 
 from ..config import get_settings
 from ..database import SessionLocal
 from ..integrations.rate_limiter import get_rate_limiter
+from ..integrations.source_registry import applicable_for_game
 from ..integrations.sync import refresh_game_sources, score_value
 from ..models import Game
 
 PRIMARY_SCORE_SOURCES: tuple[str, ...] = ("OpenCritic", "Metacritic", "IGDB", "Steam")
+_SCAN_CHUNK = 500
 
 
 def _has_live_score(game: Game, source: str) -> bool:
+    return _has_live_score_values(game.source_scores, source)
+
+
+def _has_live_score_values(source_scores: list[dict], source: str) -> bool:
     return any(
         row.get("source") == source
         and row.get("status") == "live"
         and score_value(row) is not None
-        for row in game.source_scores
+        for row in source_scores
     )
 
 
@@ -45,42 +51,50 @@ def _source_configured(source: str) -> bool:
 
 
 def primary_score_coverage_status() -> dict[str, object]:
-    with SessionLocal() as db:
-        games = list(
-            db.scalars(
-                select(Game)
-                .where(Game.content_type == "game")
-                .options(noload(Game.price_snapshots))
-            ).all()
-        )
-
-    total = len(games)
-    source_rows: dict[str, dict[str, int | bool]] = {}
+    source_rows: dict[str, dict[str, int | bool]] = {
+        source: {
+            "live": 0,
+            "missing": 0,
+            "applicable": 0,
+            "not_applicable": 0,
+            "configured": _source_configured(source),
+        }
+        for source in PRIMARY_SCORE_SOURCES
+    }
+    total = 0
     total_live_slots = 0
     total_missing_slots = 0
     complete_games = 0
 
-    for source in PRIMARY_SCORE_SOURCES:
-        applicable = sum(1 for game in games if source in game.applicable_primary_sources)
-        live = sum(
-            1
-            for game in games
-            if source in game.applicable_primary_sources and _has_live_score(game, source)
+    # Stream plain column tuples instead of materialising 50k full Game ORM
+    # objects (including every large metadata JSON field) in the API process.
+    with SessionLocal() as db:
+        rows = db.execute(
+            select(Game.platforms, Game.source_scores)
+            .where(Game.content_type == "game")
+            .execution_options(yield_per=_SCAN_CHUNK)
         )
-        missing = applicable - live
-        total_live_slots += live
-        total_missing_slots += missing
-        source_rows[source] = {
-            "live": live,
-            "missing": missing,
-            "applicable": applicable,
-            "not_applicable": total - applicable,
-            "configured": _source_configured(source),
-        }
-
-    for game in games:
-        if not missing_primary_score_sources(game):
-            complete_games += 1
+        for platforms, source_scores in rows:
+            total += 1
+            applicable = applicable_for_game(
+                [value for value in (platforms or []) if isinstance(value, str)]
+            )
+            missing_count = 0
+            for source in PRIMARY_SCORE_SOURCES:
+                source_row = source_rows[source]
+                if source not in applicable:
+                    source_row["not_applicable"] = int(source_row["not_applicable"]) + 1
+                    continue
+                source_row["applicable"] = int(source_row["applicable"]) + 1
+                if _has_live_score_values(source_scores or [], source):
+                    source_row["live"] = int(source_row["live"]) + 1
+                    total_live_slots += 1
+                else:
+                    source_row["missing"] = int(source_row["missing"]) + 1
+                    total_missing_slots += 1
+                    missing_count += 1
+            if missing_count == 0:
+                complete_games += 1
 
     return {
         "sources": source_rows,
@@ -97,23 +111,28 @@ def primary_score_coverage_status() -> dict[str, object]:
 
 
 def primary_score_backfill_candidates(db: Session, limit: int, *, force: bool = False) -> list[tuple[int, tuple[str, ...]]]:
-    games = list(
-        db.scalars(
-            select(Game)
-            .where(Game.content_type == "game")
-            .options(noload(Game.price_snapshots))
-        ).all()
-    )
-
     scored: list[tuple[int, tuple[str, ...], float]] = []
-    for game in games:
+    rows = db.execute(
+        select(Game.id, Game.platforms, Game.source_scores, Game.rank_score)
+        .where(Game.content_type == "game")
+        .execution_options(yield_per=_SCAN_CHUNK)
+    )
+    for game_id, platforms, source_scores, rank_score in rows:
+        applicable = applicable_for_game(
+            [value for value in (platforms or []) if isinstance(value, str)]
+        )
         missing = (
-            tuple(source for source in PRIMARY_SCORE_SOURCES if source in game.applicable_primary_sources)
+            tuple(source for source in PRIMARY_SCORE_SOURCES if source in applicable)
             if force
-            else missing_primary_score_sources(game)
+            else tuple(
+                source
+                for source in PRIMARY_SCORE_SOURCES
+                if source in applicable
+                and not _has_live_score_values(source_scores or [], source)
+            )
         )
         if missing:
-            scored.append((game.id, tuple(missing), game.rank_score))
+            scored.append((game_id, missing, rank_score))
 
     # Emptiest-first: games missing the most primary sources are filled before
     # the near-complete ones, so a per-source daily budget reaches the catalog

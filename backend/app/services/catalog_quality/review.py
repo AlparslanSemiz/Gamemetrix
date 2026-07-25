@@ -79,6 +79,7 @@ async def ai_review(
         prompt,
         max_output_tokens=_AI_MAX_OUTPUT_TOKENS,
         temperature=_AI_TEMPERATURE,
+        json_object=True,
     )
     verdict = parse_quality_verdict(answer)
     if answer and verdict is None:

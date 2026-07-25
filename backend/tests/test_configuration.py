@@ -19,6 +19,22 @@ def test_development_allows_log_email_delivery(monkeypatch: pytest.MonkeyPatch) 
     Settings().validate()
 
 
+def test_full_catalog_maintenance_does_not_run_on_every_boot(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("STARTUP_CATALOG_MAINTENANCE_ENABLED", raising=False)
+
+    assert Settings().STARTUP_CATALOG_MAINTENANCE_ENABLED is False
+
+
+def test_catalog_repairs_default_to_a_bounded_memory_batch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("CATALOG_REPAIR_BATCH_SIZE", raising=False)
+
+    assert Settings().CATALOG_REPAIR_BATCH_SIZE <= 10
+
+
 def test_configuration_rejects_non_postgres_database(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DATABASE_URL", "sqlite:///legacy.db")
     with pytest.raises(RuntimeError, match=r"postgresql\+psycopg"):

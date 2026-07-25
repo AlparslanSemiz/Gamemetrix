@@ -101,6 +101,13 @@ def test_itad_price_normalization_preserves_best_deal_and_history() -> None:
     assert low == 7.5
     assert recorded is not None and recorded.isoformat() == "2026-01-12"
 
+    _, official_timestamp = _history_low({
+        "price": {"amount": 6.0},
+        "timestamp": "2026-02-03T14:20:00+01:00",
+    })
+    assert official_timestamp is not None
+    assert official_timestamp.isoformat() == "2026-02-03"
+
 
 def test_steam_normalization_keeps_metadata_groups_separate() -> None:
     normalized = SteamService()._normalize(620, {

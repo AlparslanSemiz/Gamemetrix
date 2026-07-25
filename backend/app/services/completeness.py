@@ -14,7 +14,7 @@ Public API:
 import logging
 
 from sqlalchemy import select
-from sqlalchemy.orm import Session, noload
+from sqlalchemy.orm import Session, load_only, noload
 
 from ..models import Game
 from .metadata import looks_like_promo, summary_needs_enrichment
@@ -66,14 +66,45 @@ def sweep_data_complete(db: Session) -> dict[str, int]:
     """Recompute the flag for the whole catalog. No API calls — pure state."""
     complete = 0
     changed = 0
-    for game in db.scalars(
-        select(Game).where(Game.content_type == "game").options(noload(Game.price_snapshots))
-    ):
+    pending: list[Game] = []
+    games = db.scalars(
+        select(Game)
+        .where(Game.content_type == "game")
+        .options(
+            load_only(
+                Game.id,
+                Game.content_type,
+                Game.platforms,
+                Game.source_scores,
+                Game.summary,
+                Game.cover_url,
+                Game.release_year,
+                Game.playtime_minutes,
+                Game.hltb_main_story_minutes,
+                Game.hltb_main_extra_minutes,
+                Game.hltb_completionist_minutes,
+                Game.hltb_all_styles_minutes,
+                Game.hltb_refreshed_at,
+                Game.is_endless,
+                Game.endless_checked_at,
+                Game.data_complete,
+            ),
+            noload(Game.price_snapshots),
+        )
+        .execution_options(yield_per=500)
+    )
+    for game in games:
         before = game.data_complete
         if refresh_data_complete(game) != before:
             changed += 1
             db.add(game)
+            pending.append(game)
         if game.data_complete:
             complete += 1
+        if len(pending) >= 500:
+            db.flush()
+            for persisted in pending:
+                db.expunge(persisted)
+            pending.clear()
     db.commit()
     return {"complete": complete, "changed": changed}

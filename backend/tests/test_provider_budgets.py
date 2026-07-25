@@ -14,7 +14,8 @@ import pytest
 from app.config import METERED_SOURCES, OPENCRITIC_SEARCH_SOURCE, get_settings
 from app.integrations.http_retry import request_with_retry
 from app.integrations.rate_limiter import RateLimiter, WindowSpec
-from app.services.data_fill.stages import RATING_BUDGET_SOURCES
+from app.services.data_fill.stages import RATING_BUDGET_SOURCES, catalog_import_target
+from app.services import primary_score_backfill as primary_scores
 
 
 def _client(handler) -> httpx.AsyncClient:
@@ -126,3 +127,63 @@ def test_ordered_data_fill_owns_the_first_provider_budget_after_boot() -> None:
 
     assert cfg.STARTUP_RATING_REFRESH_LIMIT == 0
     assert cfg.STARTUP_METADATA_BACKFILL_LIMIT == 0
+    assert cfg.SUMMARY_SHORTEN_STARTUP_LIMIT == 0
+
+
+def test_groq_free_tier_has_one_shared_persistent_budget() -> None:
+    cfg = get_settings()
+
+    assert 0 < cfg.provider_daily_limits()["Groq"] <= 150
+    assert cfg.budget_reserve_percent("Groq") > 0
+    assert cfg.GROQ_MIN_REQUEST_INTERVAL_SECONDS >= 12
+
+
+def test_primary_score_catalog_scans_stream_plain_columns() -> None:
+    class RecordingDb:
+        selected = []
+
+        def execute(self, statement):
+            self.selected = [column["expr"] for column in statement.column_descriptions]
+            return [
+                (
+                    7,
+                    ["PC"],
+                    [{"source": "Steam", "status": "live", "score": 90}],
+                    88.0,
+                )
+            ]
+
+    db = RecordingDb()
+    candidates = primary_scores.primary_score_backfill_candidates(db, 10)
+
+    assert db.selected == [
+        primary_scores.Game.id,
+        primary_scores.Game.platforms,
+        primary_scores.Game.source_scores,
+        primary_scores.Game.rank_score,
+    ]
+    assert primary_scores._SCAN_CHUNK <= 500
+    assert candidates == [
+        (7, ("OpenCritic", "Metacritic", "IGDB")),
+    ]
+
+
+def test_cursor_catalogs_continue_after_the_combined_target_is_met() -> None:
+    assert catalog_import_target(
+        source="Steam",
+        cap=500,
+        current_total=50_071,
+        target_total=50_000,
+    ) == 500
+    assert catalog_import_target(
+        source="IGDB",
+        cap=5_000,
+        current_total=50_071,
+        target_total=50_000,
+    ) == 5_000
+    assert catalog_import_target(
+        source="RAWG",
+        cap=500,
+        current_total=50_071,
+        target_total=50_000,
+    ) == 0

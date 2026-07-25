@@ -26,6 +26,7 @@ _ORDER: tuple[str, ...] = (
     "FreeToGame",
     "Wikidata",
     "GameBrain",
+    "Groq",
     "HLTB",
 )
 
@@ -44,6 +45,7 @@ _DRIVEN_BY: dict[str, str] = {
     "FreeToGame": "Data Fill (catalog)",
     "Wikidata": "Data Fill · Metadata (exact ID)",
     "GameBrain": "Data Fill · Metadata (optional non-commercial)",
+    "Groq": "Data Fill · Quality · Summaries · Endless",
     "HLTB": "Data Fill · HLTB loop",
 }
 
@@ -64,6 +66,7 @@ _PROVIDER_LIMIT: dict[str, tuple[str, str]] = {
     "FreeToGame": ("no auth, generous", "headroom"),
     "Wikidata": ("public SPARQL endpoint; usage-policy paced", "headroom"),
     "GameBrain": ("free plan: 50 tokens/day, non-commercial only", "capped"),
+    "Groq": ("free gpt-oss-20b: token/RPM/RPD limited", "capped"),
     "HLTB": ("scraped, no official API — keep gentle", "scrape"),
 }
 
@@ -82,6 +85,7 @@ _EXTRA_ROLES: dict[str, str] = {
     "OpenCritic:search": "Search sub-budget",
     "Wikidata": "Catalog / metadata",
     "GameBrain": "Catalog / metadata",
+    "Groq": "AI quality / text",
 }
 
 
@@ -97,6 +101,8 @@ def _configured(bucket: str) -> bool:
         return bool(cfg.ITAD_API_KEY)
     if bucket == "GameBrain":
         return cfg.gamebrain_configured()
+    if bucket == "Groq":
+        return cfg.groq_configured()
     if bucket == "Wikidata":
         return True
     return True  # Steam, SteamSpy, CheapShark, FreeToGame, HLTB need no key

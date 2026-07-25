@@ -10,7 +10,7 @@ from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 
 from sqlalchemy import desc, func, select
-from sqlalchemy.orm import Session, noload
+from sqlalchemy.orm import Session, load_only, noload
 
 from ...config import get_settings
 from ...database import SessionLocal
@@ -57,15 +57,34 @@ def _game_count(db: Session) -> int:
     return db.scalar(select(func.count(Game.id)).where(Game.content_type == "game")) or 0
 
 
+# Steam and IGDB are cursor-backed complete-catalog scans. They must keep
+# advancing after the combined catalog passes DATA_FILL_TARGET_TOTAL; otherwise
+# whichever provider happened to reach the target first permanently starves the
+# other. Conservative per-run caps keep ingestion and follow-up enrichment
+# bounded while their persistent provider budgets remain the hard ceiling.
+RESUMABLE_CATALOG_SOURCES = frozenset({"Steam", "IGDB"})
+
 # source -> (per-run import cap, importer). RAWG is handled separately because it
 # takes an absolute catalog target rather than a remaining-headroom count.
 _SECONDARY_CATALOG_IMPORTS: tuple[tuple[str, str, int, _SecondaryImporter], ...] = (
-    ("Steam:catalog", "Steam", 5000, lambda db, target: import_steam_official_catalog(db, target=target)),
-    ("IGDB:full", "IGDB", 50000, lambda db, target: import_igdb_full_catalog(db, target=target)),
+    ("Steam:catalog", "Steam", 500, lambda db, target: import_steam_official_catalog(db, target=target)),
+    ("IGDB:full", "IGDB", 5000, lambda db, target: import_igdb_full_catalog(db, target=target)),
     ("FreeToGame", "FreeToGame", 1000, lambda db, target: import_free_to_game_games(db, target=target)),
     ("SteamSpy", "SteamSpy", 5000, lambda db, target: import_steamspy_games(db, target=target)),
     ("CheapShark", "CheapShark", 2000, lambda db, target: import_cheapshark_deals(db, target=target)),
 )
+
+
+def catalog_import_target(
+    *,
+    source: str,
+    cap: int,
+    current_total: int,
+    target_total: int,
+) -> int:
+    if source in RESUMABLE_CATALOG_SOURCES:
+        return max(0, cap)
+    return max(0, min(cap, target_total - current_total))
 
 
 async def fill_catalog(target_total: int) -> dict[str, object]:
@@ -74,19 +93,22 @@ async def fill_catalog(target_total: int) -> dict[str, object]:
     with SessionLocal() as db:
         current_total = _game_count(db)
         for result_key, source, cap, importer in _SECONDARY_CATALOG_IMPORTS:
-            if current_total >= target_total:
-                break
             if source == "IGDB" and not cfg.igdb_configured():
                 continue
             if source == "Steam" and not cfg.steam_configured():
                 continue
             if get_rate_limiter().remaining(source) <= 0:
                 continue
+            import_target = catalog_import_target(
+                source=source,
+                cap=cap,
+                current_total=current_total,
+                target_total=target_total,
+            )
+            if import_target <= 0:
+                continue
             try:
-                result[result_key] = await importer(
-                    db,
-                    min(cap, target_total - current_total),
-                )
+                result[result_key] = await importer(db, import_target)
             except Exception as exc:
                 db.rollback()
                 log.warning("%s catalog import failed (%s)", result_key, type(exc).__name__)
@@ -137,7 +159,16 @@ def _rating_refresh_candidates(force: bool) -> list[int]:
         for game in db.scalars(
             select(Game)
             .where(Game.content_type == "game")
-            .options(noload(Game.price_snapshots))
+            .options(
+                load_only(
+                    Game.id,
+                    Game.platforms,
+                    Game.source_scores,
+                    Game.ratings_refreshed_at,
+                    Game.data_complete,
+                ),
+                noload(Game.price_snapshots),
+            )
             .order_by(desc(Game.rank_score), desc(Game.metrix_score))
             .execution_options(yield_per=RATING_SCAN_CHUNK)
         ):

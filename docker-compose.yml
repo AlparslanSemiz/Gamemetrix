@@ -14,12 +14,26 @@ services:
       - "127.0.0.1:5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+    # PostgreSQL's image defaults (128MB shared buffers + 64MB maintenance
+    # memory + 100 connections) do not fit a 160MB cgroup during catalog
+    # imports. The app currently uses fewer than ten connections; these bounded
+    # settings preserve query headroom without relying on swap.
+    command:
+      - postgres
+      - -c
+      - shared_buffers=64MB
+      - -c
+      - work_mem=2MB
+      - -c
+      - maintenance_work_mem=32MB
+      - -c
+      - max_connections=40
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 5s
       timeout: 5s
       retries: 12
-    # postgres:15-alpine idles ~20-25MB; 160m covers connection/autovacuum
+    # With the bounded server settings above, 160m covers connection/autovacuum
     # bursts without letting a runaway query eat the whole 1GB host.
     mem_limit: 160m
     mem_reservation: 64m
@@ -38,14 +52,14 @@ services:
       dockerfile: Dockerfile # backend içindeki Dockerfile adı (genelde Dockerfile olur)
     container_name: gamemetrix-backend
     restart: always
-    # DATABASE_URL and every other secret come from backend/.env, which is
-    # gitignored and is the server's source of truth. It is deliberately NOT set
-    # in an `environment:` block here: that block overrides env_file, so building
-    # the URL from the db service's POSTGRES_* variables silently ignored the
-    # working value in backend/.env and made the backend depend on variables
-    # intended for a different service.
+    # Provider/application secrets come from backend/.env. Docker's database URL
+    # is deliberately built from the same required POSTGRES_* values as the db
+    # service, so a stale host-only or legacy SQLite URL in backend/.env cannot
+    # make the container open a second catalog.
     env_file:
       - ./backend/.env
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:?Set POSTGRES_USER before running docker compose}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD before running docker compose}@db:5432/${POSTGRES_DB:-gamemetrix}
     expose:
       - "8000"
     depends_on:

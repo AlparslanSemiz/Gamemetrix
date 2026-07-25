@@ -8,12 +8,15 @@ https://console.groq.com/keys); the model is selected via GROQ_MODEL. No
 third-party SDK — plain httpx, matching the other integration clients.
 """
 
+import asyncio
 import logging
+import time
 
 import httpx
 
 from ..config import get_settings
 from .http_retry import DEFAULT_HEADERS
+from .rate_limiter import get_rate_limiter
 
 log = logging.getLogger(__name__)
 
@@ -21,6 +24,8 @@ _GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
 _HTTP_TIMEOUT = 20
 _MAX_OUTPUT_TOKENS = 400
 _TEMPERATURE = 0.7
+_request_lock = asyncio.Lock()
+_last_request_started = 0.0
 
 
 async def generate_text(
@@ -29,33 +34,48 @@ async def generate_text(
     *,
     max_output_tokens: int = _MAX_OUTPUT_TOKENS,
     temperature: float = _TEMPERATURE,
+    json_object: bool = False,
 ) -> str | None:
     """Return Groq's response text for the prompt, or None when unavailable."""
     cfg = get_settings()
     if not cfg.groq_configured():
         return None
 
-    headers = {**DEFAULT_HEADERS, "Authorization": f"Bearer {cfg.GROQ_API_KEY}"}
-    payload = {
-        "model": cfg.GROQ_MODEL,
-        "messages": [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ],
-        "max_tokens": max_output_tokens,
-        "temperature": temperature,
-    }
-
-    try:
-        async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT) as client:
-            resp = await client.post(_GROQ_API_URL, headers=headers, json=payload)
-        if not resp.is_success:
-            log.debug("Groq request failed: %s", resp.status_code)
+    global _last_request_started
+    async with _request_lock:
+        if not await get_rate_limiter().acquire("Groq"):
             return None
-        data = resp.json()
-    except Exception:
-        log.debug("Groq request errored", exc_info=True)
-        return None
+        wait_seconds = (
+            cfg.GROQ_MIN_REQUEST_INTERVAL_SECONDS
+            - (time.monotonic() - _last_request_started)
+        )
+        if wait_seconds > 0:
+            await asyncio.sleep(wait_seconds)
+
+        headers = {**DEFAULT_HEADERS, "Authorization": f"Bearer {cfg.GROQ_API_KEY}"}
+        payload: dict[str, object] = {
+            "model": cfg.GROQ_MODEL,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            "max_tokens": max_output_tokens,
+            "temperature": temperature,
+        }
+        if json_object:
+            payload["response_format"] = {"type": "json_object"}
+
+        try:
+            _last_request_started = time.monotonic()
+            async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT) as client:
+                resp = await client.post(_GROQ_API_URL, headers=headers, json=payload)
+            if not resp.is_success:
+                log.debug("Groq request failed: %s", resp.status_code)
+                return None
+            data = resp.json()
+        except Exception:
+            log.debug("Groq request errored", exc_info=True)
+            return None
 
     if not isinstance(data, dict):
         return None

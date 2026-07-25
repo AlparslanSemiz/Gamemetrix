@@ -38,9 +38,26 @@ class RateLimiter:
                     anchor_day=cfg.provider_window_reset_day(source, kind),
                 )
         self._locks: dict[str, asyncio.Lock] = {}
+        self._blocked_until: dict[str, datetime] = {}
 
     def set_limit(self, source: str, daily_limit: int) -> None:
         self._limits[source] = max(0, int(daily_limit))
+
+    def block(self, source: str, seconds: int) -> None:
+        """Temporarily stop a provider without corrupting its configured limit."""
+        canonical = self._canonical(source)
+        until = datetime.now(UTC).timestamp() + max(1, int(seconds))
+        self._blocked_until[canonical] = datetime.fromtimestamp(until, tz=UTC)
+
+    def _blocked(self, source: str) -> bool:
+        canonical = self._canonical(source)
+        until = self._blocked_until.get(canonical)
+        if until is None:
+            return False
+        if until <= datetime.now(UTC):
+            self._blocked_until.pop(canonical, None)
+            return False
+        return True
 
     def set_window_limit(
         self,
@@ -176,6 +193,8 @@ class RateLimiter:
         return rows
 
     async def acquire(self, source: str) -> bool:
+        if self._blocked(source):
+            return False
         async with self._lock(source):
             from ..database import SessionLocal
 
@@ -215,7 +234,8 @@ class RateLimiter:
                 for _, row in self._get_window_rows(db, source)
             )
             db.commit()
-            return max(0, min(remaining_values))
+            remaining = max(0, min(remaining_values))
+            return 0 if self._blocked(source) else remaining
 
     def status(self) -> dict[str, dict[str, object]]:
         from ..database import SessionLocal
@@ -242,7 +262,11 @@ class RateLimiter:
                         "window_seconds": row.window_seconds,
                     }
                 output[source] = {
-                    "remaining": max(0, min(remaining_values)),
+                    "remaining": (
+                        0
+                        if self._blocked(source)
+                        else max(0, min(remaining_values))
+                    ),
                     "limit": daily.daily_limit,
                     "usable_limit": usable_daily,
                     "used": daily.request_count,
@@ -250,6 +274,11 @@ class RateLimiter:
                     "metered": self._canonical(source) in METERED_SOURCES,
                     "updated_at": daily.updated_at.isoformat() if daily.updated_at else None,
                     "windows": window_output,
+                    "blocked_until": (
+                        self._blocked_until[self._canonical(source)].isoformat()
+                        if self._blocked(source)
+                        else None
+                    ),
                 }
             db.commit()
         return output

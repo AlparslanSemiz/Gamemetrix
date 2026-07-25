@@ -35,10 +35,11 @@ from .services.background import (
     raw_analytics_retention_loop,
     summary_backfill_loop,
 )
-from .services.data_fill import data_fill_loop
+from .services.data_fill import data_fill_loop, recover_interrupted_runs
 from .services.deduplication import consolidate_duplicate_games
 from .services.seo import refresh_catalog_seo_states
 from .services.notification_digest import notification_digest_loop
+from .services.job_heartbeat import recover_interrupted_job_runs
 
 
 log = logging.getLogger(__name__)
@@ -103,7 +104,9 @@ def _seed_and_classify(db: Session) -> None:
 
 
 async def _background_startup() -> None:
-    """Runs in a thread after the server is ready — does not block the event loop."""
+    """Optionally run the expensive full-catalog maintenance pass after boot."""
+    if not settings.STARTUP_CATALOG_MAINTENANCE_ENABLED:
+        return
     await asyncio.sleep(2)
     loop = asyncio.get_event_loop()
     try:
@@ -117,6 +120,13 @@ async def _background_startup() -> None:
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    recovered_runs = recover_interrupted_runs()
+    if recovered_runs:
+        log.warning("Closed %d interrupted data-fill run(s)", recovered_runs)
+    recovered_jobs = recover_interrupted_job_runs()
+    if recovered_jobs:
+        log.warning("Closed %d interrupted job heartbeat(s)", recovered_jobs)
+
     # Seed only — fast, must run before serving so the games table is populated.
     with SessionLocal() as db:
         seed_games(db)

@@ -27,6 +27,7 @@ log = logging.getLogger(__name__)
 
 _MAX_SHORT_CHARS = 450
 _MAX_LONG_CHARS = 700
+_MAX_GROQ_INPUT_CHARS = 4_000
 _MIN_LONG_CHARS = 200   # only shorten if original is longer than this
 _SYSTEM_PROMPT = (
     "You are a game description writer. "
@@ -86,7 +87,7 @@ async def shorten_summary(title: str, summary: str) -> str | None:
 
     generated = await generate_text(
         _SYSTEM_PROMPT,
-        f"Game: {title}\n\nDescription: {summary}",
+        f"Game: {title}\n\nDescription: {summary[:_MAX_GROQ_INPUT_CHARS]}",
     )
     if not generated:
         return _extract_sentences(summary, _MAX_SHORT_CHARS)
@@ -100,7 +101,10 @@ async def rewrite_long_summary(title: str, text: str) -> str | None:
     # facts — leave those to RAWG/IGDB enrichment instead.
     if _is_placeholder(text):
         return None
-    generated = await generate_text(_REWRITE_PROMPT, f"Game: {title}\n\nText: {text}")
+    generated = await generate_text(
+        _REWRITE_PROMPT,
+        f"Game: {title}\n\nText: {text[:_MAX_GROQ_INPUT_CHARS]}",
+    )
     if not generated:
         return None
     if len(generated) > _MAX_LONG_CHARS:

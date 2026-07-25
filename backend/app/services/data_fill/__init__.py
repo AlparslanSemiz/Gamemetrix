@@ -7,7 +7,7 @@
 """
 
 from .orchestrator import data_fill_loop, execute_data_fill_run
-from .runs import queue_data_fill_run
+from .runs import queue_data_fill_run, recover_interrupted_runs
 from .status import data_fill_status
 
 __all__ = [
@@ -15,4 +15,5 @@ __all__ = [
     "data_fill_status",
     "execute_data_fill_run",
     "queue_data_fill_run",
+    "recover_interrupted_runs",
 ]

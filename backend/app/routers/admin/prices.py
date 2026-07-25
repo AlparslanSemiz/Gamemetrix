@@ -17,11 +17,11 @@ router = APIRouter(prefix="/import/prices")
 async def import_prices_itad(
     game_id: int = Query(..., ge=1, description="GameMetrix game ID"),
     country: str = Query(
-        default="EU",
+        default="DE",
         min_length=2,
-        max_length=3,
-        pattern=r"^[A-Za-z]{2,3}$",
-        description="Region code (EU, US, ...)",
+        max_length=2,
+        pattern=r"^[A-Za-z]{2}$",
+        description="ISO country code (DE, US, ...)",
     ),
     db: Session = Depends(get_db),
 ) -> dict:

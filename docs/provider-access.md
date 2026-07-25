@@ -33,6 +33,13 @@ snapshots are tried before RAWG or a paid/approval-gated source. A provider's
 daily limit can stop one job while leaving the persisted cursor and freshness
 timestamps ready for the next period.
 
+The combined `DATA_FILL_TARGET_TOTAL` is not a stop condition for the two
+cursor-backed complete catalogs. Steam advances by at most 500 newly imported
+games per daily run and IGDB by at most 5,000; both resume until their provider
+cursor reports completion. Non-cursor catalog sources and RAWG still stop when
+the combined target is met. This grows provider identity coverage without
+turning RAWG's scarce monthly quota into a broad catalog crawler.
+
 `STARTUP_RATING_REFRESH_LIMIT=0` and
 `STARTUP_METADATA_BACKFILL_LIMIT=0` are intentional. On boot, the ordered
 data-fill job gets the first budget and seeds free CheapShark Metacritic values
@@ -49,6 +56,7 @@ fallback.
 | IGDB | `partner@igdb.com` | Ready to send |
 | IsThereAnyDeal | `api@isthereanydeal.com` | Ready to send after key/account check |
 | GameBrain | API console contact route | Ready; storage remains disabled pending written permission |
+| Groq | Console limits/usage page | Configured; migrate away from Llama 3.1 before its shutdown |
 | Metacritic | [official support request](https://metacritichelp.zendesk.com/hc/en-us/requests/new) | Ready; no public read API assumed |
 
 Before sending, replace the bracketed commercial model, MAU/page-view, contact
@@ -277,6 +285,31 @@ GameMetrix
 The official [ITAD API documentation](https://docs.isthereanydeal.com/) lists `api@isthereanydeal.com` as the general API contact. It currently documents a default 1,000 requests per five-minute window for verified-email accounts, asks clients to cache, warns against constantly maxing the burst window, and says higher limits require a use-case review. The terms also restrict competitive uses and modification of supplied URLs/prices. GameMetrix must obtain written confirmation that its deal comparison and outbound links are acceptable.
 
 Keep `ITAD_FIVE_MINUTE_LIMIT=1000` and the lower daily safety budget until the app setup page or written approval says otherwise. Preserve ITAD affiliate tags and price values exactly.
+
+The current API contract uses `POST` with a JSON array of ITAD UUIDs for
+`/games/prices/v3`, `/games/historylow/v1`, and `/games/subs/v1`; country is a
+two-letter ISO country code (`DE` by default), not `EU`. On 2026-07-25 the
+configured key returned HTTP 403 even though the documented
+`ITAD-API-Key` header was used. Replace or approve that app key before enabling
+periodic ITAD traffic.
+
+## Groq
+
+Groq is an auditor and bounded text processor, never a source of game facts.
+Deterministic signals select suspicious rows; provider metadata supplies any
+replacement; Groq classifies the row and verifies the repaired result.
+
+Use `GROQ_MODEL=openai/gpt-oss-20b`. Groq's
+[deprecation schedule](https://console.groq.com/docs/deprecations) shuts down
+`llama-3.1-8b-instant` for free/developer accounts on 2026-08-16. The
+[free rate-limit table](https://console.groq.com/docs/rate-limits) currently
+lists 30 RPM, 1,000 RPD, 8,000 TPM, and 200,000 TPD for `gpt-oss-20b`.
+GameMetrix therefore enforces one persistent `GROQ_DAILY_LIMIT=150` budget
+shared by quality review, repair verification, summaries, endless detection,
+and reranking, plus a 12-second minimum interval and 4,000-character cap on
+provider description input. The ordinary 15% reserve makes at most 127
+scheduled calls usable each day while the interval also protects the lower
+token-per-minute ceiling.
 
 **To:** `api@isthereanydeal.com` — **Subject:** GameMetrix API use approval and quota request
 

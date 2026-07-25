@@ -3,7 +3,7 @@
 from datetime import UTC, datetime
 
 from sqlalchemy import func, or_, select
-from sqlalchemy.orm import Session, noload
+from sqlalchemy.orm import Session, load_only, noload
 
 from ...config import get_settings
 from ...models import CatalogQualityReview, Game, UserCollection
@@ -13,7 +13,7 @@ from .signals import catalog_quality_signals
 
 _QUARANTINE_CONTENT_TYPE = "non-game"
 _SCAN_MULTIPLIER = 25
-_MAX_SCAN_ROWS = 2000
+_MAX_SCAN_ROWS = 200
 
 
 def _candidate_rows(
@@ -37,7 +37,25 @@ def _candidate_rows(
             Game.content_type == "game",
             or_(CatalogQualityReview.id.is_(None), updated_after_review),
         )
-        .options(noload(Game.price_snapshots))
+        .options(
+            load_only(
+                Game.id,
+                Game.title,
+                Game.slug,
+                Game.summary,
+                Game.release_year,
+                Game.genres,
+                Game.platforms,
+                Game.source_scores,
+                Game.developer,
+                Game.publisher,
+                Game.content_type,
+                Game.data_complete,
+                Game.metadata_refreshed_at,
+                Game.summary_refreshed_at,
+            ),
+            noload(Game.price_snapshots),
+        )
         .order_by(
             Game.summary.in_(duplicate_summaries).desc(),
             Game.rank_score.asc(),
@@ -49,17 +67,28 @@ def _candidate_rows(
 
 
 def _duplicate_title_map(db: Session) -> dict[str, tuple[str, ...]]:
+    duplicate_summaries = list(
+        db.scalars(
+            select(Game.summary)
+            .where(Game.content_type == "game", Game.summary != "")
+            .group_by(Game.summary)
+            .having(func.count(Game.id) > 1)
+        ).all()
+    )
+    if not duplicate_summaries:
+        return {}
+
     grouped: dict[str, list[str]] = {}
     for summary, title in db.execute(
-        select(Game.summary, Game.title).where(Game.content_type == "game")
+        select(Game.summary, Game.title).where(
+            Game.content_type == "game",
+            Game.summary.in_(duplicate_summaries),
+        )
     ):
-        clean_summary = (summary or "").strip()
-        if clean_summary:
-            grouped.setdefault(clean_summary, []).append(title)
+        grouped.setdefault(summary.strip(), []).append(title)
     return {
         summary: tuple(titles)
         for summary, titles in grouped.items()
-        if len(titles) > 1
     }
 
 

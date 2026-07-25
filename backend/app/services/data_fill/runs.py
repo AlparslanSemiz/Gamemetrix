@@ -2,6 +2,8 @@
 
 from datetime import UTC, datetime
 
+from sqlalchemy import update
+
 from ...database import SessionLocal
 from ...models import DataFillRun
 
@@ -49,6 +51,33 @@ def mark_run_running(run_id: int) -> None:
         run.status = "running"
         run.started_at = datetime.now(UTC)
         db.commit()
+
+
+def save_run_progress(run_id: int, result: dict[str, object]) -> None:
+    """Persist completed stages so an interrupted run remains diagnosable."""
+    with SessionLocal() as db:
+        run = db.get(DataFillRun, run_id)
+        if run is None or run.status != "running":
+            return
+        run.result = result
+        db.commit()
+
+
+def recover_interrupted_runs() -> int:
+    """Close runs left open by a process restart or container OOM."""
+    now = datetime.now(UTC)
+    with SessionLocal() as db:
+        result = db.execute(
+            update(DataFillRun)
+            .where(DataFillRun.status.in_(("queued", "running")))
+            .values(
+                status="failed",
+                error="Interrupted before completion by a backend restart.",
+                finished_at=now,
+            )
+        )
+        db.commit()
+        return int(result.rowcount or 0)
 
 
 def finish_run(
