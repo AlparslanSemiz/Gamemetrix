@@ -1,6 +1,7 @@
 """Persistent provider request budgets across daily, monthly, and short windows."""
 
 import asyncio
+import calendar
 import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -18,6 +19,7 @@ class WindowSpec:
     kind: str
     seconds: int
     limit: int
+    anchor_day: int = 1
 
 
 class RateLimiter:
@@ -28,18 +30,39 @@ class RateLimiter:
         self._window_limits: dict[str, list[WindowSpec]] = {}
         for source, specs in cfg.provider_window_limits().items():
             for kind, limit, seconds in specs:
-                self.set_window_limit(source, kind, limit, seconds)
+                self.set_window_limit(
+                    source,
+                    kind,
+                    limit,
+                    seconds,
+                    anchor_day=cfg.provider_window_reset_day(source, kind),
+                )
         self._locks: dict[str, asyncio.Lock] = {}
 
     def set_limit(self, source: str, daily_limit: int) -> None:
         self._limits[source] = max(0, int(daily_limit))
 
-    def set_window_limit(self, source: str, kind: str, request_limit: int, seconds: int) -> None:
+    def set_window_limit(
+        self,
+        source: str,
+        kind: str,
+        request_limit: int,
+        seconds: int,
+        *,
+        anchor_day: int = 1,
+    ) -> None:
         if kind not in {"monthly", "rolling"}:
             raise ValueError("window kind must be monthly or rolling")
         canonical = self._canonical(source)
         specs = [spec for spec in self._window_limits.get(canonical, []) if spec.kind != kind]
-        specs.append(WindowSpec(kind=kind, seconds=max(1, seconds), limit=max(0, request_limit)))
+        specs.append(
+            WindowSpec(
+                kind=kind,
+                seconds=max(1, seconds),
+                limit=max(0, request_limit),
+                anchor_day=max(1, min(28, anchor_day)),
+            )
+        )
         self._window_limits[canonical] = specs
 
     def share_budget(self, source: str, target: str) -> None:
@@ -102,7 +125,17 @@ class RateLimiter:
     @staticmethod
     def _window_start(spec: WindowSpec, now: datetime) -> datetime:
         if spec.kind == "monthly":
-            return datetime(now.year, now.month, 1, tzinfo=UTC)
+            day = min(spec.anchor_day, calendar.monthrange(now.year, now.month)[1])
+            current_start = datetime(now.year, now.month, day, tzinfo=UTC)
+            if now >= current_start:
+                return current_start
+            previous_year = now.year if now.month > 1 else now.year - 1
+            previous_month = now.month - 1 if now.month > 1 else 12
+            previous_day = min(
+                spec.anchor_day,
+                calendar.monthrange(previous_year, previous_month)[1],
+            )
+            return datetime(previous_year, previous_month, previous_day, tzinfo=UTC)
         epoch = int(now.timestamp())
         return datetime.fromtimestamp(epoch - (epoch % spec.seconds), tz=UTC)
 

@@ -6,11 +6,14 @@ behaviours that keep real usage below the provider ceiling — a throttled reque
 is never retried, and every ceiling is reduced by a safety reserve.
 """
 
+from datetime import UTC, datetime
+
 import httpx
 import pytest
 
 from app.config import METERED_SOURCES, OPENCRITIC_SEARCH_SOURCE, get_settings
 from app.integrations.http_retry import request_with_retry
+from app.integrations.rate_limiter import RateLimiter, WindowSpec
 from app.services.data_fill.stages import RATING_BUDGET_SOURCES
 
 
@@ -100,3 +103,26 @@ def test_monthly_rawg_window_stays_under_the_free_tier() -> None:
 
 def test_non_rating_steamspy_budget_cannot_keep_rating_fill_alive() -> None:
     assert "SteamSpy" not in RATING_BUDGET_SOURCES
+
+
+def test_rawg_monthly_window_uses_the_account_renewal_day() -> None:
+    spec = WindowSpec(
+        kind="monthly",
+        seconds=31 * 24 * 60 * 60,
+        limit=20_000,
+        anchor_day=25,
+    )
+
+    assert RateLimiter._window_start(
+        spec, datetime(2026, 7, 24, 23, 59, tzinfo=UTC)
+    ) == datetime(2026, 6, 25, tzinfo=UTC)
+    assert RateLimiter._window_start(
+        spec, datetime(2026, 7, 25, tzinfo=UTC)
+    ) == datetime(2026, 7, 25, tzinfo=UTC)
+
+
+def test_ordered_data_fill_owns_the_first_provider_budget_after_boot() -> None:
+    cfg = get_settings()
+
+    assert cfg.STARTUP_RATING_REFRESH_LIMIT == 0
+    assert cfg.STARTUP_METADATA_BACKFILL_LIMIT == 0

@@ -53,7 +53,10 @@ def source_needed(db: Session, game: Game, source: str) -> bool:
             not has_external_id(db, game, "Steam") or bool(gaps & _STEAM_GAPS)
         )
     if source == "RAWG":
-        return not has_external_id(db, game, "RAWG") or bool(gaps & _RAWG_GAPS)
+        # RAWG is capped at 20k/month. Do not spend a request merely to attach a
+        # RAWG id to an otherwise complete row; every call must fill a user-facing
+        # metadata gap.
+        return bool(gaps & _RAWG_GAPS)
     if source == "IGDB":
         return not has_external_id(db, game, "IGDB") or bool(gaps & _IGDB_GAPS)
     if source == "Wikidata":
@@ -172,7 +175,11 @@ async def refresh_rawg_metadata(db: Session, game: Game, skipped: set[str]) -> R
         skipped.add("RAWG")
         return False, False
     before = metadata_gap_score(game)
-    changed = await enrich_rawg_game_detail(db, game)
+    changed = await enrich_rawg_game_detail(
+        db,
+        game,
+        requested_fields=field_gaps(game) & _RAWG_GAPS,
+    )
     after = metadata_gap_score(game)
     return True, changed or after < before
 

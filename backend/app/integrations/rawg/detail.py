@@ -20,7 +20,29 @@ _SEARCH_PAGE_SIZE = 5
 _RELATED_PAGE_SIZE = 12
 
 
-async def enrich_rawg_game_detail(db: Session, game: Game) -> bool:
+def rawg_relations_for_fields(requested_fields: set[str] | None) -> tuple[str, ...]:
+    """Return only relation endpoints that can fill the requested gaps.
+
+    ``None`` preserves the full admin/manual enrichment behavior. Scheduled
+    metadata backfills pass their exact gaps so a missing cover or summary does
+    not also spend two requests on unrelated DLC and similar-game endpoints.
+    """
+    if requested_fields is None:
+        return ("additions", "game-series")
+    relations: list[str] = []
+    if "dlcs" in requested_fields:
+        relations.append("additions")
+    if "similar_games" in requested_fields:
+        relations.append("game-series")
+    return tuple(relations)
+
+
+async def enrich_rawg_game_detail(
+    db: Session,
+    game: Game,
+    *,
+    requested_fields: set[str] | None = None,
+) -> bool:
     cfg = get_settings()
     if not cfg.rawg_configured():
         return False
@@ -49,10 +71,22 @@ async def enrich_rawg_game_detail(db: Session, game: Game) -> bool:
                 rawg_id=rawg_id,
             )
 
-        additions = await _fetch_rawg_related(client, db, game, rawg_id, cfg.RAWG_API_KEY, "additions")
-        similar = await _fetch_rawg_related(client, db, game, rawg_id, cfg.RAWG_API_KEY, "game-series")
+        related: dict[str, list[dict]] = {}
+        for relation in rawg_relations_for_fields(requested_fields):
+            related[relation] = await _fetch_rawg_related(
+                client,
+                db,
+                game,
+                rawg_id,
+                cfg.RAWG_API_KEY,
+                relation,
+            )
 
-    changed = apply_rawg_related(game, additions, similar) or changed
+    changed = apply_rawg_related(
+        game,
+        related.get("additions", []),
+        related.get("game-series", []),
+    ) or changed
     game.metadata_refreshed_at = datetime.now(UTC)
     db.add(game)
     db.commit()

@@ -1,6 +1,6 @@
 # Provider access and quota runbook
 
-Last reviewed: 2026-07-24
+Last reviewed: 2026-07-25
 
 GameMetrix never raises a local limit above a provider's published allowance or written approval. A larger value in `.env` does not grant a larger upstream quota.
 
@@ -15,6 +15,45 @@ GameMetrix never raises a local limit above a provider's published allowance or 
 | `failing` | Invalid response or another integration error | Inspect the admin message and source snapshot. |
 
 Credentials stay in backend environment variables. They must never be added to frontend variables, JSON responses, analytics properties, screenshots, or logs.
+
+## Periodic enrichment and budget order
+
+All provider work is server-side and persisted in PostgreSQL. Page views never
+trigger provider traffic. The normal schedule is:
+
+| Job | Default cadence | Purpose |
+| --- | --- | --- |
+| Primary rating refresh | 6 hours | Missing/stale primary scores; RAWG is used only for missing Metacritic |
+| Metadata backfill | 30 minutes | Highest-value missing cover, summary, company, platform, media, and external-ID fields |
+| HLTB backfill | 60 minutes | Gentle playtime lookup |
+| Full data fill | 24 hours | Resumable catalog cursors, quality review/repair, metadata, scores, playtime, summaries, prices, SEO |
+
+Scarce providers are called last. IGDB, Steam, Wikidata, CheapShark, and local
+snapshots are tried before RAWG or a paid/approval-gated source. A provider's
+daily limit can stop one job while leaving the persisted cursor and freshness
+timestamps ready for the next period.
+
+`STARTUP_RATING_REFRESH_LIMIT=0` and
+`STARTUP_METADATA_BACKFILL_LIMIT=0` are intentional. On boot, the ordered
+data-fill job gets the first budget and seeds free CheapShark Metacritic values
+before RAWG. Set a positive startup limit only for a controlled maintenance run;
+rating refresh remains bounded and does not enable the zero-weight RAWG
+fallback.
+
+## Provider outreach status
+
+| Provider | Access route | Draft status |
+| --- | --- | --- |
+| OpenCritic | `admin@opencritic.com` | Ready to send |
+| RAWG | `api@rawg.io` / authenticated portal | Ready to send |
+| IGDB | `partner@igdb.com` | Ready to send |
+| IsThereAnyDeal | `api@isthereanydeal.com` | Ready to send after key/account check |
+| GameBrain | API console contact route | Ready; storage remains disabled pending written permission |
+| Metacritic | [official support request](https://metacritichelp.zendesk.com/hc/en-us/requests/new) | Ready; no public read API assumed |
+
+Before sending, replace the bracketed commercial model, MAU/page-view, contact
+name, and attribution fields. Save replies and their effective dates outside
+the repository.
 
 ## IGDB
 
@@ -145,6 +184,33 @@ more. RAWG can return HTTP 401 both for rejected credentials and for an
 exhausted monthly allocation; GameMetrix distinguishes the provider's explicit
 quota message and stops further RAWG requests in that process.
 
+The current GameMetrix key renews on day 25, so use:
+
+```text
+RAWG_DAILY_LIMIT=600
+RAWG_MONTHLY_LIMIT=20000
+RAWG_MONTHLY_RESET_DAY=25
+```
+
+The ordinary 15% reserve makes only 510 requests/day and 17,000 requests/cycle
+usable. Even a 31-day cycle therefore schedules at most 15,810 calls, leaving
+additional headroom below the monthly ceiling.
+
+RAWG request priority is deliberately strict:
+
+1. Fill a missing Metacritic primary-score slot.
+2. Fill user-visible metadata gaps on a game with a known RAWG identity.
+3. Search for a RAWG identity only when the same request can repair a meaningful
+   metadata gap.
+4. Use RAWG catalog paging only if IGDB, Steam, and free catalog sources cannot
+   reach the configured catalog target.
+
+Broad rating refreshes disable the zero-weight RAWG rating fallback and generic
+RAWG metadata helpers. Scheduled metadata refreshes request `additions` only
+for missing DLC data and `game-series` only for missing similar-game data. A
+missing cover or description therefore costs detail/search calls only, not
+three unrelated requests.
+
 **Subject:** GameMetrix RAWG API plan and licensing request
 
 ```text
@@ -161,6 +227,45 @@ Expected usage:
 - commercial model: [NON-COMMERCIAL / ADS / AFFILIATE / SUBSCRIPTION]
 
 Could you confirm the appropriate plan, monthly request allowance, caching/retention rights, image rights, and whether our use is covered by the requested plan? We would also appreciate written guidance on bulk/bootstrap access if available.
+
+Thank you,
+[NAME]
+GameMetrix
+```
+
+## Metacritic
+
+GameMetrix currently receives Metacritic values through RAWG and shares the
+same 20,000-request monthly budget. Metacritic's official site explains the
+Metascore but does not advertise a general public read API. Do not scrape the
+website or interpret RAWG access as a direct Metacritic license.
+
+Submit the request through the
+[official Metacritic support form](https://metacritichelp.zendesk.com/hc/en-us/requests/new).
+
+**Subject:** GameMetrix Metascore data API and display licensing request
+
+```text
+Hello Metacritic team,
+
+I am building GameMetrix (https://gamemetrix.me), a public game discovery and
+decision tool. We would like to display the Metascore as a separately named and
+linked critic source; missing values remain missing and are never synthesized.
+
+Expected use:
+- approximately 50,000 games at launch
+- scheduled server-side missing/stale refreshes, never a request per page view
+- PostgreSQL caching with the retention period you approve
+- displayed fields: game/platform identity, Metascore, critic-review count,
+  source URL, and fetched/updated timestamp
+- commercial model: [NON-COMMERCIAL / ADS / AFFILIATE / SUBSCRIPTION]
+- estimated MAU/page views: [MAU] / [PAGE VIEWS]
+
+Do you offer an official API, data feed, or display license for this use?
+Please confirm permitted fields, platform-specific score handling,
+cache/retention rules, attribution/link requirements, request limits, and
+pricing. We will not scrape Metacritic or increase usage without written
+approval.
 
 Thank you,
 [NAME]

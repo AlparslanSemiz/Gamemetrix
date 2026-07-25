@@ -54,8 +54,6 @@ _DRIVEN_BY: dict[str, str] = {
 # window   = constrained by a short rolling window, not a daily cap
 # scrape   = no official API; deliberately paced
 _PROVIDER_LIMIT: dict[str, tuple[str, str]] = {
-    "RAWG": ("20k / month hard cap (free tier)", "capped"),
-    "Metacritic": ("via RAWG — shares its 20k/month", "capped"),
     "OpenCritic": ("RapidAPI plan quota — billed on overage", "metered"),
     "OpenCritic:search": ("RapidAPI search quota — billed on overage", "metered"),
     "IGDB": ("~4 req/sec (Twitch), no daily cap", "headroom"),
@@ -114,7 +112,21 @@ def _role(bucket: str) -> str:
 
 def _source_entry(bucket: str, budget: dict[str, object]) -> dict[str, object]:
     definition = REGISTRY.get(bucket)
-    provider_limit, headroom = _PROVIDER_LIMIT.get(bucket, ("provider default", "window"))
+    reset_day = get_settings().RAWG_MONTHLY_RESET_DAY
+    if bucket == "RAWG":
+        provider_limit, headroom = (
+            f"20k / cycle, renews day {reset_day} (free tier)",
+            "capped",
+        )
+    elif bucket == "Metacritic":
+        provider_limit, headroom = (
+            f"via RAWG — shares its day-{reset_day} 20k cycle",
+            "capped",
+        )
+    else:
+        provider_limit, headroom = _PROVIDER_LIMIT.get(
+            bucket, ("provider default", "window")
+        )
     return {
         "key": bucket,
         "display_name": definition.display_name if definition else bucket,

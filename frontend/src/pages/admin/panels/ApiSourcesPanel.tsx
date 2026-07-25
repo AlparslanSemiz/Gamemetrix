@@ -23,7 +23,8 @@ export function ApiSourcesPanel({ apiSources }: ApiSourcesPanelProps) {
     <Panel title="API Sources" width="full">
       <p className="admin-src-note">
         Every source is pulled periodically within its own daily budget (resets at
-        midnight). Metered sources bill on overage; Metacritic shares RAWG&apos;s budget.
+        midnight UTC). Longer provider windows are shown separately; Metacritic shares
+        RAWG&apos;s account cycle.
       </p>
       <div className="admin-src-list">
         {sources.map((source) => (
@@ -82,10 +83,16 @@ function SourceRow({ source }: { source: ApiSource }) {
         {Object.entries(source.windows).map(([kind, window]) => (
           <span key={kind}>
             {kind} {formatAdminNumber(window.remaining)}/{formatAdminNumber(window.limit)} left
+            {window.window_start ? ` since ${formatWindowStart(window.window_start)}` : ''}
           </span>
         ))}
         <span>last used: {formatRelativeTime(source.last_used_at)}</span>
       </div>
     </div>
   )
+}
+
+function formatWindowStart(value: string) {
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString()
 }

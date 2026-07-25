@@ -110,7 +110,18 @@ async def refresh_all_games(
                     if not force and not game_needs_rating_refresh(game, now):
                         return False
                     try:
-                        await refresh_game_sources(db, game, force=force)
+                        await refresh_game_sources(
+                            db,
+                            game,
+                            force=force,
+                            # RAWG's scarce monthly budget belongs to missing
+                            # Metacritic slots and targeted metadata gaps. The
+                            # zero-weight RAWG rating fallback and generic
+                            # metadata helpers otherwise consume several calls
+                            # per game during a broad score sweep.
+                            include_rawg_fallback=False,
+                            refresh_metadata=False,
+                        )
                         return True
                     except Exception:
                         log.debug("refresh_all_games: failed for game_id=%d", game_id, exc_info=True)
@@ -143,7 +154,12 @@ async def refresh_rating_batch(limit: int) -> dict[str, int]:
             if not game_needs_rating_refresh(game):
                 skipped += 1
                 continue
-            await refresh_game_sources(db, game)
+            await refresh_game_sources(
+                db,
+                game,
+                include_rawg_fallback=False,
+                refresh_metadata=False,
+            )
             enriched += 1
         if enriched:
             from .seo import refresh_catalog_seo_states
@@ -201,13 +217,16 @@ async def _fix_steam_dates(db: Session, games: list[Game]) -> tuple[int, int]:
 
 async def daily_refresh_loop() -> None:
     """
-    Runs forever. On startup, then every REFRESH_ALL_INTERVAL_HOURS:
+    Runs forever. On an explicitly enabled bounded startup batch, then every
+    REFRESH_ALL_INTERVAL_HOURS:
       1. refresh_all_games — fetches missing/stale scores for all games,
          respecting per-source daily budgets and inter-game delay.
       2. fix_year_batch   — corrects games still showing release_year=1970.
 
-    The rate limiter resets at midnight, so the next cycle after midnight
-    will pick up sources that were budget-exhausted in earlier cycles.
+    The default startup rating limit is zero. This leaves the first provider
+    budget to the ordered data-fill job, which seeds Metacritic from free
+    CheapShark data before RAWG is considered. The rate limiter resets at
+    midnight, so the next cycle after midnight picks up exhausted sources.
     """
     cfg = get_settings()
     await asyncio.sleep(30)
@@ -215,11 +234,11 @@ async def daily_refresh_loop() -> None:
     concurrency = cfg.REFRESH_ALL_CONCURRENCY
     delay = cfg.REFRESH_ALL_INTER_GAME_DELAY
 
-    # Startup pass
-    try:
-        await refresh_all_games(concurrency=concurrency, force=False, inter_game_delay=delay)
-    except Exception:
-        log.exception("Startup full refresh failed")
+    if cfg.STARTUP_RATING_REFRESH_LIMIT > 0:
+        try:
+            await refresh_rating_batch(cfg.STARTUP_RATING_REFRESH_LIMIT)
+        except Exception:
+            log.exception("Startup bounded rating refresh failed")
 
     if cfg.STARTUP_METADATA_FIX_LIMIT > 0:
         try:

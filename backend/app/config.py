@@ -180,6 +180,11 @@ class Settings:
         )
         self.HLTB_REQUEST_DELAY_SECONDS: float = max(0.5, _env_float("HLTB_REQUEST_DELAY_SECONDS", 1.5))
         self.RAWG_MONTHLY_LIMIT: int = _env_int("RAWG_MONTHLY_LIMIT", 20000)
+        # RAWG accounts can renew on an account-specific day rather than the
+        # first of the calendar month. GameMetrix's current key renews on day 25.
+        self.RAWG_MONTHLY_RESET_DAY: int = _clamp(
+            _env_int("RAWG_MONTHLY_RESET_DAY", 25), 1, 28
+        )
         self.ITAD_FIVE_MINUTE_LIMIT: int = _env_int("ITAD_FIVE_MINUTE_LIMIT", 1000)
         # Headroom kept below every provider ceiling so a miscount, a retry, or a
         # clock-skewed billing window cannot push actual usage past 100%.
@@ -211,7 +216,12 @@ class Settings:
         self.METADATA_BACKFILL_INTERVAL_MINUTES: float = _env_float("METADATA_BACKFILL_INTERVAL_MINUTES", 30)
         self.METADATA_BACKFILL_BATCH_SIZE: int = _env_int("METADATA_BACKFILL_BATCH_SIZE", 24)
         self.METADATA_BACKFILL_INTER_GAME_DELAY: float = _env_float("METADATA_BACKFILL_INTER_GAME_DELAY", 0.5)
-        self.STARTUP_METADATA_BACKFILL_LIMIT: int = _env_int("STARTUP_METADATA_BACKFILL_LIMIT", 12)
+        # The ordered data-fill job owns the first provider budget after boot.
+        # A separate startup metadata batch would race it and spend RAWG before
+        # free CheapShark/IGDB/Wikidata passes have run.
+        self.STARTUP_METADATA_BACKFILL_LIMIT: int = _env_int(
+            "STARTUP_METADATA_BACKFILL_LIMIT", 0
+        )
         # ── HowLongToBeat playtime backfill ──────────────────────────────────
         # HLTB is scraped, not an official API — keep the cadence gentle.
         self.HLTB_BACKFILL_INTERVAL_MINUTES: float = _env_float("HLTB_BACKFILL_INTERVAL_MINUTES", 60)
@@ -311,6 +321,11 @@ class Settings:
             "RAWG": [("monthly", self.RAWG_MONTHLY_LIMIT, 31 * 24 * 60 * 60)],
             "ITAD": [("rolling", self.ITAD_FIVE_MINUTE_LIMIT, 5 * 60)],
         }
+
+    def provider_window_reset_day(self, source: str, kind: str) -> int:
+        if source == "RAWG" and kind == "monthly":
+            return self.RAWG_MONTHLY_RESET_DAY
+        return 1
 
     def budget_reserve_percent(self, source: str) -> int:
         if source in METERED_SOURCES:

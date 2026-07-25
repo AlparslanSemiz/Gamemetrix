@@ -13,11 +13,23 @@ $env:POSTGRES_PASSWORD="<choose-a-local-password>"
 docker compose up -d db
 ```
 
-Set `backend\.env` with a matching PostgreSQL database URL:
+Set `backend\.env` with a matching PostgreSQL database URL. When the backend
+runs directly on Windows:
 
 ```text
 DATABASE_URL=postgresql+psycopg://gamemetrix:<choose-a-local-password>@localhost:5432/gamemetrix
 ```
+
+When the backend runs inside Docker Compose, use the Compose service hostname:
+
+```text
+DATABASE_URL=postgresql+psycopg://gamemetrix:<choose-a-local-password>@db:5432/gamemetrix
+```
+
+Keep the username, password, and database name aligned with the root Compose
+PostgreSQL settings. For always-on periodic enrichment, the Docker form (`@db`)
+is the intended `backend/.env` value. Override `DATABASE_URL` in the host shell
+when running migrations or scripts directly from Windows.
 
 `DATABASE_URL` is required. The backend intentionally supports one runtime
 database: PostgreSQL.
@@ -34,6 +46,13 @@ python scripts\migrate_legacy_sqlite.py --apply
 
 The source SQLite file is opened read-only. Existing PostgreSQL games win on
 slug; legacy-only games and related snapshot rows are copied with remapped IDs.
+
+PostgreSQL is the only runtime source of truth in development, tests, Docker,
+and production. The ignored `backend/gamemetrix.dev.db` file is a legacy
+read-only migration/archive input, not a fallback database. Keep it only until
+the PostgreSQL dump and migrated row counts have been verified; the application
+deliberately rejects a SQLite `DATABASE_URL` instead of silently creating a
+second catalog.
 
 Copy the non-secret settings from `backend/.env.example` and fill the provider
 credentials you use. API Health reports rejected, expired, and misrouted
