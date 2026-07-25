@@ -51,6 +51,12 @@ class PriceSnapshotRead(BaseModel):
     fetched_at: datetime
 
 
+class SeoGenreRef(BaseModel):
+    """The genre landing page a game's breadcrumb should point at, when one exists."""
+    slug: str
+    name: str
+
+
 class GameRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -115,6 +121,7 @@ class GameRead(BaseModel):
     similar_games: list[dict] = []
     franchise: str | None = None
     price_snapshots: list[PriceSnapshotRead] = []
+    seo_genre: SeoGenreRef | None = None
 
 
 class GameListItem(BaseModel):

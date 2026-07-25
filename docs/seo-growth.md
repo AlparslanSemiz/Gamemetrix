@@ -31,7 +31,7 @@ Create these rules in this order and test them with a path that includes a query
 2. Redirect Rule: when `http.host eq "www.gamemetrix.me"`, issue a 301 to the same apex HTTPS path and query.
 3. Cache Rule: bypass cache for `/api/*`, `/admin*`, `/account`, `/login`, `/register`, `/forgot-password`, `/reset-password`, and `/verify-email`.
 4. Cache Rule: cache eligible `/game/*`, `/best/*`, and `/deals` HTML according to the origin `s-maxage=900` response.
-5. Cache Rule: cache `/sitemap.xml` according to its one-hour origin response.
+5. Cache Rule: cache the `/sitemap*.xml` family (the index and its chunks) according to their one-hour origin response.
 
 Use Full (strict) TLS, keep the origin inaccessible except through the trusted proxy/network where practical, and enable `ANALYTICS_TRUST_PROXY_HEADERS` only after that restriction is in place. Cloudflare configuration is an operator step; repository code cannot create the DNS property, TLS mode, or account rules by itself.
 
@@ -88,18 +88,20 @@ Google's [JavaScript SEO guidance](https://developers.google.com/search/docs/cra
 
 ## Sitemap, robots, and crawler checks
 
-- `/sitemap.xml` is UTF-8 XML, contains absolute canonical URLs only, and is cached for one hour.
-- `/robots.txt` links the sitemap and blocks private route families.
+- `/sitemap.xml` is a UTF-8 sitemap **index**. It references `/sitemap-static.xml` (landing, curation, genre and year pages) and one or more `/sitemap-games-N.xml` chunks of at most 10,000 game URLs each. All entries are absolute canonical URLs and the family is cached for one hour.
+- `/robots.txt` is served as a static file by the frontend — the single source of truth. It links the sitemap index and blocks private route families.
 - Missing slugs return HTTP 404.
 - Game HTML is cached for 15 minutes at the edge; account, API, and admin responses are not cached.
-- Split sitemap files before Google's 50,000 URL or 50 MB uncompressed limits. See Google's [sitemap guide](https://developers.google.com/search/docs/crawling-indexing/sitemaps/build-sitemap).
+- Chunking keeps every file well under Google's 50,000-URL / 50 MB per-file limits; the index grows a new chunk automatically as `SEO_INDEX_LIMIT` rises. See Google's [sitemap guide](https://developers.google.com/search/docs/crawling-indexing/sitemaps/build-sitemap).
 
 Release smoke checks:
 
 ```bash
 curl -sS https://gamemetrix.me/game/example-slug | grep -E '<h1|canonical|application/ld\+json|Metacritic|OpenCritic|Steam|IGDB'
 curl -I https://gamemetrix.me/game/definitely-missing
-curl -sS https://gamemetrix.me/sitemap.xml
+curl -sS https://gamemetrix.me/sitemap.xml            # sitemap index
+curl -sS https://gamemetrix.me/sitemap-static.xml     # landing + curation URLs
+curl -sS https://gamemetrix.me/sitemap-games-1.xml    # first game chunk
 curl -sS https://gamemetrix.me/robots.txt
 ```
 

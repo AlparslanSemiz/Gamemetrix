@@ -10,13 +10,14 @@ from ...config import get_settings
 from ...database import SessionLocal, get_db
 from ...models import Game
 from ...rate_limit import limiter
-from ...schemas import GameListResponse, GameRead, SeriesResponse, TrailerResponse
+from ...schemas import GameListResponse, GameRead, SeoGenreRef, SeriesResponse, TrailerResponse
 from ...security import AuthenticatedUser, optional_admin_user
 from ...services.metadata_backfill import (
     game_needs_metadata_backfill,
     refresh_game_metadata,
     system_requirements_need_repair,
 )
+from ...services.seo import MIN_GENRE_LANDING_GAMES, breadcrumb_genre
 from ...services.similarity import (
     find_series_games,
     find_similar_games,
@@ -42,13 +43,16 @@ async def get_game(
     refresh_metadata: bool = Query(default=False, alias="refresh"),
     db: Session = Depends(get_db),
     admin: AuthenticatedUser | None = Depends(optional_admin_user),
-) -> Game:
+) -> GameRead:
     game = get_game_or_404(db, slug)
     if refresh_metadata and admin is None:
         raise HTTPException(status_code=403, detail="Admin role required to refresh metadata.")
     if refresh_metadata and _needs_detail_refresh(game):
         background_tasks.add_task(_refresh_game_detail_metadata, game.slug)
-    return game
+    response = GameRead.model_validate(game)
+    crumb = breadcrumb_genre(db, game, MIN_GENRE_LANDING_GAMES)
+    response.seo_genre = SeoGenreRef(slug=crumb[0], name=crumb[1]) if crumb else None
+    return response
 
 
 def _needs_detail_refresh(game: Game) -> bool:

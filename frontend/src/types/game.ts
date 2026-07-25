@@ -40,6 +40,7 @@ export interface Game {
   seo_indexable: boolean
   seo_exclusion_reason?: string | null
   seo_updated_at?: string | null
+  seo_genre?: { slug: string; name: string } | null
   critic_score: number
   user_score: number
   genres: string[]

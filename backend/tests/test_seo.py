@@ -1,7 +1,18 @@
-from datetime import date
+from datetime import UTC, date, datetime
+from math import ceil
 
+from app.config import get_settings
 from app.models import Game
-from app.services.seo import seo_exclusion_reason, sitemap_document
+from app.services.seo import (
+    SITEMAP_CHUNK_SIZE,
+    SitemapEntry,
+    breadcrumb_genre,
+    game_url_sitemap,
+    seo_exclusion_reason,
+    sitemap_chunk_count,
+    sitemap_index_document,
+    static_url_sitemap,
+)
 
 
 def game_fixture(**overrides) -> Game:
@@ -84,10 +95,47 @@ def test_price_data_alone_satisfies_decision_context() -> None:
     assert seo_exclusion_reason(no_context, has_price_data=True) is None
 
 
-def test_sitemap_contains_only_supplied_canonical_urls() -> None:
-    game = game_fixture(seo_indexable=True)
-    document = sitemap_document([game], [2024])
-    assert "https://gamemetrix.me/game/a-complete-test-game" in document
-    assert "<loc>https://gamemetrix.me/about</loc>" in document
-    assert "https://gamemetrix.me/best/games/2024" in document
+def test_game_sitemap_lists_canonical_urls_with_lastmod() -> None:
+    game = game_fixture(seo_indexable=True, seo_updated_at=datetime(2024, 4, 12, tzinfo=UTC))
+    document = game_url_sitemap([game])
     assert document.startswith('<?xml version="1.0"')
+    assert "<urlset" in document
+    assert "<loc>https://gamemetrix.me/game/a-complete-test-game</loc>" in document
+    assert "<lastmod>2024-04-12</lastmod>" in document
+
+
+def test_static_sitemap_emits_priority_and_changefreq() -> None:
+    entries = [
+        SitemapEntry("https://gamemetrix.me/", "daily", "1.0"),
+        SitemapEntry("https://gamemetrix.me/best/games/2024", "weekly", "0.6"),
+    ]
+    document = static_url_sitemap(entries, datetime(2024, 4, 12, tzinfo=UTC))
+    assert "<loc>https://gamemetrix.me/</loc>" in document
+    assert "<changefreq>daily</changefreq>" in document
+    assert "<priority>1.0</priority>" in document
+    assert "https://gamemetrix.me/best/games/2024" in document
+
+
+def test_sitemap_index_references_children() -> None:
+    document = sitemap_index_document(
+        [
+            ("https://gamemetrix.me/sitemap-static.xml", None),
+            ("https://gamemetrix.me/sitemap-games-1.xml", datetime(2024, 4, 12, tzinfo=UTC)),
+        ]
+    )
+    assert document.startswith('<?xml version="1.0"')
+    assert "<sitemapindex" in document
+    assert "<loc>https://gamemetrix.me/sitemap-static.xml</loc>" in document
+    assert "<loc>https://gamemetrix.me/sitemap-games-1.xml</loc>" in document
+
+
+def test_sitemap_chunk_count_is_at_least_one_and_caps_at_limit() -> None:
+    limit = get_settings().SEO_INDEX_LIMIT
+    expected_max = max(1, ceil(limit / SITEMAP_CHUNK_SIZE))
+    assert sitemap_chunk_count(0) == 1
+    assert sitemap_chunk_count(1) == 1
+    assert sitemap_chunk_count(limit * 10) == expected_max
+
+
+def test_breadcrumb_genre_skips_non_indexable_games() -> None:
+    assert breadcrumb_genre(None, game_fixture(seo_indexable=False), 8) is None

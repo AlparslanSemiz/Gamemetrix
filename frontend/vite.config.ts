@@ -10,8 +10,9 @@ export default defineConfig({
     proxy: {
       '/api': devApiTarget,
       '/admin/': devApiTarget,
-      '/robots.txt': devApiTarget,
-      '/sitemap.xml': devApiTarget,
+      // robots.txt is served statically from public/ (as it is in production);
+      // the whole sitemap family — index, static and game chunks — is the backend's.
+      '^/sitemap[\\w-]*\\.xml$': devApiTarget,
     },
   },
 })

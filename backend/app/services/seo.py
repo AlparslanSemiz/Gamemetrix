@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from html import escape
-from math import isfinite
+from math import ceil, isfinite
 from urllib.parse import quote
 from urllib.parse import urlsplit
 
@@ -46,6 +47,12 @@ PLACEHOLDER_SUMMARY_MARKERS = (
     "no description available",
 )
 CANONICAL_ORIGIN = "https://gamemetrix.me"
+# One physical sitemap file may hold at most 50,000 URLs; we chunk well under
+# that so a file never approaches the limit as SEO_INDEX_LIMIT grows.
+SITEMAP_CHUNK_SIZE = 10_000
+# A genre only earns a landing page once it has enough indexable games to be
+# worth crawling — a three-game page is a thin-content liability, not an asset.
+MIN_GENRE_LANDING_GAMES = 8
 
 
 def _valid_https_url(value: str | None) -> bool:
@@ -195,37 +202,84 @@ def indexable_genre_facets(db: Session, minimum_games: int) -> list[tuple[str, s
     )
 
 
-def sitemap_document(
-    games: list[Game],
-    years: list[int] | None = None,
-    curated_paths: list[str] | None = None,
-) -> str:
-    rows = []
-    for game in games:
-        lastmod = ""
-        if game.seo_updated_at:
-            value = game.seo_updated_at
-            if value.tzinfo is None:
-                value = value.replace(tzinfo=UTC)
-            lastmod = f"<lastmod>{escape(value.date().isoformat())}</lastmod>"
-        rows.append(
-            "<url>"
-            f"<loc>{escape(game_canonical_url(game))}</loc>"
-            f"{lastmod}"
-            "</url>"
-        )
-    static_urls = (
-        f"{CANONICAL_ORIGIN}/",
-        f"{CANONICAL_ORIGIN}/about",
-        *(f"{CANONICAL_ORIGIN}{path}" for path in (curated_paths or [])),
-        *(f"{CANONICAL_ORIGIN}/best/games/{year}" for year in (years or [])),
-    )
-    static_rows = "".join(
-        f"<url><loc>{escape(url)}</loc></url>" for url in static_urls
-    )
+def breadcrumb_genre(db: Session, game: Game, minimum_games: int) -> tuple[str, str] | None:
+    """The game's most populated genre that owns a landing page, as (slug, name), or None.
+
+    Only indexable games get a genre crumb, and only for a genre that actually
+    has a `/best/<slug>-games` page — so the breadcrumb never links to a 404.
+    """
+    if not game.seo_indexable:
+        return None
+    owned = {genre_slug(str(name)) for name in (game.genres or [])}
+    for slug, display, _count in indexable_genre_facets(db, minimum_games):
+        if slug in owned:
+            return slug, display
+    return None
+
+
+@dataclass(frozen=True)
+class SitemapEntry:
+    loc: str
+    changefreq: str | None = None
+    priority: str | None = None
+
+
+def sitemap_chunk_count(indexable_count: int) -> int:
+    """Number of `sitemap-games-N.xml` files needed for the published cohort (at least one)."""
+    published = min(max(indexable_count, 0), get_settings().SEO_INDEX_LIMIT)
+    return max(1, ceil(published / SITEMAP_CHUNK_SIZE))
+
+
+def _lastmod_tag(value: datetime | None) -> str:
+    if value is None:
+        return ""
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=UTC)
+    return f"<lastmod>{escape(value.date().isoformat())}</lastmod>"
+
+
+def _urlset(rows: str) -> str:
     return (
         '<?xml version="1.0" encoding="UTF-8"?>'
         '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
-        f"{static_rows}{''.join(rows)}"
+        f"{rows}"
         "</urlset>"
+    )
+
+
+def game_url_sitemap(games: list[Game]) -> str:
+    rows = "".join(
+        "<url>"
+        f"<loc>{escape(game_canonical_url(game))}</loc>"
+        f"{_lastmod_tag(game.seo_updated_at)}"
+        "</url>"
+        for game in games
+    )
+    return _urlset(rows)
+
+
+def static_url_sitemap(entries: list[SitemapEntry], lastmod: datetime | None) -> str:
+    lastmod_tag = _lastmod_tag(lastmod)
+    rows = "".join(
+        "<url>"
+        f"<loc>{escape(entry.loc)}</loc>"
+        f"{lastmod_tag}"
+        f"{f'<changefreq>{entry.changefreq}</changefreq>' if entry.changefreq else ''}"
+        f"{f'<priority>{entry.priority}</priority>' if entry.priority else ''}"
+        "</url>"
+        for entry in entries
+    )
+    return _urlset(rows)
+
+
+def sitemap_index_document(children: list[tuple[str, datetime | None]]) -> str:
+    rows = "".join(
+        f"<sitemap><loc>{escape(loc)}</loc>{_lastmod_tag(lastmod)}</sitemap>"
+        for loc, lastmod in children
+    )
+    return (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
+        f"{rows}"
+        "</sitemapindex>"
     )

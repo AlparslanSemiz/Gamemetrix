@@ -1,76 +1,56 @@
 from datetime import UTC, datetime, timedelta
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
-from sqlalchemy import desc, exists, or_, select
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Response
+from sqlalchemy import desc, exists, func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from ..database import get_db
 from ..config import get_settings
 from ..models import Game, PriceSnapshot
 from ..schemas import GameListResponse
-from ..services.seo import genre_slug, indexable_genre_facets, sitemap_document
+from ..services.seo import (
+    CANONICAL_ORIGIN,
+    MIN_GENRE_LANDING_GAMES,
+    SITEMAP_CHUNK_SIZE,
+    SitemapEntry,
+    game_url_sitemap,
+    genre_slug,
+    indexable_genre_facets,
+    sitemap_chunk_count,
+    sitemap_index_document,
+    static_url_sitemap,
+)
 
 
 router = APIRouter(tags=["seo"])
 CuratedCollection = Literal["home", "linux", "steam-deck", "free", "deals", "year", "genre"]
 
-# A genre only earns a landing page once it has enough indexable games to be
-# worth crawling — a three-game page is a thin-content liability, not an asset.
-_MIN_GENRE_GAMES = 8
+# Sitemaps are pure derived data — a one-hour edge cache with a day of
+# stale-while-revalidate keeps crawlers fast without hammering the catalog.
+_SITEMAP_CACHE = "public, max-age=3600, stale-while-revalidate=86400"
+_FRESH_PRICE_WINDOW = timedelta(hours=24)
+# A curated landing page (Linux, Steam Deck, free, deals, a given year) is only
+# advertised once it has enough qualifying games to be worth crawling.
+_MIN_CURATED_GAMES = 5
 
 
-@router.get("/robots.txt", include_in_schema=False)
-def robots() -> Response:
-    body = "\n".join(
-        (
-            "User-agent: *",
-            "Allow: /",
-            "Disallow: /admin",
-            "Disallow: /api/",
-            "Disallow: /account",
-            "Disallow: /login",
-            "Disallow: /register",
-            "Disallow: /forgot-password",
-            "Disallow: /reset-password",
-            "Disallow: /verify-email",
-            "Disallow: /settings",
-            "Disallow: /alerts",
-            "Sitemap: https://gamemetrix.me/sitemap.xml",
-            "",
-        )
-    )
-    return Response(
-        body,
-        media_type="text/plain",
-        headers={"Cache-Control": "public, max-age=3600"},
-    )
+def _indexable_count(db: Session) -> int:
+    return db.scalar(select(func.count()).select_from(Game).where(Game.seo_indexable.is_(True))) or 0
 
 
-@router.get("/sitemap.xml", include_in_schema=False)
-def sitemap(db: Session = Depends(get_db)) -> Response:
-    games = list(
-        db.scalars(
-            select(Game)
-            .where(Game.seo_indexable.is_(True))
-            .options(selectinload(Game.price_snapshots))
-            .order_by(desc(Game.rank_score), Game.slug)
-            .limit(get_settings().SEO_INDEX_LIMIT)
-        ).all()
-    )
-    year_counts: dict[int, int] = {}
-    for game in games:
-        year_counts[game.release_year] = year_counts.get(game.release_year, 0) + 1
-    years = sorted((year for year, count in year_counts.items() if count >= 5), reverse=True)
-    fresh_before = datetime.now(UTC) - timedelta(hours=24)
+def _latest_indexable_update(db: Session) -> datetime | None:
+    return db.scalar(select(func.max(Game.seo_updated_at)).where(Game.seo_indexable.is_(True)))
 
-    def fresh_prices(game: Game) -> list[PriceSnapshot]:
-        return [
-            price for price in game.price_snapshots
-            if (price.fetched_at.replace(tzinfo=price.fetched_at.tzinfo or UTC)) >= fresh_before
-        ]
 
-    curated_paths: list[str] = []
+def _fresh_prices(game: Game, fresh_before: datetime) -> list[PriceSnapshot]:
+    return [
+        price for price in game.price_snapshots
+        if price.fetched_at.replace(tzinfo=price.fetched_at.tzinfo or UTC) >= fresh_before
+    ]
+
+
+def _curated_paths(db: Session, games: list[Game], fresh_before: datetime) -> list[str]:
     linux_count = sum(
         1 for game in games
         if (game.proton_tier or "").lower() in {"native", "platinum", "gold", "silver", "bronze"}
@@ -80,26 +60,102 @@ def sitemap(db: Session = Depends(get_db)) -> Response:
         1 for game in games
         if (game.proton_tier or "").lower() in {"native", "platinum", "gold", "silver"}
     )
-    free_count = sum(1 for game in games if any(price.is_free for price in fresh_prices(game)))
+    free_count = sum(1 for game in games if any(price.is_free for price in _fresh_prices(game, fresh_before)))
     deal_count = sum(
         1 for game in games
-        if any(price.is_free or (price.discount_percent or 0) >= 40 for price in fresh_prices(game))
+        if any(price.is_free or (price.discount_percent or 0) >= 40 for price in _fresh_prices(game, fresh_before))
     )
-    if linux_count >= 5:
-        curated_paths.append("/best/linux-games")
-    if deck_count >= 5:
-        curated_paths.append("/best/steam-deck-games")
-    if free_count >= 5:
-        curated_paths.append("/best/free-pc-games")
-    if deal_count >= 5:
-        curated_paths.append("/deals")
-    curated_paths.extend(
-        f"/best/{slug}-games" for slug, _, _ in indexable_genre_facets(db, _MIN_GENRE_GAMES)
+    paths: list[str] = []
+    if linux_count >= _MIN_CURATED_GAMES:
+        paths.append("/best/linux-games")
+    if deck_count >= _MIN_CURATED_GAMES:
+        paths.append("/best/steam-deck-games")
+    if free_count >= _MIN_CURATED_GAMES:
+        paths.append("/best/free-pc-games")
+    if deal_count >= _MIN_CURATED_GAMES:
+        paths.append("/deals")
+    paths.extend(f"/best/{slug}-games" for slug, _, _ in indexable_genre_facets(db, MIN_GENRE_LANDING_GAMES))
+    return paths
+
+
+def _curated_years(games: list[Game]) -> list[int]:
+    counts: dict[int, int] = {}
+    for game in games:
+        counts[game.release_year] = counts.get(game.release_year, 0) + 1
+    return sorted((year for year, count in counts.items() if count >= _MIN_CURATED_GAMES), reverse=True)
+
+
+@router.get("/sitemap.xml", include_in_schema=False)
+def sitemap_index(db: Session = Depends(get_db)) -> Response:
+    """The sitemap index Google reads first: one static child plus N game chunks."""
+    latest = _latest_indexable_update(db)
+    chunks = sitemap_chunk_count(_indexable_count(db))
+    children: list[tuple[str, datetime | None]] = [(f"{CANONICAL_ORIGIN}/sitemap-static.xml", latest)]
+    children.extend(
+        (f"{CANONICAL_ORIGIN}/sitemap-games-{index}.xml", latest)
+        for index in range(1, chunks + 1)
     )
     return Response(
-        sitemap_document(games, years, curated_paths),
+        sitemap_index_document(children),
         media_type="application/xml",
-        headers={"Cache-Control": "public, max-age=3600, stale-while-revalidate=86400"},
+        headers={"Cache-Control": _SITEMAP_CACHE},
+    )
+
+
+@router.get("/sitemap-games-{chunk}.xml", include_in_schema=False)
+def sitemap_games(chunk: int = Path(ge=1), db: Session = Depends(get_db)) -> Response:
+    """One 10k-URL slice of the published game cohort, ordered deterministically."""
+    published = min(_indexable_count(db), get_settings().SEO_INDEX_LIMIT)
+    offset = (chunk - 1) * SITEMAP_CHUNK_SIZE
+    page_size = min(SITEMAP_CHUNK_SIZE, published - offset)
+    if page_size <= 0:
+        raise HTTPException(status_code=404, detail="No such sitemap chunk")
+    games = list(
+        db.scalars(
+            select(Game)
+            .where(Game.seo_indexable.is_(True))
+            .order_by(desc(Game.rank_score), Game.slug)
+            .offset(offset)
+            .limit(page_size)
+        ).all()
+    )
+    return Response(
+        game_url_sitemap(games),
+        media_type="application/xml",
+        headers={"Cache-Control": _SITEMAP_CACHE},
+    )
+
+
+@router.get("/sitemap-static.xml", include_in_schema=False)
+def sitemap_static(db: Session = Depends(get_db)) -> Response:
+    """Landing, curation, genre and year pages — the non-game half of the index."""
+    games = list(
+        db.scalars(
+            select(Game)
+            .where(Game.seo_indexable.is_(True))
+            .options(selectinload(Game.price_snapshots))
+            .order_by(desc(Game.rank_score), Game.slug)
+            .limit(get_settings().SEO_INDEX_LIMIT)
+        ).all()
+    )
+    fresh_before = datetime.now(UTC) - _FRESH_PRICE_WINDOW
+    entries = [
+        SitemapEntry(f"{CANONICAL_ORIGIN}/", "daily", "1.0"),
+        SitemapEntry(f"{CANONICAL_ORIGIN}/about", "monthly", "0.3"),
+    ]
+    entries.extend(
+        SitemapEntry(f"{CANONICAL_ORIGIN}{path}", "weekly", "0.7")
+        for path in _curated_paths(db, games, fresh_before)
+    )
+    entries.extend(
+        SitemapEntry(f"{CANONICAL_ORIGIN}/best/games/{year}", "weekly", "0.6")
+        for year in _curated_years(games)
+    )
+    lastmod = max((game.seo_updated_at for game in games if game.seo_updated_at), default=None)
+    return Response(
+        static_url_sitemap(entries, lastmod),
+        media_type="application/xml",
+        headers={"Cache-Control": _SITEMAP_CACHE},
     )
 
 
@@ -109,7 +165,7 @@ def seo_genres(db: Session = Depends(get_db)) -> dict:
     return {
         "genres": [
             {"slug": slug, "name": name, "count": count}
-            for slug, name, count in indexable_genre_facets(db, _MIN_GENRE_GAMES)
+            for slug, name, count in indexable_genre_facets(db, MIN_GENRE_LANDING_GAMES)
         ],
     }
 
@@ -128,7 +184,7 @@ def curated_games(
         .options(selectinload(Game.price_snapshots))
         .order_by(desc(Game.rank_score), desc(Game.metrix_score), Game.title)
     )
-    fresh_before = datetime.now(UTC) - timedelta(hours=24)
+    fresh_before = datetime.now(UTC) - _FRESH_PRICE_WINDOW
     if collection == "year":
         if year is None:
             raise HTTPException(status_code=422, detail="year is required")
@@ -160,7 +216,7 @@ def curated_games(
     if collection == "genre":
         if genre is None:
             raise HTTPException(status_code=422, detail="genre is required")
-        facets = {slug: display for slug, display, _ in indexable_genre_facets(db, _MIN_GENRE_GAMES)}
+        facets = {slug: display for slug, display, _ in indexable_genre_facets(db, MIN_GENRE_LANDING_GAMES)}
         display_name = facets.get(genre)
         if display_name is None:
             raise HTTPException(status_code=404, detail="Unknown genre")

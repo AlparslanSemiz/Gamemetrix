@@ -63,6 +63,20 @@ export function GameStructuredData({ game }: { game: Game }) {
     }
   }
 
+  type Crumb = { '@type': 'ListItem'; position: number; name: string; item: string }
+  const crumbs: Crumb[] = [
+    { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://gamemetrix.me/' },
+  ]
+  if (game.seo_genre) {
+    crumbs.push({
+      '@type': 'ListItem',
+      position: crumbs.length + 1,
+      name: game.seo_genre.name,
+      item: `https://gamemetrix.me/best/${game.seo_genre.slug}-games`,
+    })
+  }
+  crumbs.push({ '@type': 'ListItem', position: crumbs.length + 1, name: game.title, item: canonical })
+
   const graph = {
     '@context': 'https://schema.org',
     '@graph': [
@@ -70,10 +84,7 @@ export function GameStructuredData({ game }: { game: Game }) {
       {
         '@type': 'BreadcrumbList',
         '@id': `${canonical}#breadcrumb`,
-        itemListElement: [
-          { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://gamemetrix.me/' },
-          { '@type': 'ListItem', position: 2, name: game.title, item: canonical },
-        ],
+        itemListElement: crumbs,
       },
     ],
   }
