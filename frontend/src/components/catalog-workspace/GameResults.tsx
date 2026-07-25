@@ -11,6 +11,7 @@ type GameResultsProps = WorkspaceProps<
   | 'error'
   | 'isLoading'
   | 'isLoadingMore'
+  | 'loadMoreError'
   | 'loaderRef'
   | 'pageTitle'
   | 'viewMode'
@@ -21,6 +22,7 @@ type GameResultsProps = WorkspaceProps<
   | 'onFilterPublisher'
   | 'onOpenDetail'
   | 'onOpenTrailer'
+  | 'onRetryLoadMore'
   | 'onToggleCollection'
 >
 
@@ -30,6 +32,7 @@ export function GameResults({
   error,
   isLoading,
   isLoadingMore,
+  loadMoreError,
   loaderRef,
   pageTitle,
   viewMode,
@@ -40,6 +43,7 @@ export function GameResults({
   onFilterPublisher,
   onOpenDetail,
   onOpenTrailer,
+  onRetryLoadMore,
   onToggleCollection,
 }: GameResultsProps) {
   const listClass = `game-list game-list-${viewMode}`
@@ -82,8 +86,21 @@ export function GameResults({
           />
         ))}
       </div>
-      <div ref={loaderRef} className="scroll-sentinel" aria-hidden="true">
+      <div ref={loaderRef} className="scroll-sentinel" aria-live="polite">
         {isLoadingMore ? <p className="status">Loading more…</p> : null}
+        {!isLoadingMore && loadMoreError ? (
+          <div className="status status-error load-more-error">
+            <span>{loadMoreError}</span>
+            <button
+              type="button"
+              className="ghost-button"
+              aria-label="Retry loading games"
+              onClick={onRetryLoadMore}
+            >
+              Retry
+            </button>
+          </div>
+        ) : null}
       </div>
     </>
   )

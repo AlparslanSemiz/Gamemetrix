@@ -11,6 +11,14 @@ import type {
 import { API_BASE_URL } from './api'
 
 const CURRENT_YEAR = new Date().getFullYear()
+const DEFAULT_CATALOG_REQUEST_TIMEOUT_MS = 12_000
+
+function catalogRequestTimeoutMs(): number {
+  const configured = Number(import.meta.env.VITE_CATALOG_REQUEST_TIMEOUT_MS)
+  return Number.isFinite(configured) && configured > 0
+    ? configured
+    : DEFAULT_CATALOG_REQUEST_TIMEOUT_MS
+}
 
 function authHeaders(token?: string): HeadersInit | undefined {
   return token ? { Authorization: `Bearer ${token}` } : undefined
@@ -50,9 +58,17 @@ export async function getGames(
   params.set('limit', String(limit))
   params.set('offset', String(offset))
 
-  const response = await fetch(`${API_BASE_URL}/api/games?${params.toString()}`)
-  if (!response.ok) throw new Error('Failed to fetch games')
-  return response.json()
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), catalogRequestTimeoutMs())
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/games?${params.toString()}`, {
+      signal: controller.signal,
+    })
+    if (!response.ok) throw new Error('Failed to fetch games')
+    return await response.json()
+  } finally {
+    clearTimeout(timeout)
+  }
 }
 
 export async function getGameBySlug(slug: string, refreshMetadata = false): Promise<Game> {

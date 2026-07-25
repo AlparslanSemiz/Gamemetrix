@@ -2038,6 +2038,22 @@ a.source-name-link:hover {
   min-height: 1px;
 }
 
+.load-more-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.load-more-error .ghost-button {
+  flex: 0 0 auto;
+  color: #fca5a5;
+}
+
+.load-more-error .ghost-button:hover {
+  color: #fee2e2;
+}
+
 
 /* ─── Compact (grid) card ─────────────────────────────────────────── */
 .game-card-compact {

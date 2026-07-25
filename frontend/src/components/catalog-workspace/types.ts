@@ -21,6 +21,7 @@ export interface CatalogWorkspaceProps {
   isLoading: boolean
   isLoadingMore: boolean
   libraryTotal: number
+  loadMoreError: string | null
   loaderRef: RefObject<HTMLDivElement | null>
   mastheadRef: RefObject<HTMLElement | null>
   mastheadVisible: boolean
@@ -43,6 +44,7 @@ export interface CatalogWorkspaceProps {
   onFocusSearch: () => void
   onOpenDetail: (game: Game) => void
   onOpenTrailer: (game: Game) => void
+  onRetryLoadMore: () => void
   onToggleCollection: (collection: CollectionKey, slug: string) => void
 }
 

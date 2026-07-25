@@ -37,6 +37,28 @@ test('home SSR and infinite catalog use the same full-catalog total', async ({ r
   expect(visibleText).not.toContain('1 / 400 loaded')
 })
 
+test('a stalled catalog page can be retried without skipping it', async ({ page }) => {
+  let offset24Requests = 0
+  await page.route('**/api/games?**', async (route) => {
+    const url = new URL(route.request().url())
+    if (url.searchParams.get('offset') !== '24' || offset24Requests++ > 0) {
+      await route.continue()
+      return
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 1_500))
+    await route.abort('timedout').catch(() => undefined)
+  })
+
+  await gotoHydrated(page, '/')
+  await expect(page.getByText('Loading more…')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Retry loading games' })).toBeVisible()
+
+  await page.getByRole('button', { name: 'Retry loading games' }).click()
+  await expect(page.getByText('Catalog Test Game 25')).toBeVisible()
+  expect(offset24Requests).toBe(2)
+})
+
 test('desktop and mobile navigation expose account controls without admin', async ({ page }) => {
   const hydrationErrors = []
   page.on('console', (message) => {

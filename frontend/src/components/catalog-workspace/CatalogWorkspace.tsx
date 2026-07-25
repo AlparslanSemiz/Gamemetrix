@@ -145,6 +145,7 @@ function CatalogBody({
         error={props.error}
         isLoading={props.isLoading}
         isLoadingMore={props.isLoadingMore}
+        loadMoreError={props.loadMoreError}
         loaderRef={props.loaderRef}
         pageTitle={props.pageTitle}
         viewMode={props.viewMode}
@@ -155,6 +156,7 @@ function CatalogBody({
         onFilterPublisher={props.onFilterPublisher}
         onOpenDetail={props.onOpenDetail}
         onOpenTrailer={props.onOpenTrailer}
+        onRetryLoadMore={props.onRetryLoadMore}
         onToggleCollection={props.onToggleCollection}
       />
     </section>

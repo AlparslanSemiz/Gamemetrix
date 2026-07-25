@@ -13,9 +13,8 @@ import type { Game, GameFilters } from '../types/game'
 import { PAGE_SIZE } from './config'
 
 export interface PrefetchedPage {
-  games: Game[]
   offset: number
-  total: number
+  request: Promise<{ games: Game[]; total: number }>
 }
 
 /** Identity of a filter set; a change means the list must reset to page 0. */
@@ -49,6 +48,7 @@ export interface StartCatalogPageLoadProps {
   setHasMore: Dispatch<SetStateAction<boolean>>
   setIsLoading: Dispatch<SetStateAction<boolean>>
   setIsLoadingMore: Dispatch<SetStateAction<boolean>>
+  setLoadMoreError: Dispatch<SetStateAction<string | null>>
 }
 
 export function startCatalogPageLoad(props: StartCatalogPageLoadProps): (() => void) | undefined {
@@ -61,6 +61,7 @@ export function startCatalogPageLoad(props: StartCatalogPageLoadProps): (() => v
   if (props.offset > 0 && props.catalogTotal > 0 && props.offset >= props.catalogTotal) {
     props.setHasMore(false)
     props.setIsLoadingMore(false)
+    props.setLoadMoreError(null)
     return
   }
 
@@ -79,6 +80,7 @@ export function startCatalogPageLoad(props: StartCatalogPageLoadProps): (() => v
   } else {
     props.setIsLoadingMore(true)
   }
+  props.setLoadMoreError(null)
   props.setError(null)
 
   const applyPage = (pageGames: Game[], total: number) => {
@@ -95,6 +97,7 @@ export function startCatalogPageLoad(props: StartCatalogPageLoadProps): (() => v
       setHasMore: props.setHasMore,
       setIsLoading: props.setIsLoading,
       setIsLoadingMore: props.setIsLoadingMore,
+      setLoadMoreError: props.setLoadMoreError,
       total,
     })
   }
@@ -105,10 +108,12 @@ export function startCatalogPageLoad(props: StartCatalogPageLoadProps): (() => v
     if (isFirstPage) {
       props.setGames([])
       props.setIsLoading(false)
+      props.setError('GameMetrix API is not reachable yet.')
     } else {
+      props.setHasMore(false)
       props.setIsLoadingMore(false)
+      props.setLoadMoreError('More games could not be loaded. Check your connection and try again.')
     }
-    props.setError('GameMetrix API is not reachable yet.')
   }
 
   void requestCatalogPage(
@@ -135,15 +140,14 @@ async function requestCatalogPage(
   onError: () => void,
 ) {
   const cached = prefetchRef.current
-  if (!isFirstPage && cached?.offset === offset) {
-    prefetchRef.current = null
-    onSuccess(cached.games, cached.total)
-    return
-  }
   try {
-    const response = await getGames(filters, PAGE_SIZE, offset)
+    const response = !isFirstPage && cached?.offset === offset
+      ? await cached.request
+      : await getGames(filters, PAGE_SIZE, offset)
+    if (cached?.offset === offset) prefetchRef.current = null
     onSuccess(response.games, response.total)
   } catch {
+    if (cached?.offset === offset) prefetchRef.current = null
     onError()
   }
 }
@@ -160,6 +164,7 @@ interface ApplyLoadedPageProps {
   setHasMore: Dispatch<SetStateAction<boolean>>
   setIsLoading: Dispatch<SetStateAction<boolean>>
   setIsLoadingMore: Dispatch<SetStateAction<boolean>>
+  setLoadMoreError: Dispatch<SetStateAction<string | null>>
   total: number
 }
 
@@ -175,6 +180,7 @@ function applyLoadedPage({
   setHasMore,
   setIsLoading,
   setIsLoadingMore,
+  setLoadMoreError,
   total,
 }: ApplyLoadedPageProps) {
   if (!isActive()) return
@@ -183,6 +189,7 @@ function applyLoadedPage({
 
   const loadedCount = offset + pageGames.length
   setHasMore(pageGames.length > 0 && loadedCount < total)
+  setLoadMoreError(null)
   if (isFirstPage) setIsLoading(false)
   else setIsLoadingMore(false)
 
@@ -199,15 +206,11 @@ function prefetchNextPage(
   prefetchRef: RefObject<PrefetchedPage | null>,
 ) {
   if (offset >= total) return
-  void getGames(filters, PAGE_SIZE, offset)
-    .then((response) => {
-      if (isActive()) {
-        prefetchRef.current = {
-          offset,
-          games: response.games,
-          total: response.total,
-        }
-      }
-    })
-    .catch(() => undefined)
+  const request = getGames(filters, PAGE_SIZE, offset)
+  prefetchRef.current = { offset, request }
+  void request.catch(() => {
+    if (isActive() && prefetchRef.current?.request === request) {
+      prefetchRef.current = null
+    }
+  })
 }

@@ -66,7 +66,9 @@ export function AppContent({ initialGames = [], initialTotal = 0, initialPage }:
   })
   const {
     isLoadingMore,
+    loadMoreError,
     loaderRef,
+    retryLoadMore,
   } = pagination
   const { account } = useAccount()
   const [providerStatuses, setProviderStatuses] = useState<ProviderStatus[]>([])
@@ -207,6 +209,7 @@ export function AppContent({ initialGames = [], initialTotal = 0, initialPage }:
         isLoading={isLoading}
         isLoadingMore={isLoadingMore}
         libraryTotal={libraryTotal}
+        loadMoreError={loadMoreError}
         loaderRef={loaderRef}
         mastheadRef={mastheadRef}
         mastheadVisible={mastheadVisible}
@@ -229,6 +232,7 @@ export function AppContent({ initialGames = [], initialTotal = 0, initialPage }:
         onFocusSearch={() => setMastheadVisibility(true)}
         onOpenDetail={saveCatalogSnapshot}
         onOpenTrailer={trailer.open}
+        onRetryLoadMore={retryLoadMore}
         onToggleCollection={handleToggleCollection}
       />
 

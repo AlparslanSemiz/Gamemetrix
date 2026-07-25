@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useRef,
   useState,
@@ -34,6 +35,7 @@ export function useCatalogPaginationState({
   const [offset, setOffset] = useState(0)
   const [hasMore, setHasMore] = useState(!hasUrlFilters && initialGames.length < initialTotal)
   const [isLoadingMore, setIsLoadingMore] = useState(false)
+  const [loadMoreError, setLoadMoreError] = useState<string | null>(null)
   const loaderRef = useRef<HTMLDivElement>(null)
   // Seeded so SSR-provided games are not immediately refetched on hydration.
   const lastFetchSignatureRef = useRef<string | null>(
@@ -41,6 +43,11 @@ export function useCatalogPaginationState({
   )
   const lastFilterResetSignatureRef = useRef(catalogFilterSignature(filters, pendingApply))
   const prefetchRef = useRef<PrefetchedPage | null>(null)
+  const retryLoadMore = useCallback(() => {
+    prefetchRef.current = null
+    setLoadMoreError(null)
+    setFetchKey((key) => key + 1)
+  }, [])
 
   return {
     fetchKey,
@@ -48,12 +55,15 @@ export function useCatalogPaginationState({
     isLoadingMore,
     lastFetchSignatureRef,
     lastFilterResetSignatureRef,
+    loadMoreError,
     loaderRef,
     offset,
     prefetchRef,
+    retryLoadMore,
     setFetchKey,
     setHasMore,
     setIsLoadingMore,
+    setLoadMoreError,
     setOffset,
   }
 }
@@ -119,8 +129,15 @@ function useCatalogPageLoad({
   setGames,
   setIsLoading,
 }: CatalogLoadEffectsProps) {
-  const { fetchKey, lastFetchSignatureRef, offset, prefetchRef, setHasMore, setIsLoadingMore } =
-    pagination
+  const {
+    fetchKey,
+    lastFetchSignatureRef,
+    offset,
+    prefetchRef,
+    setHasMore,
+    setIsLoadingMore,
+    setLoadMoreError,
+  } = pagination
 
   useEffect(
     () =>
@@ -138,6 +155,7 @@ function useCatalogPageLoad({
         setHasMore,
         setIsLoading,
         setIsLoadingMore,
+        setLoadMoreError,
       }),
     [
       catalogTotal,
@@ -153,6 +171,7 @@ function useCatalogPageLoad({
       setHasMore,
       setIsLoading,
       setIsLoadingMore,
+      setLoadMoreError,
     ],
   )
 }
