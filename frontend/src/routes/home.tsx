@@ -6,7 +6,12 @@ import type { GameListResponse } from '../types/game'
 const SOCIAL_IMAGE = 'https://gamemetrix.me/icons.svg'
 
 export async function loader(): Promise<GameListResponse> {
-  return fetchBackend<GameListResponse>('/api/seo/curated/home?limit=24')
+  // The hydrated catalog continues with /api/games, so SSR must use the same
+  // query and total. Mixing the 400-row SEO-curated pool with the full catalog
+  // made the badge jump from "24 / 400" to "48 / 10,929" after hydration.
+  return fetchBackend<GameListResponse>(
+    '/api/games?sort=rank_score&direction=desc&limit=24&offset=0',
+  )
 }
 
 export const meta: MetaFunction = ({ location }) => [

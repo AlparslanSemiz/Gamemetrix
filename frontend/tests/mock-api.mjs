@@ -174,9 +174,20 @@ const server = http.createServer(async (request, response) => {
     })
   }
   if (url.pathname === '/api/seo/curated/home' || url.pathname.startsWith('/api/seo/curated/')) {
-    return json(response, 200, { games: [game], total: 1 })
+    return json(response, 200, { games: [game], total: 400 })
   }
-  if (url.pathname === '/api/games') return json(response, 200, { games: [game], total: 1 })
+  if (url.pathname === '/api/games') {
+    const offset = Math.max(0, Number(url.searchParams.get('offset') ?? 0))
+    const limit = Math.max(1, Number(url.searchParams.get('limit') ?? 24))
+    const pageSize = offset === 0 ? 1 : Math.min(limit, 48 - offset)
+    const games = Array.from({ length: Math.max(0, pageSize) }, (_, index) => {
+      const id = offset + index + 1
+      return id === 1
+        ? game
+        : { ...game, id, title: `Catalog Test Game ${id}`, slug: `catalog-test-game-${id}` }
+    })
+    return json(response, 200, { games, total: 48 })
+  }
   if (url.pathname === '/api/facets') return json(response, 200, { genres: ['RPG'], years: [2024], platforms: ['PC', 'Linux'] })
   if (url.pathname === '/api/integrations/status') return json(response, 200, [
     { source: 'Steam', status: 'ok', detail: 'Fixture provider' },

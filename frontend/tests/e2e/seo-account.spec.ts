@@ -24,6 +24,19 @@ test('crawler receives complete game HTML without executing JavaScript', async (
   expect((await request.get('/robots.txt')).headers()['content-type']).toContain('text/plain')
 })
 
+test('home SSR and infinite catalog use the same full-catalog total', async ({ request }) => {
+  const response = await request.get('/')
+  expect(response.status()).toBe(200)
+  const html = await response.text()
+  const visibleText = html
+    .replaceAll('<!-- -->', '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+
+  expect(visibleText).toContain('1 / 48 loaded')
+  expect(visibleText).not.toContain('1 / 400 loaded')
+})
+
 test('desktop and mobile navigation expose account controls without admin', async ({ page }) => {
   const hydrationErrors = []
   page.on('console', (message) => {
