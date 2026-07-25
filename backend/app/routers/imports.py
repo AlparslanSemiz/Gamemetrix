@@ -5,6 +5,8 @@ Routes:
   POST /api/import/rawg          — RAWG catalog import
   POST /api/import/rawg/nintendo — RAWG Nintendo-family catalog import
   POST /api/import/igdb/nintendo — IGDB Nintendo-family catalog import
+  POST /api/import/igdb/full     — resumable complete IGDB main-game catalog
+  POST /api/import/steam/catalog — resumable official Steam game catalog
   POST /api/import/free-to-game  — FreeToGame catalog import
   POST /api/import/cheapshark    — CheapShark deals import
   POST /api/import/steamspy      — SteamSpy top-games import
@@ -19,10 +21,11 @@ from ..database import get_db
 from ..schemas import ImportResponse, MultiImportResponse
 from ..integrations.cheapshark import import_cheapshark_deals
 from ..integrations.free_to_game import import_free_to_game_games
-from ..integrations.igdb_import import import_igdb_nintendo_games
+from ..integrations.igdb_import import import_igdb_full_catalog, import_igdb_nintendo_games
 from ..integrations.hltb import backfill_hltb_playtimes
 from ..integrations.rawg import import_catalog_to_size, import_rawg_games, import_rawg_nintendo_games
 from ..integrations.steamspy import import_steamspy_games
+from ..integrations.steam_catalog import import_steam_official_catalog
 from ..security import require_admin_user
 from ..heavy_jobs import require_heavy_job_slot, require_not_peak_hours
 
@@ -75,9 +78,31 @@ async def import_nintendo_from_igdb(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+@router.post("/igdb/full")
+async def import_full_catalog_from_igdb(
+    target: int = Query(default=5000, ge=1, le=50000),
+    db: Session = Depends(get_db),
+) -> dict[str, object]:
+    try:
+        return await import_igdb_full_catalog(db, target=target)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/steam/catalog")
+async def import_official_catalog_from_steam(
+    target: int = Query(default=1000, ge=1, le=10000),
+    db: Session = Depends(get_db),
+) -> dict[str, object]:
+    try:
+        return await import_steam_official_catalog(db, target=target)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @router.post("/catalog")
 async def import_catalog(
-    target_total: int = Query(default=10000, ge=1, le=10000),
+    target_total: int = Query(default=50000, ge=1, le=250000),
     db: Session = Depends(get_db),
 ) -> dict[str, object]:
     try:

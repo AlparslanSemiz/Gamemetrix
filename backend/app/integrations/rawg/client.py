@@ -8,6 +8,7 @@ import httpx
 
 from ..http_retry import request_with_retry
 from ..rate_limiter import get_rate_limiter
+from ..rawg_quota import stop_rawg_requests_if_quota_exhausted
 
 log = logging.getLogger(__name__)
 
@@ -26,4 +27,6 @@ async def budgeted_rawg_get(
     if not await get_rate_limiter().acquire("RAWG"):
         log.debug("RAWG metadata budget exhausted for %s", url)
         return None
-    return await request_with_retry(client, "GET", url, params=params)
+    response = await request_with_retry(client, "GET", url, params=params)
+    stop_rawg_requests_if_quota_exhausted(response)
+    return response

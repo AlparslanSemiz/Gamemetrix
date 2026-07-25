@@ -17,17 +17,20 @@ from ...database import SessionLocal
 from ...integrations.cheapshark import import_cheapshark_deals
 from ...integrations.free_to_game import import_free_to_game_games
 from ...integrations.hltb import backfill_hltb_playtimes
-from ...integrations.igdb_import import import_igdb_nintendo_games, import_igdb_popular_games
+from ...integrations.igdb_import import (
+    import_igdb_full_catalog,
+)
 from ...integrations.rate_limiter import get_rate_limiter
 from ...integrations.rawg import import_catalog_to_size
 from ...integrations.steamspy import import_steamspy_games
+from ...integrations.steam_catalog import import_steam_official_catalog
 from ...integrations.sync import game_needs_rating_refresh, refresh_game_sources
 from ...models import Game
+from ..catalog_quality import catalog_quality_batch, catalog_repair_batch
 from ..endless import backfill_endless_batch
 from ..igdb_playtime_backfill import igdb_playtime_backfill_batch
 from ..metacritic_backfill import cheapshark_metacritic_backfill_batch
 from ..metadata_backfill import metadata_backfill_batch
-from ..nongame_cleanup import nongame_cleanup_batch
 from ..price_backfill import price_backfill_batch
 from ..primary_score_backfill import primary_score_backfill_batch, primary_score_coverage_status
 from ..summarizer import shorten_summary_batch
@@ -35,8 +38,8 @@ from ..summarizer import shorten_summary_batch
 log = logging.getLogger(__name__)
 
 RATING_SCAN_CHUNK = 500
-RATING_BUDGET_SOURCES = ("RAWG", "OpenCritic", "IGDB", "Steam", "SteamSpy")
-METADATA_BUDGET_SOURCES = ("Steam", "RAWG", "IGDB")
+RATING_BUDGET_SOURCES = ("RAWG", "OpenCritic", "IGDB", "Steam")
+METADATA_BUDGET_SOURCES = ("Steam", "IGDB", "Wikidata", "GameBrain", "RAWG")
 PRICE_BUDGET_SOURCES = ("Steam", "ITAD", "CheapShark")
 PRIMARY_SCORE_BUDGET_SOURCES = ("Metacritic", "OpenCritic", "IGDB", "Steam")
 
@@ -56,12 +59,12 @@ def _game_count(db: Session) -> int:
 
 # source -> (per-run import cap, importer). RAWG is handled separately because it
 # takes an absolute catalog target rather than a remaining-headroom count.
-_SECONDARY_CATALOG_IMPORTS: tuple[tuple[str, int, _SecondaryImporter], ...] = (
-    ("IGDB", 8000, lambda db, target: import_igdb_popular_games(db, target=target)),
-    ("IGDB", 5000, lambda db, target: import_igdb_nintendo_games(db, target=target)),
-    ("FreeToGame", 1000, lambda db, target: import_free_to_game_games(db, target=target)),
-    ("SteamSpy", 5000, lambda db, target: import_steamspy_games(db, target=target)),
-    ("CheapShark", 2000, lambda db, target: import_cheapshark_deals(db, target=target)),
+_SECONDARY_CATALOG_IMPORTS: tuple[tuple[str, str, int, _SecondaryImporter], ...] = (
+    ("Steam:catalog", "Steam", 5000, lambda db, target: import_steam_official_catalog(db, target=target)),
+    ("IGDB:full", "IGDB", 50000, lambda db, target: import_igdb_full_catalog(db, target=target)),
+    ("FreeToGame", "FreeToGame", 1000, lambda db, target: import_free_to_game_games(db, target=target)),
+    ("SteamSpy", "SteamSpy", 5000, lambda db, target: import_steamspy_games(db, target=target)),
+    ("CheapShark", "CheapShark", 2000, lambda db, target: import_cheapshark_deals(db, target=target)),
 )
 
 
@@ -70,19 +73,47 @@ async def fill_catalog(target_total: int) -> dict[str, object]:
     result: dict[str, object] = {}
     with SessionLocal() as db:
         current_total = _game_count(db)
-        if current_total < target_total and get_rate_limiter().remaining("RAWG") > 0:
-            result["RAWG"] = await import_catalog_to_size(db, target_total=target_total)
-            current_total = _game_count(db) or current_total
-
-        for source, cap, importer in _SECONDARY_CATALOG_IMPORTS:
+        for result_key, source, cap, importer in _SECONDARY_CATALOG_IMPORTS:
             if current_total >= target_total:
                 break
             if source == "IGDB" and not cfg.igdb_configured():
                 continue
+            if source == "Steam" and not cfg.steam_configured():
+                continue
             if get_rate_limiter().remaining(source) <= 0:
                 continue
-            result[source] = await importer(db, min(cap, target_total - current_total))
+            try:
+                result[result_key] = await importer(
+                    db,
+                    min(cap, target_total - current_total),
+                )
+            except Exception as exc:
+                db.rollback()
+                log.warning("%s catalog import failed (%s)", result_key, type(exc).__name__)
+                result[result_key] = {
+                    "status": "failed",
+                    "error": type(exc).__name__,
+                }
+                continue
             current_total = _game_count(db) or current_total
+
+        # RAWG is the scarce free quota and also feeds Metacritic. Use it only
+        # after the generous/free catalog sources have made all possible progress.
+        if (
+            current_total < target_total
+            and cfg.rawg_configured()
+            and get_rate_limiter().remaining("RAWG") > 0
+        ):
+            try:
+                result["RAWG"] = await import_catalog_to_size(db, target_total=target_total)
+                current_total = _game_count(db) or current_total
+            except Exception as exc:
+                db.rollback()
+                log.warning("RAWG catalog import failed (%s)", type(exc).__name__)
+                result["RAWG"] = {
+                    "status": "failed",
+                    "error": type(exc).__name__,
+                }
 
         result["total_games"] = current_total
         result["target_total"] = target_total
@@ -253,7 +284,13 @@ async def fill_summaries() -> dict[str, int]:
         return await shorten_summary_batch(db, cfg.SUMMARY_SHORTEN_BATCH_SIZE)
 
 
-async def clean_nongames() -> dict[str, int]:
+async def audit_catalog_quality() -> dict[str, int]:
     cfg = get_settings()
     with SessionLocal() as db:
-        return await nongame_cleanup_batch(db, cfg.NONGAME_CLEANUP_BATCH_SIZE)
+        return await catalog_quality_batch(db, cfg.CATALOG_QUALITY_BATCH_SIZE)
+
+
+async def repair_catalog_quality() -> dict[str, int]:
+    cfg = get_settings()
+    with SessionLocal() as db:
+        return await catalog_repair_batch(db, cfg.CATALOG_REPAIR_BATCH_SIZE)

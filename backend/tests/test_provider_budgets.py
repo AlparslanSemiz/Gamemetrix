@@ -11,6 +11,7 @@ import pytest
 
 from app.config import METERED_SOURCES, OPENCRITIC_SEARCH_SOURCE, get_settings
 from app.integrations.http_retry import request_with_retry
+from app.services.data_fill.stages import RATING_BUDGET_SOURCES
 
 
 def _client(handler) -> httpx.AsyncClient:
@@ -72,6 +73,13 @@ def test_opencritic_search_has_its_own_tighter_bucket() -> None:
     )
 
 
+def test_opencritic_defaults_stay_within_the_free_usage_policy() -> None:
+    limits = get_settings().provider_daily_limits()
+
+    assert limits["OpenCritic"] == 4
+    assert limits[OPENCRITIC_SEARCH_SOURCE] == 2
+
+
 def test_metacritic_shares_the_rawg_budget() -> None:
     """Both are fetched with the same RAWG key, so one budget must cover both."""
     assert get_settings().provider_budget_aliases()["Metacritic"] == "RAWG"
@@ -88,3 +96,7 @@ def test_monthly_rawg_window_stays_under_the_free_tier() -> None:
 
     assert usable_daily * 31 <= monthly, "31 full days must not exceed the monthly ceiling"
     assert usable_monthly < monthly
+
+
+def test_non_rating_steamspy_budget_cannot_keep_rating_fill_alive() -> None:
+    assert "SteamSpy" not in RATING_BUDGET_SOURCES

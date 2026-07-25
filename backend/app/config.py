@@ -124,6 +124,15 @@ class Settings:
         self.GROQ_MODEL: str = _env("GROQ_MODEL", "llama-3.1-8b-instant")
         self.ITAD_API_KEY: str = _env("ITAD_API_KEY")
         self.STEAM_WEB_API_KEY: str = _env("STEAM_WEB_API_KEY")
+        self.GAMEBRAIN_API_KEY: str = _env("GAMEBRAIN_API_KEY")
+        # GameBrain's free plan is non-commercial only. A key alone must never
+        # silently enable it on a commercial deployment.
+        self.GAMEBRAIN_NONCOMMERCIAL_ENABLED: bool = _env_bool(
+            "GAMEBRAIN_NONCOMMERCIAL_ENABLED", False
+        )
+        self.GAMEBRAIN_CACHE_PERMISSION_GRANTED: bool = _env_bool(
+            "GAMEBRAIN_CACHE_PERMISSION_GRANTED", False
+        )
         self.CHEAPSHARK_USER_AGENT: str = _env("CHEAPSHARK_USER_AGENT", USER_AGENT)
         self.DATABASE_URL: str = _env_stripped("DATABASE_URL")
         default_origins = (
@@ -147,11 +156,11 @@ class Settings:
     def _load_provider_budget_settings(self) -> None:
         # ── Per-source daily request budgets ─────────────────────────────────
         # Override these when on a paid API plan.
-        # OpenCritic (RapidAPI) is a METERED plan — exceeding it is billed, so its
-        # ceilings mirror the provider's real limits and the search endpoint gets
-        # its own, much tighter bucket. See PROVIDER_BUDGET_RESERVE_PERCENT below.
-        self.OPENCRITIC_DAILY_LIMIT: int = _env_int("OPENCRITIC_DAILY_LIMIT", 200)
-        self.OPENCRITIC_SEARCH_DAILY_LIMIT: int = _env_int("OPENCRITIC_SEARCH_DAILY_LIMIT", 25)
+        # Free-first defaults keep RapidAPI usage deliberately tiny. Raise these
+        # only after the selected OpenCritic plan or direct license is confirmed;
+        # search keeps its own, tighter bucket.
+        self.OPENCRITIC_DAILY_LIMIT: int = _env_int("OPENCRITIC_DAILY_LIMIT", 4)
+        self.OPENCRITIC_SEARCH_DAILY_LIMIT: int = _env_int("OPENCRITIC_SEARCH_DAILY_LIMIT", 2)
         # IGDB (Twitch, ~4 req/s, no daily quota) and Steam (public endpoint, no
         # fixed daily cap) sit far below their real ceilings, so their budgets are
         # raised well above RAWG's to speed primary-score coverage at no cost.
@@ -163,6 +172,12 @@ class Settings:
         self.FREETOGAME_DAILY_LIMIT: int = _env_int("FREETOGAME_DAILY_LIMIT", 200)
         self.ITAD_DAILY_LIMIT: int = _env_int("ITAD_DAILY_LIMIT", 200)
         self.HLTB_DAILY_LIMIT: int = _env_int("HLTB_DAILY_LIMIT", 250)
+        self.WIKIDATA_DAILY_LIMIT: int = _env_int("WIKIDATA_DAILY_LIMIT", 200)
+        # Free GameBrain accounts get 50 tokens/day. Keep this hard default below
+        # that ceiling even when the global reserve is explicitly set to zero.
+        self.GAMEBRAIN_DAILY_LIMIT: int = _clamp(
+            _env_int("GAMEBRAIN_DAILY_LIMIT", 40), 1, 50
+        )
         self.HLTB_REQUEST_DELAY_SECONDS: float = max(0.5, _env_float("HLTB_REQUEST_DELAY_SECONDS", 1.5))
         self.RAWG_MONTHLY_LIMIT: int = _env_int("RAWG_MONTHLY_LIMIT", 20000)
         self.ITAD_FIVE_MINUTE_LIMIT: int = _env_int("ITAD_FIVE_MINUTE_LIMIT", 1000)
@@ -218,17 +233,18 @@ class Settings:
         # game detail page. Never touches any score — display order only.
         self.SIMILARITY_USE_AI: bool = _env_bool("SIMILARITY_USE_AI", False)
         self.SIMILARITY_AI_POOL: int = _env_int("SIMILARITY_AI_POOL", 20)
-        # ── Non-game cleanup ─────────────────────────────────────────────────
-        # Detect asset packs / tools / demos that slipped through bulk imports.
-        # Deletion only happens when algorithm AND AI agree and this flag is on;
-        # otherwise candidates are quarantined by content_type, never removed.
+        # ── Catalog quality review ───────────────────────────────────────────
+        # Deterministic signals select suspicious titles, descriptions and core
+        # metadata for Groq review. Confirmed non-games are quarantined. Deletion
+        # additionally needs a strong marker and this explicit opt-in.
         self.NONGAME_AUTODELETE_ENABLED: bool = _env_bool("NONGAME_AUTODELETE_ENABLED", False)
-        self.NONGAME_CLEANUP_BATCH_SIZE: int = _env_int("NONGAME_CLEANUP_BATCH_SIZE", 40)
+        self.CATALOG_QUALITY_BATCH_SIZE: int = _env_int("CATALOG_QUALITY_BATCH_SIZE", 40)
+        self.CATALOG_REPAIR_BATCH_SIZE: int = _env_int("CATALOG_REPAIR_BATCH_SIZE", 40)
 
     def _load_data_fill_settings(self) -> None:
         # ── Data fill orchestration ─────────────────────────────────────────
         self.DATA_FILL_ENABLED: bool = _env_bool("DATA_FILL_ENABLED", True)
-        self.DATA_FILL_TARGET_TOTAL: int = _env_int("DATA_FILL_TARGET_TOTAL", 10000)
+        self.DATA_FILL_TARGET_TOTAL: int = _env_int("DATA_FILL_TARGET_TOTAL", 50000)
         self.DATA_FILL_INTERVAL_HOURS: float = _env_float("DATA_FILL_INTERVAL_HOURS", 24)
         self.DATA_FILL_STARTUP_DELAY_SECONDS: int = _env_int("DATA_FILL_STARTUP_DELAY_SECONDS", 120)
         self.DATA_FILL_PRIMARY_SCORE_BATCH_SIZE: int = _env_int("DATA_FILL_PRIMARY_SCORE_BATCH_SIZE", 10000)
@@ -279,6 +295,8 @@ class Settings:
             "FreeToGame": self.FREETOGAME_DAILY_LIMIT,
             "ITAD": self.ITAD_DAILY_LIMIT,
             "HLTB": self.HLTB_DAILY_LIMIT,
+            "Wikidata": self.WIKIDATA_DAILY_LIMIT,
+            "GameBrain": self.GAMEBRAIN_DAILY_LIMIT,
         }
 
     def provider_budget_aliases(self) -> dict[str, str]:
@@ -320,6 +338,16 @@ class Settings:
 
     def steam_configured(self) -> bool:
         return bool(self.STEAM_WEB_API_KEY)
+
+    def wikidata_configured(self) -> bool:
+        return True
+
+    def gamebrain_configured(self) -> bool:
+        return bool(
+            self.GAMEBRAIN_API_KEY
+            and self.GAMEBRAIN_NONCOMMERCIAL_ENABLED
+            and self.GAMEBRAIN_CACHE_PERMISSION_GRANTED
+        )
 
     def cheapshark_configured(self) -> bool:
         return True  # No key required

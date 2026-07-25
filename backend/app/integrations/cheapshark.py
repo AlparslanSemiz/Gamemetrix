@@ -7,7 +7,12 @@ from sqlalchemy.orm import Session
 
 from ..content_type import infer_content_type
 from ..models import Game
-from ..services.deduplication import find_existing_duplicate, merge_game_data
+from ..services.deduplication import (
+    add_duplicate_candidate,
+    build_duplicate_candidate_index,
+    find_existing_duplicate,
+    merge_game_data,
+)
 from .http_retry import DEFAULT_HEADERS
 from .rate_limiter import get_rate_limiter
 from .sync import calculate_metrix_score
@@ -137,6 +142,7 @@ async def import_cheapshark_deals(
     skipped = 0
     page = 0
     seen_slugs: set[str] = set()
+    candidate_index = build_duplicate_candidate_index(db)
 
     async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT, headers=DEFAULT_HEADERS) as client:
         while imported < target:
@@ -172,7 +178,11 @@ async def import_cheapshark_deals(
                     skipped += 1
                     continue
 
-                existing = find_existing_duplicate(db, game)
+                existing = find_existing_duplicate(
+                    db,
+                    game,
+                    candidate_index=candidate_index,
+                )
                 if existing:
                     merge_game_data(existing, game)
                     db.add(existing)
@@ -182,6 +192,7 @@ async def import_cheapshark_deals(
                 db.add(game)
                 try:
                     db.commit()
+                    add_duplicate_candidate(candidate_index, game)
                     imported += 1
                 except IntegrityError:
                     db.rollback()

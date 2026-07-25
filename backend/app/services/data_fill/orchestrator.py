@@ -10,7 +10,7 @@ from ..job_heartbeat import record_job_run
 from ..seo import refresh_catalog_seo_states
 from .runs import finish_run, load_run, mark_run_running, queue_data_fill_run
 from .stages import (
-    clean_nongames,
+    audit_catalog_quality,
     fill_catalog,
     fill_endless,
     fill_hltb,
@@ -21,6 +21,7 @@ from .stages import (
     fill_primary_scores,
     fill_ratings,
     fill_summaries,
+    repair_catalog_quality,
 )
 from .status import count_missing_external_ids
 
@@ -32,6 +33,8 @@ _SECONDS_PER_HOUR = 3600
 
 _EMPTY_RESULT: dict[str, object] = {
     "catalog": {},
+    "quality": {},
+    "repairs": {},
     "metacritic": {},
     "ratings": {},
     "primary_scores": {},
@@ -40,7 +43,6 @@ _EMPTY_RESULT: dict[str, object] = {
     "igdb_playtime": {},
     "endless": {},
     "summaries": {},
-    "nongames": {},
     "prices": {},
     "completeness": {},
     "external_ids": {},
@@ -78,6 +80,8 @@ async def _run_all_stages(
     result["external_ids"] = {"before_missing": before_missing}
 
     result["catalog"] = await fill_catalog(target_total)
+    result["quality"] = await audit_catalog_quality()
+    result["repairs"] = await repair_catalog_quality()
     result["metacritic"] = await fill_metacritic()
     result["primary_scores"] = await fill_primary_scores(force=force)
     result["ratings"] = await fill_ratings(force=force)
@@ -86,7 +90,6 @@ async def _run_all_stages(
     result["igdb_playtime"] = await fill_igdb_playtime()
     result["endless"] = await fill_endless()
     result["summaries"] = await fill_summaries()
-    result["nongames"] = await clean_nongames()
     result["prices"] = await fill_prices()
 
     result["completeness"] = _sweep_completeness()
@@ -139,6 +142,10 @@ def _data_fill_summary(result: dict[str, object]) -> dict[str, int]:
         "prices_stored": _int(_stage(result, "prices").get("stored")),
         "summaries_shortened": _int(_stage(result, "summaries").get("shortened")),
         "endless_flagged": _int(_stage(result, "endless").get("endless")),
+        "quality_ai_checked": _int(_stage(result, "quality").get("ai_checked")),
+        "quality_needs_review": _int(_stage(result, "quality").get("needs_review")),
+        "quality_quarantined": _int(_stage(result, "quality").get("quarantined")),
+        "quality_repaired": _int(_stage(result, "repairs").get("repaired")),
         "external_ids_matched": _int(_stage(result, "external_ids").get("matched")),
     }
 

@@ -5,6 +5,7 @@ from datetime import date
 import httpx
 
 from ..http_retry import DEFAULT_HEADERS
+from ..steam_quota import stop_steam_requests_if_rate_limited
 from ..types import bounded_int
 from .client import (
     APP_DETAILS_URL,
@@ -181,7 +182,7 @@ async def get_steam_release_dates(app_ids: list[int]) -> dict[int, date]:
             APP_DETAILS_URL,
             params={"appids": ",".join(str(i) for i in app_ids), "filters": "release_date"},
         )
-        if not response.is_success:
+        if stop_steam_requests_if_rate_limited(response) or not response.is_success:
             return {}
 
     payload = response.json()

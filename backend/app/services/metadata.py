@@ -94,7 +94,8 @@ def clean_game_summary(value: str | None, title: str) -> str | None:
     if not value:
         return None
 
-    normalized = html.unescape(re.sub(r"\s+", " ", value)).strip()
+    without_tags = re.sub(r"<[^>]+>", " ", value)
+    normalized = html.unescape(re.sub(r"\s+", " ", without_tags)).strip()
     for bad, good in _MOJIBAKE.items():
         normalized = normalized.replace(bad, good)
     if len(normalized) < _MIN_SUMMARY_CHARS:

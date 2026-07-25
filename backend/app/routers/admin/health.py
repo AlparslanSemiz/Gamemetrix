@@ -10,12 +10,14 @@ from enum import Enum
 from fastapi import APIRouter, HTTPException, Query
 
 from ...integrations.cheapshark_service import cheapshark_service
+from ...integrations.gamebrain_service import gamebrain_service
 from ...integrations.igdb_service import igdb_service
 from ...integrations.itad_service import itad_service
 from ...integrations.opencritic_service import opencritic_service
 from ...integrations.rawg_service import rawg_service
 from ...integrations.steam_service import steam_service
 from ...integrations.types import SourceHealth
+from ...integrations.wikidata_service import wikidata_service
 
 router = APIRouter()
 
@@ -46,6 +48,8 @@ class SourceTest(str, Enum):
     steam = "steam"
     itad = "itad"
     cheapshark = "cheapshark"
+    wikidata = "wikidata"
+    gamebrain = "gamebrain"
 
 
 @router.get("/api-health")
@@ -128,6 +132,15 @@ async def _run_source_test(source: SourceTest, q: str):
         case SourceTest.cheapshark:
             deals = await cheapshark_service.search_deals(q, limit=3)
             return [cheapshark_service.normalize_deal(deal) for deal in deals] if deals else None
+        case SourceTest.wikidata:
+            if q.casefold().startswith("igdb:"):
+                return await wikidata_service.lookup_exact(igdb_slug=q.split(":", 1)[1].strip())
+            steam_id = q.split(":", 1)[-1].strip() if q.casefold().startswith("steam:") else q.strip()
+            return await wikidata_service.lookup_exact(
+                steam_app_id=int(steam_id) if steam_id.isdigit() else None
+            )
+        case SourceTest.gamebrain:
+            return await gamebrain_service.search_game(q)
 
 
 def _serialize(result: object) -> object:

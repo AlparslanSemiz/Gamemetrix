@@ -1,4 +1,4 @@
-"""Per-source metadata refresh (Steam, RAWG, IGDB) and per-game orchestration.
+"""Per-source metadata refresh and per-game orchestration.
 
 Each `refresh_*` returns `(attempted, changed)`: whether the source was actually
 queried (vs. skipped for budget) and whether it changed the row.
@@ -13,10 +13,12 @@ from sqlalchemy.orm import Session
 
 from ...config import get_settings
 from ...integrations.igdb_service import igdb_service
+from ...integrations.gamebrain_service import gamebrain_service
 from ...integrations.rate_limiter import get_rate_limiter
 from ...integrations.rawg import enrich_rawg_game_detail
 from ...integrations.steam import extract_steam_app_id
 from ...integrations.steam_service import steam_service
+from ...integrations.wikidata_service import wikidata_service
 from ...models import ExternalId, Game
 from .apply import apply_normalized_game
 from .gaps import field_gaps, metadata_gap_score
@@ -31,13 +33,17 @@ _RAWG_GAPS = {
     "platforms", "screenshots", "system_requirements", "dlcs", "similar_games",
 }
 _IGDB_GAPS = {"cover", "summary", "developer", "publisher", "genres", "platforms", "game_modes"}
+_WIKIDATA_GAPS = {"developer", "publisher", "genres", "platforms", "website"}
+_GAMEBRAIN_GAPS = {
+    "cover", "summary", "developer", "publisher", "genres", "platforms", "game_modes", "screenshots",
+}
 
 _STEAM_CONFIDENCE = 0.96
 _IGDB_TRUSTED_CONFIDENCE = 0.94
 _IGDB_WEAK_CONFIDENCE = 0.7
 _EARLIEST_MEANINGFUL_YEAR = 1970
 
-_REFRESH_ORDER = ("Steam", "RAWG", "IGDB")
+_REFRESH_ORDER = ("Steam", "IGDB", "Wikidata", "GameBrain", "RAWG")
 
 
 def source_needed(db: Session, game: Game, source: str) -> bool:
@@ -50,6 +56,13 @@ def source_needed(db: Session, game: Game, source: str) -> bool:
         return not has_external_id(db, game, "RAWG") or bool(gaps & _RAWG_GAPS)
     if source == "IGDB":
         return not has_external_id(db, game, "IGDB") or bool(gaps & _IGDB_GAPS)
+    if source == "Wikidata":
+        steam_app_id, igdb_slug = _wikidata_identity(db, game)
+        return bool(gaps & _WIKIDATA_GAPS) and bool(steam_app_id or igdb_slug)
+    if source == "GameBrain":
+        return get_settings().gamebrain_configured() and (
+            not has_external_id(db, game, "GameBrain") or bool(gaps & _GAMEBRAIN_GAPS)
+        )
     return False
 
 
@@ -105,6 +118,18 @@ def _resolve_steam_app_id(db: Session, game: Game) -> int | None:
     return extract_steam_app_id(game.slug, game.cover_url, game.image_url)
 
 
+def _wikidata_identity(db: Session, game: Game) -> tuple[int | None, str | None]:
+    steam_app_id = _resolve_steam_app_id(db, game)
+    igdb = db.scalar(
+        select(ExternalId).where(
+            ExternalId.game_id == game.id,
+            ExternalId.source == "IGDB",
+        )
+    )
+    igdb_slug = igdb.external_slug if igdb and igdb.external_slug else None
+    return steam_app_id, igdb_slug
+
+
 async def refresh_igdb_metadata(db: Session, game: Game, skipped: set[str]) -> RefreshResult:
     if not igdb_service.is_configured():
         return False, False
@@ -152,10 +177,84 @@ async def refresh_rawg_metadata(db: Session, game: Game, skipped: set[str]) -> R
     return True, changed or after < before
 
 
+async def refresh_wikidata_metadata(db: Session, game: Game, skipped: set[str]) -> RefreshResult:
+    if get_rate_limiter().remaining("Wikidata") <= 0:
+        skipped.add("Wikidata")
+        return False, False
+    steam_app_id, igdb_slug = _wikidata_identity(db, game)
+    if not steam_app_id and not igdb_slug:
+        return False, False
+    result = await wikidata_service.lookup_exact(
+        steam_app_id=steam_app_id,
+        igdb_slug=igdb_slug,
+    )
+    if not result:
+        return True, False
+    changed = apply_normalized_game(game, result, trusted=True)
+    upsert_external_id(
+        db,
+        game.id,
+        "Wikidata",
+        result.external_id,
+        url=result.external_url,
+        confidence=1.0,
+    )
+    raw_steam_id = result.raw.get("steam_app_id")
+    if isinstance(raw_steam_id, int) and not game.steam_app_id:
+        game.steam_app_id = raw_steam_id
+        changed = True
+        upsert_external_id(
+            db,
+            game.id,
+            "Steam",
+            str(raw_steam_id),
+            url=steam_service.store_url(raw_steam_id),
+            confidence=1.0,
+        )
+    store_source_snapshot(db, game, result, "metadata-backfill/exact-identity")
+    return True, changed
+
+
+async def refresh_gamebrain_metadata(db: Session, game: Game, skipped: set[str]) -> RefreshResult:
+    if not gamebrain_service.is_configured():
+        return False, False
+    if get_rate_limiter().remaining("GameBrain") < 2:
+        skipped.add("GameBrain")
+        return False, False
+    result = await gamebrain_service.search_game(game.title, release_year=_release_year(game))
+    if not result or not titles_match_game(game, result):
+        return True, False
+    changed = apply_normalized_game(game, result, trusted=False)
+    upsert_external_id(
+        db,
+        game.id,
+        "GameBrain",
+        result.external_id,
+        url=result.external_url,
+        confidence=0.85,
+    )
+    raw_steam_id = result.raw.get("steam_app_id")
+    if isinstance(raw_steam_id, int) and not game.steam_app_id:
+        game.steam_app_id = raw_steam_id
+        changed = True
+        upsert_external_id(
+            db,
+            game.id,
+            "Steam",
+            str(raw_steam_id),
+            url=steam_service.store_url(raw_steam_id),
+            confidence=0.9,
+        )
+    store_source_snapshot(db, game, result, "metadata-backfill/search")
+    return True, changed
+
+
 _REFRESHERS = {
     "Steam": refresh_steam_metadata,
     "RAWG": refresh_rawg_metadata,
     "IGDB": refresh_igdb_metadata,
+    "Wikidata": refresh_wikidata_metadata,
+    "GameBrain": refresh_gamebrain_metadata,
 }
 
 

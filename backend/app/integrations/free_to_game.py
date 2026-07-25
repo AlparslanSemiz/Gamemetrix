@@ -6,7 +6,12 @@ from sqlalchemy.orm import Session
 
 from ..content_type import infer_content_type
 from ..models import Game, PriceSnapshot
-from ..services.deduplication import find_existing_duplicate, merge_game_data
+from ..services.deduplication import (
+    add_duplicate_candidate,
+    build_duplicate_candidate_index,
+    find_existing_duplicate,
+    merge_game_data,
+)
 from .rate_limiter import get_rate_limiter
 
 
@@ -105,6 +110,7 @@ async def import_free_to_game_games(db: Session, target: int = 500) -> dict[str,
 
     imported = 0
     skipped = 0
+    candidate_index = build_duplicate_candidate_index(db)
 
     for raw_game in response.json()[:target]:
         game = _to_game(raw_game)
@@ -116,7 +122,11 @@ async def import_free_to_game_games(db: Session, target: int = 500) -> dict[str,
             _upsert_free_price(db, existing, raw_game)
             skipped += 1
             continue
-        existing = find_existing_duplicate(db, game)
+        existing = find_existing_duplicate(
+            db,
+            game,
+            candidate_index=candidate_index,
+        )
         if existing:
             merge_game_data(existing, game)
             db.add(existing)
@@ -127,6 +137,7 @@ async def import_free_to_game_games(db: Session, target: int = 500) -> dict[str,
 
         db.add(game)
         db.flush()
+        add_duplicate_candidate(candidate_index, game)
         _upsert_free_price(db, game, raw_game)
         imported += 1
 

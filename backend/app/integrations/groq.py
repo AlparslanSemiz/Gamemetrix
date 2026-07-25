@@ -2,8 +2,8 @@
 Groq text-generation integration.
 
 Thin async HTTP client over Groq's OpenAI-compatible chat-completions endpoint.
-Used to rewrite long game descriptions into a short summary (see
-services/summarizer.py). Requires GROQ_API_KEY in .env (free key at
+Used for bounded catalog text tasks such as summary rewriting and quality
+classification. Requires GROQ_API_KEY in .env (free key at
 https://console.groq.com/keys); the model is selected via GROQ_MODEL. No
 third-party SDK — plain httpx, matching the other integration clients.
 """
@@ -23,7 +23,13 @@ _MAX_OUTPUT_TOKENS = 400
 _TEMPERATURE = 0.7
 
 
-async def generate_text(system_prompt: str, user_prompt: str) -> str | None:
+async def generate_text(
+    system_prompt: str,
+    user_prompt: str,
+    *,
+    max_output_tokens: int = _MAX_OUTPUT_TOKENS,
+    temperature: float = _TEMPERATURE,
+) -> str | None:
     """Return Groq's response text for the prompt, or None when unavailable."""
     cfg = get_settings()
     if not cfg.groq_configured():
@@ -36,8 +42,8 @@ async def generate_text(system_prompt: str, user_prompt: str) -> str | None:
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
         ],
-        "max_tokens": _MAX_OUTPUT_TOKENS,
-        "temperature": _TEMPERATURE,
+        "max_tokens": max_output_tokens,
+        "temperature": temperature,
     }
 
     try:

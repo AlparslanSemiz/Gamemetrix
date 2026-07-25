@@ -1,6 +1,6 @@
 # Provider access and quota runbook
 
-Last reviewed: 2026-07-20
+Last reviewed: 2026-07-24
 
 GameMetrix never raises a local limit above a provider's published allowance or written approval. A larger value in `.env` does not grant a larger upstream quota.
 
@@ -16,11 +16,134 @@ GameMetrix never raises a local limit above a provider's published allowance or 
 
 Credentials stay in backend environment variables. They must never be added to frontend variables, JSON responses, analytics properties, screenshots, or logs.
 
+## IGDB
+
+[IGDB's current getting-started documentation](https://api-docs.igdb.com/#getting-started)
+requires a free Twitch developer application and identifies the API as free for
+non-commercial use. Commercial projects must contact `partner@igdb.com`. The API
+allows 4 requests/second and up to 8 concurrent requests; GameMetrix stays
+sequential and uses a persistent daily budget.
+
+Set `IGDB_CLIENT_ID` and `IGDB_CLIENT_SECRET`. The full-catalog importer scans
+main games by ascending ID, stores its cursor in PostgreSQL, and resumes after
+quota exhaustion. It uses `game_type`, not IGDB's deprecated `category` field.
+
+**To:** `partner@igdb.com` — **Subject:** GameMetrix commercial use, caching, and bulk catalog request
+
+```text
+Hello IGDB partnerships team,
+
+I am building GameMetrix (https://gamemetrix.me), a game discovery and decision
+tool that combines separately attributed ratings with game metadata.
+
+We would like to use IGDB for a cached catalog and metadata backfills:
+- target catalog: approximately 50,000 games initially
+- traffic: scheduled server-side imports; no API request per page view
+- stored fields: titles, IDs/slugs, dates, descriptions, covers, platforms,
+  genres, companies, modes, and screenshots
+- commercial model: [NON-COMMERCIAL / ADS / AFFILIATE / SUBSCRIPTION]
+- attribution: [PROPOSED ATTRIBUTION]
+
+Could you confirm whether this use is covered, permitted cache/retention and
+image-display terms, required attribution, and whether Data Partner/bulk dump
+access is available? We will keep the integration disabled for commercial use
+until written approval if a commercial partnership is required.
+
+Thank you,
+[NAME]
+GameMetrix
+```
+
+## Steam
+
+The official
+[IStoreService/GetAppList](https://partner.steamgames.com/doc/webapi/IStoreService)
+catalog requires a Steam Web API key and can return game-only pages with a
+`last_appid` cursor. Set `STEAM_WEB_API_KEY`; GameMetrix requests only games
+(not DLC, software, videos, or hardware), then validates each candidate through
+Steam app details before storing it. The cursor is persisted so runs resume.
+
+Steam metadata and reviews have their own platform/API terms. Keep original
+Steam links and do not treat the Web API key as permission to redistribute
+assets outside those terms. Steam Store endpoints can return HTTP 429 before
+the local daily ceiling is reached; GameMetrix treats that response as a
+process-level circuit breaker and resumes the persisted catalog cursor in a
+later run.
+
+## Wikidata
+
+[Wikidata data access](https://www.wikidata.org/wiki/Wikidata:Data_access)
+requires no API key and structured Wikidata data is available under CC0.
+GameMetrix performs small exact-identity SPARQL queries using a known Steam App
+ID or IGDB slug; it does not do unreliable fuzzy title matching. The public
+query service is shared infrastructure, so requests use an identifying
+User-Agent and a conservative local budget (`WIKIDATA_DAILY_LIMIT=200`).
+
+No registration or email is needed. For a future truly bulk Wikidata import,
+use official dumps instead of sending a huge SPARQL query.
+
+## GameBrain
+
+The [GameBrain API console](https://gamebrain.co/api/console) currently lists a
+free non-commercial plan with 50 tokens/day, one concurrent request, 60
+requests/minute, and a required backlink. However, the
+[API terms](https://gamebrain.co/api/terms) prohibit copying/storing API data by
+default and permit at most a one-hour cache only with prior written permission.
+That conflicts with GameMetrix's persistent PostgreSQL enrichment.
+
+Therefore a key alone cannot enable GameBrain. All three values are required:
+
+```text
+GAMEBRAIN_API_KEY=...
+GAMEBRAIN_NONCOMMERCIAL_ENABLED=true
+GAMEBRAIN_CACHE_PERMISSION_GRANTED=true
+```
+
+Set the last flag only after GameBrain grants written permission covering the
+actual cache/retention model. The local cap is 40 tokens/day, below the free
+plan's 50, and GameBrain ratings are deliberately excluded from GameMetrix
+scoring. A visible backlink is included in the site footer.
+
+Use the contact path in the GameBrain API console; do not guess an email
+address.
+
+**Subject:** GameMetrix non-commercial API caching and display permission
+
+```text
+Hello GameBrain team,
+
+I am building GameMetrix (https://gamemetrix.me), a [NON-COMMERCIAL DESCRIPTION]
+game discovery and decision tool. We would like to use the free API only as a
+supplementary metadata fallback.
+
+Expected use:
+- at most 40 API tokens/day
+- server-side title lookup followed by game detail
+- stored fields: GameBrain ID/link, title, date, description, cover,
+  developer/publisher, genres, platforms, modes, screenshots, and Steam ID
+- visible linked GameBrain attribution in the site footer
+- no GameBrain ratings in our score and no raw-response redistribution
+
+Your current terms prohibit storage by default and mention written permission
+for limited caching. Could you grant written permission for persistent caching
+of the listed fields, or specify an acceptable retention/refresh/deletion model?
+Please also confirm that our project qualifies for the free non-commercial plan.
+We will not enable the integration until we have your written approval.
+
+Thank you,
+[NAME]
+GameMetrix
+```
+
 ## RAWG
 
 The current [RAWG API page](https://rawg.io/apidocs) advertises 20,000 requests per month for Free, 50,000 for Business, and custom Enterprise access up to 1,000,000. Its current page also requires attribution and backlinks where RAWG data or images are used. The API page and [API terms](https://rawg.io/tos_api) contain wording that can differ by plan and project type, so commercial use must be confirmed in writing before launch.
 
-Use the Business/Enterprise contact shown in the authenticated RAWG API portal. Keep `RAWG_MONTHLY_LIMIT=20000` until the portal or a written response grants more. A 401 normally means the key is rejected, not that the monthly allocation is exhausted.
+Use the Business/Enterprise contact shown in the authenticated RAWG API portal.
+Keep `RAWG_MONTHLY_LIMIT=20000` until the portal or a written response grants
+more. RAWG can return HTTP 401 both for rejected credentials and for an
+exhausted monthly allocation; GameMetrix distinguishes the provider's explicit
+quota message and stops further RAWG requests in that process.
 
 **Subject:** GameMetrix RAWG API plan and licensing request
 
@@ -30,7 +153,7 @@ Hello RAWG API team,
 I am building GameMetrix (https://gamemetrix.me), a public game decision tool that compares named rating sources, Linux/Proton compatibility, playtime, and store prices.
 
 Expected usage:
-- launch catalog: approximately 10,000 games
+- launch catalog: approximately 50,000 games
 - estimated monthly API volume: [REQUESTS]
 - estimated monthly active users/page views: [MAU] / [PAGE VIEWS]
 - refresh model: cached PostgreSQL records, stale-field backfills, and no request per page view
@@ -50,8 +173,7 @@ The official [ITAD API documentation](https://docs.isthereanydeal.com/) lists `a
 
 Keep `ITAD_FIVE_MINUTE_LIMIT=1000` and the lower daily safety budget until the app setup page or written approval says otherwise. Preserve ITAD affiliate tags and price values exactly.
 
-**To:** `api@isthereanydeal.com`  
-**Subject:** GameMetrix API use approval and quota request
+**To:** `api@isthereanydeal.com` — **Subject:** GameMetrix API use approval and quota request
 
 ```text
 Hello IsThereAnyDeal team,
@@ -59,7 +181,7 @@ Hello IsThereAnyDeal team,
 I am building GameMetrix (https://gamemetrix.me), a public game decision tool. Price data supports a small part of each game page and links users to the original store; the product is not intended to reproduce the full ITAD experience.
 
 Expected usage:
-- launch catalog: approximately 10,000 games
+- launch catalog: approximately 50,000 games
 - estimated requests: [DAILY] daily, [PEAK] per five minutes
 - cache: PostgreSQL snapshots with [TTL], refreshed by stale/missing fields rather than page views
 - attribution: visible IsThereAnyDeal/API attribution and original outbound URLs with affiliate tags intact
@@ -80,8 +202,7 @@ Keep OpenCritic disabled or at the approved RapidAPI allowance until OpenCritic 
 
 For approved direct access, set `OPENCRITIC_API_BASE` to the endpoint supplied by OpenCritic and put the direct credential in `OPENCRITIC_API_KEY`. Keep `RAPIDAPI_KEY` exclusively for the RapidAPI endpoint so the two credentials cannot be confused during rotation.
 
-**To:** `admin@opencritic.com`  
-**Subject:** GameMetrix score read API and display license request
+**To:** `admin@opencritic.com` — **Subject:** GameMetrix score read API and display license request
 
 ```text
 Hello OpenCritic team,
@@ -89,7 +210,7 @@ Hello OpenCritic team,
 I am building GameMetrix (https://gamemetrix.me), a public game decision tool that displays OpenCritic as one of four separately named score sources. Missing OpenCritic data remains missing and is never replaced by another provider.
 
 Expected usage:
-- approximately 10,000 games at launch
+- approximately 50,000 games at launch
 - [REQUESTS] read requests per month
 - PostgreSQL caching with [TTL] and stale-only refreshes
 - linked OpenCritic attribution beside every displayed score

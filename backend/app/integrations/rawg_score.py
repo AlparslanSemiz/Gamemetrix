@@ -5,6 +5,7 @@ import httpx
 
 from ..config import get_settings
 from .rate_limiter import get_rate_limiter
+from .rawg_quota import stop_rawg_requests_if_quota_exhausted
 from .title_matching import title_match_quality
 from .types import ExternalScore
 
@@ -77,6 +78,7 @@ async def get_rawg_metacritic_score(
             _RAWG_GAMES_URL,
             params={"key": api_key, "search": title, "page_size": 10},
         )
+        stop_rawg_requests_if_quota_exhausted(response)
         if not response.is_success:
             return ExternalScore(
                 source="Metacritic",
@@ -129,6 +131,7 @@ async def get_rawg_rating_score(title: str, release_year: int | None = None) -> 
             _RAWG_GAMES_URL,
             params={"key": api_key, "search": title, "page_size": 10},
         )
+        stop_rawg_requests_if_quota_exhausted(response)
         if not response.is_success:
             return ExternalScore(
                 source="RAWG",
@@ -183,6 +186,7 @@ async def get_rawg_release_date(title: str) -> date | None:
             _RAWG_GAMES_URL,
             params={"key": api_key, "search": title, "page_size": 10},
         )
+        stop_rawg_requests_if_quota_exhausted(response)
         if not response.is_success:
             return None
 
@@ -200,6 +204,7 @@ async def get_rawg_game_metadata(title: str) -> dict | None:
             _RAWG_GAMES_URL,
             params={"key": api_key, "search": title, "page_size": 10},
         )
+        stop_rawg_requests_if_quota_exhausted(search_resp)
         if not search_resp.is_success:
             return None
 
@@ -216,6 +221,7 @@ async def get_rawg_game_metadata(title: str) -> dict | None:
             f"{_RAWG_GAMES_URL}/{rawg_id}",
             params={"key": api_key},
         )
+        stop_rawg_requests_if_quota_exhausted(detail_resp)
         if not detail_resp.is_success:
             return raw_game
 

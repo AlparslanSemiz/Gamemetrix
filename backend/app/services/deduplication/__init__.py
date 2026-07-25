@@ -15,6 +15,9 @@ from .matching import (
 )
 from .merge import merge_game_data
 from .store import (
+    DuplicateCandidateIndex,
+    add_duplicate_candidate,
+    build_duplicate_candidate_index,
     consolidate_duplicate_games,
     find_duplicate_groups,
     find_existing_duplicate,
@@ -23,6 +26,9 @@ from .store import (
 from .titles import canonical_title, normalized_title
 
 __all__ = [
+    "DuplicateCandidateIndex",
+    "add_duplicate_candidate",
+    "build_duplicate_candidate_index",
     "canonical_title",
     "consolidate_duplicate_games",
     "dedupe_games_in_memory",

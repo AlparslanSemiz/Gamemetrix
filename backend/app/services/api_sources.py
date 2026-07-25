@@ -24,6 +24,8 @@ _ORDER: tuple[str, ...] = (
     "CheapShark",
     "ITAD",
     "FreeToGame",
+    "Wikidata",
+    "GameBrain",
     "HLTB",
 )
 
@@ -40,6 +42,8 @@ _DRIVEN_BY: dict[str, str] = {
     "CheapShark": "Data Fill (catalog · prices · Metacritic seed)",
     "ITAD": "Data Fill (prices)",
     "FreeToGame": "Data Fill (catalog)",
+    "Wikidata": "Data Fill · Metadata (exact ID)",
+    "GameBrain": "Data Fill · Metadata (optional non-commercial)",
     "HLTB": "Data Fill · HLTB loop",
 }
 
@@ -60,6 +64,8 @@ _PROVIDER_LIMIT: dict[str, tuple[str, str]] = {
     "CheapShark": ("no auth, generous", "headroom"),
     "ITAD": ("rolling 5-min window", "window"),
     "FreeToGame": ("no auth, generous", "headroom"),
+    "Wikidata": ("public SPARQL endpoint; usage-policy paced", "headroom"),
+    "GameBrain": ("free plan: 50 tokens/day, non-commercial only", "capped"),
     "HLTB": ("scraped, no official API — keep gentle", "scrape"),
 }
 
@@ -76,6 +82,8 @@ _ROLE_BY_TYPE: dict[str, str] = {
 _EXTRA_ROLES: dict[str, str] = {
     "HLTB": "Playtime",
     "OpenCritic:search": "Search sub-budget",
+    "Wikidata": "Catalog / metadata",
+    "GameBrain": "Catalog / metadata",
 }
 
 
@@ -89,6 +97,10 @@ def _configured(bucket: str) -> bool:
         return cfg.igdb_configured()
     if bucket == "ITAD":
         return bool(cfg.ITAD_API_KEY)
+    if bucket == "GameBrain":
+        return cfg.gamebrain_configured()
+    if bucket == "Wikidata":
+        return True
     return True  # Steam, SteamSpy, CheapShark, FreeToGame, HLTB need no key
 
 

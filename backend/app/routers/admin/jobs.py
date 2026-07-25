@@ -45,6 +45,8 @@ def _ai_status(cfg: Settings) -> dict[str, object]:
         "configured": configured,
         "uses": {
             "summary_rewrite": configured,
+            "catalog_quality_review": configured,
+            "catalog_quality_repair_verification": configured,
             "endless_classification": cfg.ENDLESS_USE_AI and configured,
             "similar_games_rerank": cfg.SIMILARITY_USE_AI and configured,
         },
@@ -79,8 +81,8 @@ def get_periodic_jobs() -> dict[str, object]:
         "jobs": jobs,
     }
 
-_DEFAULT_JOB_TARGET = 10000
-_MAX_JOB_TARGET = 100000
+_DEFAULT_JOB_TARGET = 50000
+_MAX_JOB_TARGET = 250000
 _HEAVY_JOB_BUSY = "Another heavy job is already running."
 
 

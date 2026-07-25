@@ -22,6 +22,7 @@ import httpx
 from .rate_limiter import get_rate_limiter
 from .steam.parsing import clean_requirement_block, parse_release_date
 from .steam.reviews import lookup_steam_app_id
+from .steam_quota import stop_steam_requests_if_rate_limited
 from .types import NormalizedGame, SourceHealth
 
 log = logging.getLogger(__name__)
@@ -131,6 +132,15 @@ class SteamService:
                     message=f"Steam app details returned {game.name}",
                     latency_ms=latency,
                 )
+            if get_rate_limiter().remaining("Steam") <= 0:
+                return SourceHealth(
+                    source="steam",
+                    configured=True,
+                    working=False,
+                    status="rate_limited",
+                    message="Steam rate limit reached",
+                    latency_ms=latency,
+                )
             return SourceHealth(
                 source="steam",
                 configured=True,
@@ -176,6 +186,8 @@ class SteamService:
                     APP_DETAILS,
                     params={"appids": app_id, "cc": "us", "l": "en"},
                 )
+                if stop_steam_requests_if_rate_limited(resp):
+                    return None
                 resp.raise_for_status()
         except Exception as exc:
             log.warning("Steam app details failed for %d: %s", app_id, exc)

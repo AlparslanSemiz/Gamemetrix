@@ -1,4 +1,5 @@
 import re
+from dataclasses import dataclass
 from datetime import UTC, date, datetime
 
 import httpx
@@ -7,8 +8,14 @@ from sqlalchemy.orm import Session
 
 from ..config import get_settings
 from ..content_type import infer_content_type
-from ..models import ExternalId, Game
-from ..services.deduplication import find_existing_duplicate, merge_game_data
+from ..models import CatalogSyncState, ExternalId, Game
+from ..services.deduplication import (
+    DuplicateCandidateIndex,
+    add_duplicate_candidate,
+    build_duplicate_candidate_index,
+    find_existing_duplicate,
+    merge_game_data,
+)
 from ..services.rawg_import import platform_family
 from .rate_limiter import get_rate_limiter
 from .igdb import _get_access_token
@@ -124,7 +131,9 @@ def _game_from_igdb(
     game = Game(
         title=title,
         slug=f"{_slugify(title)}-{raw_game.get('id') or _slugify(title)}",
-        summary=raw_game.get("summary") or f"{title} was imported from the IGDB {catalog_label} catalog.",
+        # Never manufacture an "about" paragraph. Empty summaries are explicitly
+        # picked up by the metadata/quality backfills.
+        summary=raw_game.get("summary") or "",
         cover_url=cover_url,
         release_date=released,
         release_year=released.year,
@@ -146,24 +155,77 @@ def _game_from_igdb(
     return game
 
 
-def _upsert_igdb_external_id(db: Session, game: Game, raw_game: dict) -> None:
+@dataclass
+class _IGDBCatalogLookup:
+    game_ids_by_igdb_id: dict[str, int]
+    game_ids_by_slug: dict[str, int]
+    game_ids_by_lower_title: dict[str, int]
+    external_ids_by_game_id: dict[int, ExternalId]
+    duplicate_candidates: DuplicateCandidateIndex
+
+
+def _build_igdb_catalog_lookup(db: Session) -> _IGDBCatalogLookup:
+    game_rows = db.execute(
+        select(Game.id, Game.slug, Game.title).order_by(Game.id)
+    ).all()
+    external_ids = db.scalars(
+        select(ExternalId)
+        .where(ExternalId.source == "IGDB")
+        .order_by(ExternalId.id)
+    ).all()
+    by_game_id: dict[int, ExternalId] = {}
+    by_igdb_id: dict[str, int] = {}
+    for external in external_ids:
+        by_game_id.setdefault(external.game_id, external)
+        if external.external_id:
+            by_igdb_id.setdefault(external.external_id, external.game_id)
+    by_slug: dict[str, int] = {}
+    by_lower_title: dict[str, int] = {}
+    for row in game_rows:
+        by_slug.setdefault(row.slug, row.id)
+        by_lower_title.setdefault(row.title.lower(), row.id)
+    return _IGDBCatalogLookup(
+        game_ids_by_igdb_id=by_igdb_id,
+        game_ids_by_slug=by_slug,
+        game_ids_by_lower_title=by_lower_title,
+        external_ids_by_game_id=by_game_id,
+        duplicate_candidates=build_duplicate_candidate_index(db),
+    )
+
+
+def _upsert_igdb_external_id(
+    db: Session,
+    game: Game,
+    raw_game: dict,
+    *,
+    lookup: _IGDBCatalogLookup | None = None,
+) -> None:
     igdb_id = str(raw_game.get("id") or "")
     if not igdb_id:
         return
     now = datetime.now(UTC)
-    existing = db.scalar(
-        select(ExternalId).where(
-            ExternalId.game_id == game.id,
-            ExternalId.source == "IGDB",
+    existing = (
+        lookup.external_ids_by_game_id.get(game.id)
+        if lookup is not None
+        else db.scalar(
+            select(ExternalId).where(
+                ExternalId.game_id == game.id,
+                ExternalId.source == "IGDB",
+            )
         )
     )
     if existing:
+        old_external_id = existing.external_id
         existing.external_id = igdb_id
         existing.external_slug = raw_game.get("slug")
         existing.external_url = raw_game.get("url")
         existing.updated_at = now
+        if lookup is not None:
+            if lookup.game_ids_by_igdb_id.get(old_external_id) == game.id:
+                lookup.game_ids_by_igdb_id.pop(old_external_id, None)
+            lookup.game_ids_by_igdb_id[igdb_id] = game.id
         return
-    db.add(ExternalId(
+    external = ExternalId(
         game_id=game.id,
         source="IGDB",
         external_id=igdb_id,
@@ -173,13 +235,25 @@ def _upsert_igdb_external_id(db: Session, game: Game, raw_game: dict) -> None:
         is_primary=True,
         created_at=now,
         updated_at=now,
-    ))
+    )
+    db.add(external)
+    if lookup is not None:
+        lookup.external_ids_by_game_id[game.id] = external
+        lookup.game_ids_by_igdb_id[igdb_id] = game.id
 
 
-def _existing_by_igdb_id(db: Session, raw_game: dict) -> Game | None:
+def _existing_by_igdb_id(
+    db: Session,
+    raw_game: dict,
+    *,
+    lookup: _IGDBCatalogLookup | None = None,
+) -> Game | None:
     igdb_id = str(raw_game.get("id") or "")
     if not igdb_id:
         return None
+    if lookup is not None:
+        game_id = lookup.game_ids_by_igdb_id.get(igdb_id)
+        return db.get(Game, game_id) if game_id is not None else None
     external = db.scalar(
         select(ExternalId).where(
             ExternalId.source == "IGDB",
@@ -189,21 +263,78 @@ def _existing_by_igdb_id(db: Session, raw_game: dict) -> Game | None:
     return db.get(Game, external.game_id) if external else None
 
 
+def _existing_igdb_game(
+    db: Session,
+    raw_game: dict,
+    candidate: Game,
+    lookup: _IGDBCatalogLookup | None,
+) -> Game | None:
+    existing = _existing_by_igdb_id(db, raw_game, lookup=lookup)
+    if existing is not None:
+        return existing
+    if lookup is not None:
+        game_id = (
+            lookup.game_ids_by_slug.get(candidate.slug)
+            or lookup.game_ids_by_lower_title.get(candidate.title.lower())
+        )
+        existing = db.get(Game, game_id) if game_id is not None else None
+    else:
+        existing = (
+            db.scalar(select(Game).where(Game.slug == candidate.slug))
+            or db.scalar(
+                select(Game).where(func.lower(Game.title) == candidate.title.lower())
+            )
+        )
+    return existing or find_existing_duplicate(
+        db,
+        candidate,
+        candidate_index=lookup.duplicate_candidates if lookup is not None else None,
+    )
+
+
 _IGDB_CREDENTIALS_REJECTED = (
     "IGDB credentials were rejected. Add valid Twitch/IGDB credentials to backend/.env and restart."
 )
 _IGDB_IMPORT_FIELDS = (
-    "fields id,name,slug,url,first_release_date,rating,rating_count,"
+    "fields id,name,slug,url,game_type,first_release_date,rating,rating_count,"
     "aggregated_rating,aggregated_rating_count,total_rating,total_rating_count,"
     "platforms.name,genres.name,cover.url,screenshots.url,summary,"
     "involved_companies.company.name,involved_companies.developer,"
     "involved_companies.publisher; "
 )
-# Global-catalog import quality gate: main games only (category 0), with enough
+# Global popular-catalog quality gate: main games only, with enough
 # rated reviews to be worth ranking. Keeps the general import from flooding the
 # catalog with the hundreds of thousands of obscure IGDB entries.
 _GENERAL_MIN_RATING_COUNT = 8
-_MAIN_GAME_CATEGORY = 0
+_MAIN_GAME_TYPE = 0
+_FULL_CATALOG_STATE = "IGDB:full-catalog"
+
+
+def build_full_catalog_query(*, after_id: int, page_size: int = 500) -> str:
+    """Build a stable, keyset-paginated IGDB query for every main game."""
+    safe_after_id = max(0, int(after_id))
+    safe_page_size = max(1, min(500, int(page_size)))
+    return (
+        _IGDB_IMPORT_FIELDS
+        + f"where id > {safe_after_id} & version_parent = null & game_type = {_MAIN_GAME_TYPE}; "
+        + "sort id asc; "
+        + f"limit {safe_page_size};"
+    )
+
+
+def _catalog_state(db: Session, source: str) -> CatalogSyncState:
+    state = db.scalar(select(CatalogSyncState).where(CatalogSyncState.source == source))
+    if state is not None:
+        return state
+    state = CatalogSyncState(
+        source=source,
+        cursor={},
+        completed=False,
+        updated_at=datetime.now(UTC),
+    )
+    db.add(state)
+    db.flush()
+    return state
 
 
 async def _igdb_token_or_raise(cfg) -> str:
@@ -221,24 +352,26 @@ def _ingest_igdb_game(
     *,
     catalog_label: str,
     default_platforms: list[str] | None,
+    lookup: _IGDBCatalogLookup | None = None,
 ) -> bool:
     """Create or merge one IGDB game. Returns True when a new row was created."""
     game = _game_from_igdb(raw_game, catalog_label=catalog_label, default_platforms=default_platforms)
-    existing = (
-        _existing_by_igdb_id(db, raw_game)
-        or db.scalar(select(Game).where(Game.slug == game.slug))
-        or db.scalar(select(Game).where(func.lower(Game.title) == game.title.lower()))
-        or find_existing_duplicate(db, game)
-    )
+    existing = _existing_igdb_game(db, raw_game, game, lookup)
     if existing:
         merge_game_data(existing, game)
         db.add(existing)
-        db.flush()
-        _upsert_igdb_external_id(db, existing, raw_game)
+        _upsert_igdb_external_id(db, existing, raw_game, lookup=lookup)
+        if lookup is not None:
+            lookup.game_ids_by_slug.setdefault(game.slug, existing.id)
+            lookup.game_ids_by_lower_title.setdefault(game.title.lower(), existing.id)
         return False
     db.add(game)
     db.flush()
-    _upsert_igdb_external_id(db, game, raw_game)
+    _upsert_igdb_external_id(db, game, raw_game, lookup=lookup)
+    if lookup is not None:
+        lookup.game_ids_by_slug[game.slug] = game.id
+        lookup.game_ids_by_lower_title.setdefault(game.title.lower(), game.id)
+        add_duplicate_candidate(lookup.duplicate_candidates, game)
     return True
 
 
@@ -251,6 +384,7 @@ async def import_igdb_nintendo_games(db: Session, target: int = 500, page_size: 
     imported = 0
     skipped = 0
     headers = {"Client-ID": cfg.IGDB_CLIENT_ID, "Authorization": f"Bearer {token}"}
+    lookup = _build_igdb_catalog_lookup(db)
 
     async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT) as client:
         for platform_id in NINTENDO_PLATFORM_IDS:
@@ -258,7 +392,8 @@ async def import_igdb_nintendo_games(db: Session, target: int = 500, page_size: 
             while imported < target:
                 body = (
                     _IGDB_IMPORT_FIELDS +
-                    f"where platforms = {platform_id} & version_parent = null & total_rating_count > 0; "
+                    f"where platforms = {platform_id} & version_parent = null "
+                    f"& game_type = {_MAIN_GAME_TYPE} & total_rating_count > 0; "
                     "sort total_rating_count desc; "
                     f"limit {min(page_size, target - imported)}; offset {offset};"
                 )
@@ -273,7 +408,13 @@ async def import_igdb_nintendo_games(db: Session, target: int = 500, page_size: 
                     break
 
                 for raw_game in results:
-                    if _ingest_igdb_game(db, raw_game, catalog_label="Nintendo", default_platforms=["Nintendo"]):
+                    if _ingest_igdb_game(
+                        db,
+                        raw_game,
+                        catalog_label="Nintendo",
+                        default_platforms=["Nintendo"],
+                        lookup=lookup,
+                    ):
                         imported += 1
                     else:
                         skipped += 1
@@ -303,13 +444,14 @@ async def import_igdb_popular_games(db: Session, target: int = 1000, page_size: 
     skipped = 0
     headers = {"Client-ID": cfg.IGDB_CLIENT_ID, "Authorization": f"Bearer {token}"}
     offset = 0
+    lookup = _build_igdb_catalog_lookup(db)
 
     async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT) as client:
         while imported < target:
             body = (
                 _IGDB_IMPORT_FIELDS +
                 f"where total_rating_count >= {_GENERAL_MIN_RATING_COUNT} "
-                f"& version_parent = null & category = {_MAIN_GAME_CATEGORY}; "
+                f"& version_parent = null & game_type = {_MAIN_GAME_TYPE}; "
                 "sort total_rating_count desc; "
                 f"limit {min(page_size, target - imported)}; offset {offset};"
             )
@@ -324,7 +466,13 @@ async def import_igdb_popular_games(db: Session, target: int = 1000, page_size: 
                 break
 
             for raw_game in results:
-                if _ingest_igdb_game(db, raw_game, catalog_label="popular", default_platforms=None):
+                if _ingest_igdb_game(
+                    db,
+                    raw_game,
+                    catalog_label="popular",
+                    default_platforms=None,
+                    lookup=lookup,
+                ):
                     imported += 1
                 else:
                     skipped += 1
@@ -335,3 +483,85 @@ async def import_igdb_popular_games(db: Session, target: int = 1000, page_size: 
                 break
 
     return {"imported": imported, "skipped": skipped}
+
+
+async def import_igdb_full_catalog(
+    db: Session,
+    target: int = 5000,
+    page_size: int = 500,
+) -> dict[str, int | bool]:
+    """Resume a complete main-game scan without rating/popularity filtering."""
+    cfg = get_settings()
+    if not cfg.igdb_configured():
+        raise RuntimeError("IGDB_CLIENT_ID and IGDB_CLIENT_SECRET are not configured.")
+
+    token = await _igdb_token_or_raise(cfg)
+    state = _catalog_state(db, _FULL_CATALOG_STATE)
+    after_id = int((state.cursor or {}).get("after_id") or 0)
+    imported = skipped = examined = 0
+    safe_target = max(1, int(target))
+    safe_page_size = max(1, min(500, int(page_size)))
+    headers = {"Client-ID": cfg.IGDB_CLIENT_ID, "Authorization": f"Bearer {token}"}
+    lookup = _build_igdb_catalog_lookup(db)
+
+    async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT) as client:
+        while imported < safe_target:
+            if not await get_rate_limiter().acquire("IGDB"):
+                break
+            request_size = min(safe_page_size, safe_target - imported)
+            response = await client.post(
+                IGDB_GAMES_URL,
+                headers=headers,
+                content=build_full_catalog_query(after_id=after_id, page_size=request_size),
+            )
+            if response.status_code in (401, 403):
+                raise RuntimeError(_IGDB_CREDENTIALS_REJECTED)
+            response.raise_for_status()
+            results = response.json()
+            if not isinstance(results, list) or not results:
+                state.completed = True
+                state.last_success_at = datetime.now(UTC)
+                state.updated_at = state.last_success_at
+                db.commit()
+                break
+
+            state.completed = False
+            for raw_game in results:
+                if not isinstance(raw_game, dict):
+                    continue
+                raw_id = raw_game.get("id")
+                if isinstance(raw_id, int):
+                    after_id = max(after_id, raw_id)
+                examined += 1
+                if not str(raw_game.get("name") or "").strip():
+                    skipped += 1
+                    continue
+                if _ingest_igdb_game(
+                    db,
+                    raw_game,
+                    catalog_label="full",
+                    default_platforms=None,
+                    lookup=lookup,
+                ):
+                    imported += 1
+                else:
+                    skipped += 1
+
+            now = datetime.now(UTC)
+            state.cursor = {"after_id": after_id}
+            state.last_success_at = now
+            state.updated_at = now
+            db.commit()
+            if len(results) < request_size:
+                state.completed = True
+                state.updated_at = datetime.now(UTC)
+                db.commit()
+                break
+
+    return {
+        "imported": imported,
+        "skipped": skipped,
+        "examined": examined,
+        "after_id": after_id,
+        "completed": state.completed,
+    }

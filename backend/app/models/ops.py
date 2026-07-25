@@ -2,7 +2,17 @@
 
 from datetime import date, datetime
 
-from sqlalchemy import Boolean, Date, DateTime, Integer, JSON, String, Text, UniqueConstraint
+from sqlalchemy import (
+    Boolean,
+    Date,
+    DateTime,
+    ForeignKey,
+    Integer,
+    JSON,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ..database import Base
@@ -69,7 +79,7 @@ class DataFillRun(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="queued", index=True)
     force: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    target_total: Mapped[int] = mapped_column(Integer, nullable=False, default=10000)
+    target_total: Mapped[int] = mapped_column(Integer, nullable=False, default=50000)
     result: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
@@ -95,3 +105,35 @@ class JobRun(Base):
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     next_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class CatalogQualityReview(Base):
+    """Persistent Groq verdict for one catalog row and the signals that triggered it."""
+
+    __tablename__ = "catalog_quality_reviews"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    game_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("games.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+        index=True,
+    )
+    status: Mapped[str] = mapped_column(String(24), nullable=False, index=True)
+    signals: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    checked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+
+
+class CatalogSyncState(Base):
+    """Durable cursor for a resumable upstream catalog scan."""
+
+    __tablename__ = "catalog_sync_states"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    source: Mapped[str] = mapped_column(String(60), nullable=False, unique=True, index=True)
+    cursor: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    completed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    last_success_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

@@ -22,6 +22,19 @@ DATABASE_URL=postgresql+psycopg://gamemetrix:<choose-a-local-password>@localhost
 `DATABASE_URL` is required. The backend intentionally supports one runtime
 database: PostgreSQL.
 
+To merge an existing `backend/gamemetrix.dev.db` catalog into an empty or
+partially populated PostgreSQL database, preview the operation first and then
+apply it:
+
+```powershell
+cd backend
+python scripts\migrate_legacy_sqlite.py
+python scripts\migrate_legacy_sqlite.py --apply
+```
+
+The source SQLite file is opened read-only. Existing PostgreSQL games win on
+slug; legacy-only games and related snapshot rows are copied with remapped IDs.
+
 Copy the non-secret settings from `backend/.env.example` and fill the provider
 credentials you use. API Health reports rejected, expired, and misrouted
 providers without returning credential values.
@@ -43,6 +56,12 @@ python -m uvicorn app.main:app --reload
 ```
 
 The API runs at `http://127.0.0.1:8000`.
+
+Run one recorded, resumable data-fill cycle without starting the web server:
+
+```powershell
+python scripts\run_data_fill_once.py --target-total 50000
+```
 
 ## Run Frontend
 

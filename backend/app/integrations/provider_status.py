@@ -36,12 +36,28 @@ def get_provider_statuses() -> list[dict[str, str]]:
         {
             "source": "Steam",
             "status": "ready",
-            "detail": "Uses Steam's public app review summary endpoint.",
+            "detail": (
+                "Public metadata/reviews are ready; the official full catalog additionally "
+                "requires STEAM_WEB_API_KEY."
+            ),
         },
         {
             "source": "IGDB",
             "status": "ready" if cfg.igdb_configured() else "needs_credentials",
             "detail": "Requires Twitch OAuth credentials: IGDB_CLIENT_ID and IGDB_CLIENT_SECRET.",
+        },
+        {
+            "source": "Wikidata",
+            "status": "ready",
+            "detail": "No key required; fills CC0 structured metadata by exact Steam/IGDB identity.",
+        },
+        {
+            "source": "GameBrain",
+            "status": "ready" if cfg.gamebrain_configured() else "disabled",
+            "detail": (
+                "Free plan is non-commercial only and default terms prohibit storage. "
+                "Requires a key, non-commercial opt-in, and written cache permission."
+            ),
         },
         {
             "source": "OpenCritic",

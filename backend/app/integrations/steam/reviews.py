@@ -6,6 +6,7 @@ import httpx
 
 from ..http_retry import DEFAULT_HEADERS, request_with_retry
 from ..rate_limiter import get_rate_limiter
+from ..steam_quota import stop_steam_requests_if_rate_limited
 from ..title_matching import title_match_quality
 from ..types import ExternalScore
 from .client import (
@@ -30,7 +31,7 @@ async def lookup_steam_app_id(title: str, client: httpx.AsyncClient) -> int | No
             params={"term": title, "l": "english", "cc": "US"},
             timeout=TIMEOUT_SEARCH,
         )
-        if not response.is_success:
+        if stop_steam_requests_if_rate_limited(response) or not response.is_success:
             return None
         candidates = [
             item
@@ -71,6 +72,8 @@ async def get_steam_score(
             APP_REVIEWS_URL.format(app_id=app_id),
             params={"json": 1, "filter": "summary", "language": "all", "purchase_type": "all"},
         )
+        if stop_steam_requests_if_rate_limited(response):
+            return _unavailable("Steam rate limit reached.")
         response.raise_for_status()
 
     return _score_from_summary(app_id, response.json())

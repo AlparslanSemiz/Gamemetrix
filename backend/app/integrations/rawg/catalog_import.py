@@ -15,7 +15,11 @@ from ...services.deduplication import find_existing_duplicate, merge_game_data
 from ...services.rawg_import import apply_rawg_metadata, game_from_rawg_list
 from ..http_retry import DEFAULT_HEADERS, request_with_retry
 from ..rate_limiter import get_rate_limiter
-from .client import LIST_TIMEOUT, RAWG_LIST_URL
+from .client import (
+    LIST_TIMEOUT,
+    RAWG_LIST_URL,
+)
+from ..rawg_quota import stop_rawg_requests_if_quota_exhausted
 from .persistence import store_rawg_snapshot, upsert_rawg_external_id
 
 log = logging.getLogger(__name__)
@@ -77,6 +81,8 @@ async def import_rawg_games(
 
 async def _fetch_import_page(client: httpx.AsyncClient, params: dict) -> list[dict]:
     response = await request_with_retry(client, "GET", RAWG_LIST_URL, params=params)
+    if stop_rawg_requests_if_quota_exhausted(response):
+        return []
     if response.status_code in (401, 403):
         raise RuntimeError(
             "RAWG_API_KEY was rejected by RAWG. Add a valid key to backend/.env and restart."

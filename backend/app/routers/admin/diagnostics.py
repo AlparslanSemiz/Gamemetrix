@@ -2,15 +2,52 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, Query
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ...database import get_db
-from ...models import ExternalId, RatingSnapshot, SourceSnapshot
+from ...models import CatalogQualityReview, ExternalId, Game, RatingSnapshot, SourceSnapshot
 from ._common import game_id_path, get_game_or_404
 
 router = APIRouter()
+
+
+@router.get("/catalog-quality")
+def get_catalog_quality(
+    limit: int = Query(default=50, ge=1, le=200),
+    db: Session = Depends(get_db),
+) -> dict[str, object]:
+    counts = {
+        status: count
+        for status, count in db.execute(
+            select(CatalogQualityReview.status, func.count(CatalogQualityReview.id))
+            .group_by(CatalogQualityReview.status)
+            .order_by(CatalogQualityReview.status)
+        )
+    }
+    rows = db.execute(
+        select(CatalogQualityReview, Game.title, Game.slug)
+        .join(Game, Game.id == CatalogQualityReview.game_id)
+        .where(CatalogQualityReview.status.in_(("needs_review", "quarantined")))
+        .order_by(CatalogQualityReview.checked_at.desc())
+        .limit(limit)
+    ).all()
+    return {
+        "status_counts": counts,
+        "issues": [
+            {
+                "game_id": review.game_id,
+                "title": title,
+                "slug": slug,
+                "status": review.status,
+                "signals": review.signals,
+                "reason": review.reason,
+                "checked_at": review.checked_at.isoformat(),
+            }
+            for review, title, slug in rows
+        ],
+    }
 
 
 @router.get("/external-ids/{game_id}")

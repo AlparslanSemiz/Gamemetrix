@@ -234,7 +234,9 @@ export function AppContent({ initialGames = [], initialTotal = 0, initialPage }:
 
       <footer className="catalog-attribution">
         Supplementary catalog metadata and imagery may be provided by{' '}
-        <a href="https://rawg.io/" target="_blank" rel="noopener noreferrer">RAWG</a>.
+        <a href="https://rawg.io/" target="_blank" rel="noopener noreferrer">RAWG</a>
+        {' '}and{' '}
+        <a href="https://gamebrain.co/" target="_blank" rel="noopener noreferrer">GameBrain</a>.
         Rating and store sources are named and linked on each game.
       </footer>
 

@@ -7,7 +7,12 @@ from sqlalchemy.orm import Session
 
 from ..content_type import infer_content_type
 from ..models import Game
-from ..services.deduplication import find_existing_duplicate, merge_game_data
+from ..services.deduplication import (
+    add_duplicate_candidate,
+    build_duplicate_candidate_index,
+    find_existing_duplicate,
+    merge_game_data,
+)
 from .http_retry import DEFAULT_HEADERS, request_with_retry
 from .rate_limiter import get_rate_limiter
 from .types import ExternalScore
@@ -20,6 +25,7 @@ _SINGLE_TIMEOUT = 10
 # SteamSpy documents ~1 request/minute for the paged "all" endpoint; going
 # faster gets the client throttled and eventually blocked.
 _IMPORT_PAGE_DELAY_SECONDS = 60.0
+_MAX_CONSECUTIVE_BARREN_PAGES = 3
 _DEFAULT_SCORE_FLOOR = 60.0
 _SCORE_POPULAR_GENRE = 72.0
 _SCORE_DEFAULT = 68.0
@@ -147,6 +153,8 @@ async def import_steamspy_games(db: Session, target: int = 2000) -> dict[str, in
     imported = 0
     skipped = 0
     page = 0
+    consecutive_barren_pages = 0
+    candidate_index = build_duplicate_candidate_index(db)
 
     async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT, headers=DEFAULT_HEADERS) as client:
         while imported < target:
@@ -166,6 +174,7 @@ async def import_steamspy_games(db: Session, target: int = 2000) -> dict[str, in
             if not payload:
                 break
 
+            page_imported = 0
             for app_id, raw_game in payload.items():
                 if imported >= target:
                     break
@@ -177,7 +186,11 @@ async def import_steamspy_games(db: Session, target: int = 2000) -> dict[str, in
                     db.add(existing)
                     skipped += 1
                     continue
-                existing = find_existing_duplicate(db, game)
+                existing = find_existing_duplicate(
+                    db,
+                    game,
+                    candidate_index=candidate_index,
+                )
                 if existing:
                     merge_game_data(existing, game)
                     db.add(existing)
@@ -185,9 +198,17 @@ async def import_steamspy_games(db: Session, target: int = 2000) -> dict[str, in
                     continue
 
                 db.add(game)
+                db.flush()
+                add_duplicate_candidate(candidate_index, game)
                 imported += 1
+                page_imported += 1
 
             db.commit()
             page += 1
+            consecutive_barren_pages = (
+                0 if page_imported else consecutive_barren_pages + 1
+            )
+            if consecutive_barren_pages >= _MAX_CONSECUTIVE_BARREN_PAGES:
+                break
 
     return {"imported": imported, "skipped": skipped}

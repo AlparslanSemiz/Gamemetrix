@@ -13,6 +13,7 @@ import httpx
 
 from ..config import get_settings
 from .rate_limiter import get_rate_limiter
+from .rawg_quota import stop_rawg_requests_if_quota_exhausted
 from .title_matching import title_match_quality
 from .types import NormalizedGame, SourceHealth, bounded_float, bounded_int
 
@@ -52,6 +53,15 @@ class RAWGService:
                     params={"key": cfg.RAWG_API_KEY, "search": SMOKE_TEST_TITLE, "page_size": 1},
                 )
             latency = int((time.monotonic() - t0) * 1000)
+            if stop_rawg_requests_if_quota_exhausted(response):
+                return SourceHealth(
+                    source="rawg",
+                    configured=True,
+                    working=False,
+                    status="rate_limited",
+                    message=f"RAWG quota or rate limit reached (HTTP {response.status_code})",
+                    latency_ms=latency,
+                )
             if response.status_code in {401, 403}:
                 return SourceHealth(
                     source="rawg",
@@ -125,6 +135,8 @@ class RAWGService:
                     f"{RAWG_BASE}/games",
                     params={"key": cfg.RAWG_API_KEY, "search": title, "page_size": max(1, min(page_size, 10))},
                 )
+                if stop_rawg_requests_if_quota_exhausted(resp):
+                    return None
                 resp.raise_for_status()
         except Exception as exc:
             # HTTPX exception strings include the request URL; RAWG puts its
@@ -164,6 +176,8 @@ class RAWGService:
                     f"{RAWG_BASE}/games/{rawg_id}",
                     params={"key": cfg.RAWG_API_KEY},
                 )
+                if stop_rawg_requests_if_quota_exhausted(resp):
+                    return None
                 resp.raise_for_status()
         except Exception as exc:
             log.warning("RAWG get by id %d failed (%s)", rawg_id, type(exc).__name__)

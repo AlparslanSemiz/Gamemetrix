@@ -9,6 +9,7 @@ import re
 import httpx
 
 from ..http_retry import DEFAULT_HEADERS
+from ..steam_quota import stop_steam_requests_if_rate_limited
 
 STORE_SEARCH_URL = "https://store.steampowered.com/api/storesearch/"
 APP_REVIEWS_URL = "https://store.steampowered.com/appreviews/{app_id}"
@@ -59,7 +60,7 @@ async def fetch_app_data(
         async with httpx.AsyncClient(timeout=timeout, headers=DEFAULT_HEADERS) as owned_client:
             response = await owned_client.get(APP_DETAILS_URL, params=query)
 
-    if not response.is_success:
+    if stop_steam_requests_if_rate_limited(response) or not response.is_success:
         return None
     entry = response.json().get(str(app_id), {})
     if not entry.get("success"):

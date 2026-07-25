@@ -1,6 +1,7 @@
 """Database-backed duplicate detection, preview and consolidation."""
 
 from collections import defaultdict
+from typing import Protocol
 
 from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session
@@ -10,17 +11,75 @@ from .matching import duplicate_key, duplicate_quality_key, games_are_duplicates
 from .merge import merge_game_data
 
 
-def find_existing_duplicate(db: Session, game: Game) -> Game | None:
+class IndexedIdentity(Protocol):
+    id: int
+    title: str
+    slug: str
+    release_year: int
+    content_type: str
+
+
+DuplicateCandidateIndex = dict[tuple[str, str], dict[int, IndexedIdentity]]
+
+
+def add_duplicate_candidate(
+    index: DuplicateCandidateIndex,
+    game: IndexedIdentity,
+) -> None:
+    """Add one lightweight identity to every key used by duplicate matching."""
+    game_id = int(game.id or 0)
+    if game_id <= 0:
+        return
+    for key in set(duplicate_key(game)):
+        if key:
+            index.setdefault((game.content_type, key), {})[game_id] = game
+
+
+def build_duplicate_candidate_index(db: Session) -> DuplicateCandidateIndex:
+    """Load one compact index for batch imports instead of scanning per row."""
+    index: DuplicateCandidateIndex = {}
+    rows = db.execute(
+        select(Game.id, Game.title, Game.slug, Game.release_year, Game.content_type)
+    ).all()
+    for row in rows:
+        add_duplicate_candidate(index, row)
+    return index
+
+
+def _indexed_candidates(
+    index: DuplicateCandidateIndex,
+    game: Game,
+) -> list[IndexedIdentity]:
+    candidates: dict[int, IndexedIdentity] = {}
+    for key in set(duplicate_key(game)):
+        candidates.update(index.get((game.content_type, key), {}))
+    return list(candidates.values())
+
+
+def find_existing_duplicate(
+    db: Session,
+    game: Game,
+    *,
+    candidate_index: DuplicateCandidateIndex | None = None,
+) -> Game | None:
     # Scan on the three title columns only — loading full Game rows (with their
     # large source_scores/screenshots JSON) for every candidate on every import
     # made this O(catalog) in bytes. Full objects are fetched just for matches.
-    candidate_rows = db.execute(
-        select(Game.id, Game.title, Game.slug, Game.release_year).where(
-            Game.content_type == game.content_type,
-            Game.id != (game.id or 0),
-        )
-    ).all()
-    match_ids = [row.id for row in candidate_rows if games_are_duplicates(row, game)]
+    candidate_rows = (
+        _indexed_candidates(candidate_index, game)
+        if candidate_index is not None
+        else db.execute(
+            select(Game.id, Game.title, Game.slug, Game.release_year).where(
+                Game.content_type == game.content_type,
+                Game.id != (game.id or 0),
+            )
+        ).all()
+    )
+    match_ids = [
+        row.id
+        for row in candidate_rows
+        if row.id != (game.id or 0) and games_are_duplicates(row, game)
+    ]
     if not match_ids:
         return None
     matches = db.scalars(select(Game).where(Game.id.in_(match_ids))).all()
