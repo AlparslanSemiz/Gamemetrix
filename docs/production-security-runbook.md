@@ -67,6 +67,20 @@ All Boolean role flags must be false. Alembic still works because the
 application role owns the application database/schema; it is not a cluster
 superuser.
 
+For the current zero-user/no-SMTP rollout, the repository also provides one
+idempotent foundation command. It creates secure backups, migrates the
+application role, writes the fail-closed production/account-disabled settings,
+builds and health-checks the hardened containers, rotates the administrator
+database password only after health is green, and verifies the backend role:
+
+```bash
+sudo bash ops/deploy-production-foundation.sh
+```
+
+It deliberately does not enable origin TLS, Full (strict), UFW, upgrades, or a
+reboot; those remain ordered manual stages because the certificate and a second
+SSH session are external safety prerequisites.
+
 ## Origin TLS and Cloudflare
 
 Validate and deploy the production overlay:
