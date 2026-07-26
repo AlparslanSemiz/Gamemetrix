@@ -13,6 +13,50 @@ def test_production_rejects_weak_security_configuration(monkeypatch: pytest.Monk
         Settings().validate()
 
 
+def test_production_accepts_disabled_accounts_without_smtp(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ENV", "production")
+    monkeypatch.setenv("JWT_SECRET_KEY", "a" * 32)
+    monkeypatch.setenv("JWT_ISSUER", "gamemetrix-api")
+    monkeypatch.setenv("JWT_AUDIENCE", "gamemetrix-admin")
+    monkeypatch.setenv("ADMIN_USERNAME", "admin")
+    monkeypatch.setenv(
+        "ADMIN_PASSWORD_HASH",
+        "$2b$12$123456789012345678901u12345678901234567890123456789012",
+    )
+    monkeypatch.setenv("ACCOUNT_AUTH_ENABLED", "false")
+    monkeypatch.setenv("ACCOUNT_BASE_URL", "https://gamemetrix.me")
+    monkeypatch.setenv("ACCOUNT_EMAIL_DELIVERY", "log")
+    monkeypatch.delenv("SMTP_HOST", raising=False)
+    monkeypatch.setenv(
+        "CORS_ALLOW_ORIGINS",
+        "https://gamemetrix.me,https://www.gamemetrix.me",
+    )
+
+    Settings().validate()
+
+
+def test_production_rejects_any_insecure_cors_origin(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ENV", "production")
+    monkeypatch.setenv("JWT_SECRET_KEY", "a" * 32)
+    monkeypatch.setenv("JWT_ISSUER", "gamemetrix-api")
+    monkeypatch.setenv("JWT_AUDIENCE", "gamemetrix-admin")
+    monkeypatch.setenv("ADMIN_USERNAME", "admin")
+    monkeypatch.setenv(
+        "ADMIN_PASSWORD_HASH",
+        "$2b$12$123456789012345678901u12345678901234567890123456789012",
+    )
+    monkeypatch.setenv("ACCOUNT_AUTH_ENABLED", "false")
+    monkeypatch.setenv("ACCOUNT_BASE_URL", "https://gamemetrix.me")
+    monkeypatch.setenv("CORS_ALLOW_ORIGINS", "https://gamemetrix.me,http://localhost:5173")
+
+    with pytest.raises(RuntimeError, match="CORS_ALLOW_ORIGINS"):
+        Settings().validate()
+
+
 def test_development_allows_log_email_delivery(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ENV", "development")
     monkeypatch.setenv("ACCOUNT_EMAIL_DELIVERY", "log")

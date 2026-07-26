@@ -67,12 +67,31 @@ def _settings() -> SimpleNamespace:
         GEMINI_MODEL="gemini/model",
         CLOUDFLARE_MODEL="cloudflare/model",
         OPENROUTER_MODEL="openrouter/model",
+        AI_MAX_CONCURRENCY=2,
+        AI_MAX_PROMPT_CHARS=16_000,
+        AI_MAX_OUTPUT_TOKENS=1_024,
     )
 
 
+class _Limiter:
+    def __init__(self) -> None:
+        self.acquired: list[tuple[str, int]] = []
+        self.settled: list[tuple[str, int, int]] = []
+
+    async def acquire(self, source: str, estimated_tokens: int = 0) -> bool:
+        self.acquired.append((source, estimated_tokens))
+        return True
+
+    def settle_tokens(self, source: str, reserved: int, actual: int) -> None:
+        self.settled.append((source, reserved, actual))
+
+
 @pytest.fixture(autouse=True)
-def _clean_inflight() -> None:
+def _clean_inflight(monkeypatch: pytest.MonkeyPatch) -> _Limiter:
+    limiter = _Limiter()
     ai._inflight.clear()
+    monkeypatch.setattr(ai, "get_rate_limiter", lambda: limiter)
+    return limiter
 
 
 @pytest.mark.asyncio
@@ -328,6 +347,107 @@ async def test_all_provider_failures_return_safe_none(
 
     assert await ai._run_chain(_request(), 60) is None
     assert [provider.calls for provider in providers] == [1, 1, 1, 1]
+
+
+@pytest.mark.asyncio
+async def test_each_fallback_attempt_uses_its_own_persistent_budget(
+    monkeypatch: pytest.MonkeyPatch,
+    _clean_inflight: _Limiter,
+) -> None:
+    providers = [
+        _Provider(
+            name,
+            [ProviderFailure(ErrorCategory.AUTHENTICATION, status_code=401)],
+        )
+        for name in ("groq", "gemini", "cloudflare")
+    ]
+    providers.append(
+        _Provider(
+            "openrouter",
+            [GenerationResult("ok", "openrouter", "openrouter/model", total_tokens=23)],
+        )
+    )
+    monkeypatch.setattr(ai, "_ordered_providers", lambda: providers)
+
+    assert await ai._run_chain(_request(), 60) == "ok"
+    assert [source for source, _ in _clean_inflight.acquired] == [
+        "Groq",
+        "Gemini",
+        "CloudflareAI",
+        "OpenRouter",
+    ]
+    assert [source for source, _, _ in _clean_inflight.settled] == [
+        "Groq",
+        "Gemini",
+        "CloudflareAI",
+        "OpenRouter",
+    ]
+    assert _clean_inflight.settled[-1][2] == 23
+
+
+@pytest.mark.asyncio
+async def test_ambiguous_provider_failures_keep_token_reservations(
+    monkeypatch: pytest.MonkeyPatch,
+    _clean_inflight: _Limiter,
+) -> None:
+    provider = _Provider(
+        "groq",
+        [
+            ProviderFailure(ErrorCategory.NETWORK, retryable=True),
+            ProviderFailure(ErrorCategory.TIMEOUT, retryable=True),
+        ],
+    )
+    monkeypatch.setattr(ai, "_ordered_providers", lambda: [provider])
+
+    async def no_wait(_seconds: float) -> None:
+        return None
+
+    monkeypatch.setattr(ai.asyncio, "sleep", no_wait)
+
+    assert await ai._run_chain(_request(), 60) is None
+    assert len(_clean_inflight.acquired) == 2
+    assert _clean_inflight.settled == []
+
+
+@pytest.mark.asyncio
+async def test_prompt_output_and_chain_concurrency_are_bounded(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    active = 0
+    maximum = 0
+    seen: list[GenerationRequest] = []
+
+    class _BoundedProvider(_Provider):
+        async def generate(self, request, _timeout_seconds):
+            nonlocal active, maximum
+            self.calls += 1
+            seen.append(request)
+            active += 1
+            maximum = max(maximum, active)
+            await asyncio.sleep(0.02)
+            active -= 1
+            return _result("groq")
+
+    provider = _BoundedProvider("groq", [])
+    monkeypatch.setattr(ai, "get_settings", _settings)
+    monkeypatch.setattr(ai, "_ordered_providers", lambda: [provider])
+    ai._chain_semaphore = None
+    ai._chain_semaphore_loop = None
+
+    await asyncio.gather(
+        *(
+            ai.generate_text(
+                "system",
+                f"{index}:" + "x" * 20_000,
+                max_output_tokens=9_999,
+            )
+            for index in range(5)
+        )
+    )
+
+    assert maximum == 2
+    assert all(len(item.system_prompt) + len(item.user_prompt) <= 16_000 for item in seen)
+    assert all(item.max_output_tokens == 1_024 for item in seen)
 
 
 def _request(

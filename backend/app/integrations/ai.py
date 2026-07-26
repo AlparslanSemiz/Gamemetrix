@@ -24,6 +24,7 @@ from .cloudflare_ai import CloudflareAIProvider
 from .gemini import GeminiProvider
 from .groq import GroqProvider
 from .openrouter import OpenRouterProvider
+from .rate_limiter import get_rate_limiter
 
 log = logging.getLogger(__name__)
 
@@ -36,6 +37,27 @@ _JSON_FENCE = re.compile(r"\A```(?:json)?\s*(\{.*\})\s*```\Z", re.DOTALL | re.IG
 
 _inflight: dict[str, asyncio.Task[str | None]] = {}
 _inflight_lock = asyncio.Lock()
+_chain_semaphore: asyncio.Semaphore | None = None
+_chain_semaphore_loop: asyncio.AbstractEventLoop | None = None
+
+_PROVIDER_BUDGET_SOURCES = {
+    "groq": "Groq",
+    "gemini": "Gemini",
+    "cloudflare": "CloudflareAI",
+    "openrouter": "OpenRouter",
+}
+_DEFINITE_NO_CHARGE_FAILURES = frozenset(
+    {
+        ErrorCategory.RATE_LIMITED,
+        ErrorCategory.AUTHENTICATION,
+        ErrorCategory.PERMISSION,
+        ErrorCategory.INVALID_MODEL,
+        ErrorCategory.INVALID_REQUEST,
+        ErrorCategory.NOT_CONFIGURED,
+    }
+)
+_CHARS_PER_TOKEN = 4
+_PROMPT_OVERHEAD_TOKENS = 40
 
 
 async def generate_text(
@@ -50,10 +72,14 @@ async def generate_text(
 ) -> str | None:
     """Generate normalized text through the configured non-recursive fallback chain."""
     cfg = get_settings()
+    bounded_system, bounded_user = _bounded_prompts(system_prompt, user_prompt, cfg)
     request = GenerationRequest(
-        system_prompt=system_prompt,
-        user_prompt=user_prompt,
-        max_output_tokens=max(1, int(max_output_tokens)),
+        system_prompt=bounded_system,
+        user_prompt=bounded_user,
+        max_output_tokens=min(
+            cfg.AI_MAX_OUTPUT_TOKENS,
+            max(1, int(max_output_tokens)),
+        ),
         temperature=float(temperature),
         json_object=json_object,
         response_validator=response_validator,
@@ -68,7 +94,7 @@ async def generate_text(
     async with _inflight_lock:
         task = _inflight.get(key)
         if task is None:
-            task = asyncio.create_task(_run_chain(request, total_deadline))
+            task = asyncio.create_task(_run_chain_bounded(request, total_deadline))
             _inflight[key] = task
             task.add_done_callback(
                 lambda completed, request_key=key: asyncio.create_task(
@@ -89,6 +115,27 @@ async def _remove_inflight(key: str, task: asyncio.Task[str | None]) -> None:
     async with _inflight_lock:
         if _inflight.get(key) is task:
             _inflight.pop(key, None)
+
+
+async def _run_chain_bounded(
+    request: GenerationRequest,
+    deadline_seconds: float,
+) -> str | None:
+    try:
+        async with asyncio.timeout(deadline_seconds):
+            async with _ai_chain_semaphore():
+                return await _run_chain(request, deadline_seconds)
+    except TimeoutError:
+        return None
+
+
+def _ai_chain_semaphore() -> asyncio.Semaphore:
+    global _chain_semaphore, _chain_semaphore_loop
+    loop = asyncio.get_running_loop()
+    if _chain_semaphore is None or _chain_semaphore_loop is not loop:
+        _chain_semaphore = asyncio.Semaphore(get_settings().AI_MAX_CONCURRENCY)
+        _chain_semaphore_loop = loop
+    return _chain_semaphore
 
 
 def provider_statuses(cfg: Settings | None = None) -> list[dict[str, object]]:
@@ -152,41 +199,69 @@ async def _run_chain(request: GenerationRequest, deadline_seconds: float) -> str
                 return None
 
             attempt_started = time.monotonic()
+            source = _PROVIDER_BUDGET_SOURCES[provider.name]
+            reserved = estimate_tokens(request)
             try:
-                timeout = min(get_settings().AI_PROVIDER_TIMEOUT_SECONDS, remaining)
-                result = await asyncio.wait_for(
-                    provider.generate(request, timeout),
-                    timeout=timeout,
+                acquired = await get_rate_limiter().acquire(
+                    source,
+                    estimated_tokens=reserved,
                 )
-                text = _validate_response(result.text, request)
-            except TimeoutError:
-                failure = ProviderFailure(ErrorCategory.TIMEOUT, retryable=True)
-            except ProviderFailure as exc:
-                failure = exc
             except Exception:
-                _log_failure(
-                    request_id=request_id,
-                    provider=provider.name,
-                    model=provider.model,
-                    attempt=attempt,
-                    duration_ms=_elapsed_ms(attempt_started),
-                    category=ErrorCategory.INTERNAL,
-                    status_code=None,
-                    fallback=False,
+                log.exception(
+                    "ai_request request_id=%s provider=%s model=%s "
+                    "attempt=%d budget_acquire_failed=true",
+                    request_id,
+                    _log_value(provider.name),
+                    _log_value(provider.model),
+                    attempt,
                 )
                 return None
+            if not acquired:
+                failure = ProviderFailure(ErrorCategory.BUDGET_EXHAUSTED)
             else:
-                log.info(
-                    "ai_request request_id=%s provider=%s model=%s attempt=%d "
-                    "duration_ms=%d success=true status=200 category=ok fallback=%s",
-                    request_id,
-                    _log_value(result.provider),
-                    _log_value(result.model),
-                    attempt,
-                    _elapsed_ms(attempt_started),
-                    str(provider_index > 0).lower(),
-                )
-                return text
+                try:
+                    timeout = min(get_settings().AI_PROVIDER_TIMEOUT_SECONDS, remaining)
+                    result = await asyncio.wait_for(
+                        provider.generate(request, timeout),
+                        timeout=timeout,
+                    )
+                    if result.total_tokens > 0:
+                        get_rate_limiter().settle_tokens(
+                            source,
+                            reserved,
+                            result.total_tokens,
+                        )
+                    text = _validate_response(result.text, request)
+                except TimeoutError:
+                    failure = ProviderFailure(ErrorCategory.TIMEOUT, retryable=True)
+                except ProviderFailure as exc:
+                    failure = exc
+                    if exc.category in _DEFINITE_NO_CHARGE_FAILURES:
+                        get_rate_limiter().settle_tokens(source, reserved, 0)
+                except Exception:
+                    _log_failure(
+                        request_id=request_id,
+                        provider=provider.name,
+                        model=provider.model,
+                        attempt=attempt,
+                        duration_ms=_elapsed_ms(attempt_started),
+                        category=ErrorCategory.INTERNAL,
+                        status_code=None,
+                        fallback=False,
+                    )
+                    return None
+                else:
+                    log.info(
+                        "ai_request request_id=%s provider=%s model=%s attempt=%d "
+                        "duration_ms=%d success=true status=200 category=ok fallback=%s",
+                        request_id,
+                        _log_value(result.provider),
+                        _log_value(result.model),
+                        attempt,
+                        _elapsed_ms(attempt_started),
+                        str(provider_index > 0).lower(),
+                    )
+                    return text
 
             has_next = provider_index < len(configured) - 1
             will_retry = failure.retryable and attempt < _MAX_ATTEMPTS
@@ -225,6 +300,29 @@ async def _run_chain(request: GenerationRequest, deadline_seconds: float) -> str
         _elapsed_ms(started),
     )
     return None
+
+
+def estimate_tokens(request: GenerationRequest) -> int:
+    """Reserve prompt estimate plus the full bounded output allowance."""
+    prompt_chars = len(request.system_prompt) + len(request.user_prompt)
+    return (
+        prompt_chars // _CHARS_PER_TOKEN
+        + _PROMPT_OVERHEAD_TOKENS
+        + request.max_output_tokens
+    )
+
+
+def _bounded_prompts(
+    system_prompt: str,
+    user_prompt: str,
+    cfg: Settings,
+) -> tuple[str, str]:
+    system = str(system_prompt)
+    user = str(user_prompt)
+    remaining = cfg.AI_MAX_PROMPT_CHARS - len(system)
+    if remaining < 0:
+        return system[: cfg.AI_MAX_PROMPT_CHARS], ""
+    return system, user[:remaining]
 
 
 def _ordered_providers() -> list[AIProvider]:

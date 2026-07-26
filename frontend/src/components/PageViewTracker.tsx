@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { useLocation } from 'react-router-dom'
+import { useLocation } from 'react-router'
 import { getAnalyticsSessionId, getAnalyticsVisitorId, trackPageView } from '../services/analytics'
 import { useAnalyticsPreferences } from '../services/analyticsConsent'
 import { trackGooglePageView } from '../services/googleAnalytics'

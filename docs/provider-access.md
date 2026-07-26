@@ -56,7 +56,10 @@ fallback.
 | IGDB | `partner@igdb.com` | Ready to send |
 | IsThereAnyDeal | `api@isthereanydeal.com` | Ready to send after key/account check |
 | GameBrain | API console contact route | Ready; storage remains disabled pending written permission |
-| Groq | Console limits/usage page | Configured; migrate away from Llama 3.1 before its shutdown |
+| Groq | Console limits/usage page | Configured on `openai/gpt-oss-20b`; verify plan before raising local limits |
+| Gemini | Google AI Studio usage page | Configured as a bounded fallback |
+| Cloudflare Workers AI | Cloudflare AI usage page | Configured as a bounded fallback |
+| OpenRouter | OpenRouter activity/limits page | Configured as the final bounded fallback |
 | Metacritic | [official support request](https://metacritichelp.zendesk.com/hc/en-us/requests/new) | Ready; no public read API assumed |
 
 Before sending, replace the bracketed commercial model, MAU/page-view, contact
@@ -304,12 +307,20 @@ Use `GROQ_MODEL=openai/gpt-oss-20b`. Groq's
 `llama-3.1-8b-instant` for free/developer accounts on 2026-08-16. The
 [free rate-limit table](https://console.groq.com/docs/rate-limits) currently
 lists 30 RPM, 1,000 RPD, 8,000 TPM, and 200,000 TPD for `gpt-oss-20b`.
-GameMetrix therefore enforces one persistent `GROQ_DAILY_LIMIT=150` budget
-shared by quality review, repair verification, summaries, endless detection,
-and reranking, plus a 12-second minimum interval and 4,000-character cap on
-provider description input. The ordinary 15% reserve makes at most 127
-scheduled calls usable each day while the interval also protects the lower
-token-per-minute ceiling.
+GameMetrix enforces persistent request/token budgets for every attempt in the
+fallback chain: Groq `1000/200000`, Gemini `100/100000`, Cloudflare Workers AI
+`100/100000`, and OpenRouter `50/100000`. The ordinary 15% reserve applies to
+each bucket. These values are conservative local ceilings, not claims about an
+upstream plan, and must not be raised until that provider's actual plan is
+verified.
+
+The central orchestrator allows at most two concurrent chains, 16,000 prompt
+characters and 1,024 output tokens. Successful usage-bearing responses settle
+the reservation to actual usage. Timeout, connection loss, server ambiguity,
+or malformed responses keep the reservation to prevent under-counting.
+Similarity AI remains disabled by default; if enabled it also has a separate
+25-request daily gate, a two-second minimum interval, and a bounded six-hour
+cache.
 
 **To:** `api@isthereanydeal.com` — **Subject:** GameMetrix API use approval and quota request
 

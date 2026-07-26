@@ -1,5 +1,5 @@
 import { Bell, CalendarDays, ExternalLink, Percent, Sparkles, X } from 'lucide-react'
-import { Link } from 'react-router-dom'
+import { Link } from 'react-router'
 
 import type { AlertKind, GameAlert } from './types'
 

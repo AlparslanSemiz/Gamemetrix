@@ -10,7 +10,12 @@ from app.services.metadata import (
 )
 from app.services.summarizer import ai as ai_module
 from app.services.summarizer import batch as batch_module
-from app.services.summarizer.ai import REJECTED_VERDICT, audit_description, parse_audit_answer
+from app.services.summarizer.ai import (
+    REJECTED_VERDICT,
+    audit_description,
+    parse_audit_answer,
+    shorten_summary,
+)
 from app.services.summarizer.issues import (
     describe_issues,
     needs_ai_review,
@@ -262,6 +267,22 @@ async def test_provider_text_is_bounded_before_it_reaches_groq(
     await audit_description("Long Game", "x" * 10_000, ["too_long"])
 
     assert len(prompts[0]) <= 2_200
+
+
+@pytest.mark.asyncio
+async def test_short_summary_rejects_links_markup_and_ungrounded_calls_to_action(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _stub_groq(
+        monkeypatch,
+        "<a href='https://evil.example'>Buy this unrelated product now</a>",
+    )
+
+    shortened = await shorten_summary("Hollow Knight", _CLEAN_SUMMARY)
+
+    assert "evil.example" not in shortened
+    assert "<a" not in shortened
+    assert shortened == ai_module.extract_short_summary(_CLEAN_SUMMARY)
 
 
 # ── batch behaviour ──────────────────────────────────────────────────────────

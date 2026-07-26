@@ -13,7 +13,7 @@ from ...account_security import (
     AccountPrincipal,
     clear_account_cookies,
     create_account_session,
-    hash_password,
+    hash_password_async,
     normalize_email,
     optional_account_principal,
     password_needs_rehash,
@@ -23,7 +23,7 @@ from ...account_security import (
     revoke_user_sessions,
     set_account_cookies,
     utcnow,
-    verify_password,
+    verify_password_async,
 )
 from ...config import get_settings
 from ...database import get_db
@@ -75,7 +75,7 @@ async def register(
 
     email = normalize_email(str(payload.email))
     _reject_email_derived_password(email, payload.password)
-    password_hash = hash_password(payload.password)
+    password_hash = await hash_password_async(payload.password)
 
     existing = db.scalar(select(User).where(User.email == email))
     if existing is not None:
@@ -138,7 +138,7 @@ def _create_pending_user(db: Session, email: str, display_name: str, password_ha
 
 @router.post("/email/verify", response_model=MessageResponse)
 @limiter.limit(VERIFY_RATE_LIMIT)
-def verify_email(
+async def verify_email(
     request: Request,
     payload: VerifyEmailPayload,
     db: Session = Depends(get_db),
@@ -147,7 +147,7 @@ def verify_email(
     user = consume_token(db, payload.token, "verify_email")
     if user is None:
         raise HTTPException(status_code=400, detail=_INVALID_LINK_DETAIL)
-    if not verify_password(payload.password, user.password_hash):
+    if not await verify_password_async(payload.password, user.password_hash):
         # The token proves control of the mailbox; the password proves this is
         # the person who initiated the pending registration.
         raise HTTPException(status_code=400, detail="This link or password is invalid.")
@@ -159,7 +159,7 @@ def verify_email(
 
 @router.post("/login")
 @limiter.limit(get_settings().AUTH_RATE_LIMIT)
-def login(
+async def login(
     request: Request,
     response: Response,
     payload: LoginPayload,
@@ -167,14 +167,17 @@ def login(
 ) -> dict:
     require_same_origin(request)
     user = db.scalar(select(User).where(User.email == normalize_email(str(payload.email))))
-    password_matches = verify_password(payload.password, user.password_hash if user else None)
+    password_matches = await verify_password_async(
+        payload.password,
+        user.password_hash if user else None,
+    )
     if user is None or not user.is_active or not password_matches:
         raise HTTPException(status_code=401, detail="Invalid email or password.")
     if user.email_verified_at is None:
         raise HTTPException(status_code=403, detail="Verify your email before logging in.")
 
     if user.password_hash and password_needs_rehash(user.password_hash):
-        user.password_hash = hash_password(payload.password)
+        user.password_hash = await hash_password_async(payload.password)
     session_token, csrf_token = create_account_session(db, user, request)
     set_account_cookies(response, session_token, csrf_token)
     return {"account": account_payload(user)}
@@ -228,7 +231,7 @@ async def forgot_password(
 
 @router.post("/password/reset", response_model=MessageResponse)
 @limiter.limit(get_settings().AUTH_RATE_LIMIT)
-def reset_password(
+async def reset_password(
     request: Request,
     response: Response,
     payload: ResetPasswordPayload,
@@ -240,7 +243,7 @@ def reset_password(
         raise HTTPException(status_code=400, detail=_INVALID_LINK_DETAIL)
     _reject_email_derived_password(user.email, payload.password)
 
-    user.password_hash = hash_password(payload.password)
+    user.password_hash = await hash_password_async(payload.password)
     user.email_verified_at = user.email_verified_at or utcnow()
     user.updated_at = utcnow()
     revoke_user_sessions(db, user.id)
@@ -251,14 +254,17 @@ def reset_password(
 
 # Registered on the parent router in __init__.py: FastAPI rejects an empty path
 # on a sub-router, and DELETE /api/account is the published contract.
-def delete_account(
+async def delete_account(
     response: Response,
     payload: DeleteAccountPayload,
     principal: AccountPrincipal = Depends(require_csrf),
     db: Session = Depends(get_db),
 ) -> MessageResponse:
     user = principal.user
-    if user.password_hash and not verify_password(payload.current_password or "", user.password_hash):
+    if user.password_hash and not await verify_password_async(
+        payload.current_password or "",
+        user.password_hash,
+    ):
         raise HTTPException(status_code=401, detail="Current password is incorrect.")
     db.execute(delete(AnalyticsEvent).where(AnalyticsEvent.user_id == user.id))
     db.execute(delete(VisitEvent).where(VisitEvent.user_id == user.id))

@@ -1,12 +1,15 @@
 from __future__ import annotations
 
+import threading
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 from secrets import compare_digest, token_urlsafe
+from typing import Callable, TypeVar
 from urllib.parse import urlparse
 from uuid import uuid4
 
+import anyio
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerifyMismatchError
 from fastapi import Depends, HTTPException, Request, Response, status
@@ -25,6 +28,10 @@ MIN_SIGNING_SECRET_LENGTH = 32
 LINK_SIGNING_ALGORITHM = "HS256"
 _PASSWORD_HASHER = PasswordHasher(time_cost=3, memory_cost=65536, parallelism=2)
 _DUMMY_PASSWORD_HASH = _PASSWORD_HASHER.hash("GameMetrix timing-only password sentinel")
+_PASSWORD_JOB_LIMIT = 2
+_PASSWORD_JOB_WAIT_SECONDS = 5.0
+_PASSWORD_JOB_SLOTS = threading.BoundedSemaphore(_PASSWORD_JOB_LIMIT)
+_PasswordResult = TypeVar("_PasswordResult")
 
 
 @dataclass(frozen=True)
@@ -64,6 +71,34 @@ def verify_password(password: str, password_hash: str | None) -> bool:
         return bool(password_hash) and matches
     except (VerifyMismatchError, InvalidHashError):
         return False
+
+
+def _run_password_job(job: Callable[..., _PasswordResult], *args: object) -> _PasswordResult:
+    if not _PASSWORD_JOB_SLOTS.acquire(timeout=_PASSWORD_JOB_WAIT_SECONDS):
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Password service is busy. Try again shortly.",
+            headers={"Retry-After": str(max(1, int(_PASSWORD_JOB_WAIT_SECONDS)))},
+        )
+    try:
+        return job(*args)
+    finally:
+        _PASSWORD_JOB_SLOTS.release()
+
+
+async def hash_password_async(password: str) -> str:
+    """Hash outside the event loop with bounded Argon2 memory concurrency."""
+    return await anyio.to_thread.run_sync(_run_password_job, hash_password, password)
+
+
+async def verify_password_async(password: str, password_hash: str | None) -> bool:
+    """Verify outside the event loop with bounded Argon2 memory concurrency."""
+    return await anyio.to_thread.run_sync(
+        _run_password_job,
+        verify_password,
+        password,
+        password_hash,
+    )
 
 
 def password_needs_rehash(password_hash: str) -> bool:

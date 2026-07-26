@@ -15,6 +15,9 @@ one-off shell session, the equivalent is:
 $env:POSTGRES_USER="gamemetrix"
 $env:POSTGRES_PASSWORD="<choose-a-local-password>"
 $env:POSTGRES_DB="gamemetrix"
+$env:APP_DB_USER="gamemetrix_app"
+$env:APP_DB_PASSWORD="<choose-a-different-local-password>"
+$env:ENV="development"
 docker compose up -d db
 ```
 
@@ -25,18 +28,17 @@ PostgreSQL database URL:
 DATABASE_URL=postgresql+psycopg://gamemetrix:<choose-a-local-password>@localhost:5432/gamemetrix
 ```
 
-Docker Compose builds the container's `DATABASE_URL` from the same
-`POSTGRES_USER`, `POSTGRES_PASSWORD`, and `POSTGRES_DB` values used by the
-database service:
+Docker Compose builds the backend's `DATABASE_URL` from the separate,
+non-superuser `APP_DB_USER` and `APP_DB_PASSWORD` values:
 
 ```text
-postgresql+psycopg://<POSTGRES_USER>:<POSTGRES_PASSWORD>@db:5432/<POSTGRES_DB>
+postgresql+psycopg://<APP_DB_USER>:<APP_DB_PASSWORD>@db:5432/<POSTGRES_DB>
 ```
 
 Compose therefore overrides any host-only `DATABASE_URL` from `backend/.env`;
-provider credentials still come from that file. Use URL-safe characters in the
-Compose PostgreSQL username and password because those values are interpolated
-into the connection URL.
+provider credentials still come from that file. `ENV`, `APP_DB_USER`, and
+`APP_DB_PASSWORD` are mandatory. The PostgreSQL bootstrap/admin credential is
+never passed to the backend container.
 
 `DATABASE_URL` is required. The backend intentionally supports one runtime
 database: PostgreSQL.
@@ -154,4 +156,6 @@ PostgreSQL integration tests run when `TEST_DATABASE_URL` names a dedicated
 database ending in `_test`.
 
 Operational policy is documented in [SEO growth](docs/seo-growth.md) and
-[provider access](docs/provider-access.md).
+[provider access](docs/provider-access.md). The ordered production hardening
+and rollback procedure is in
+[Production security rollout](docs/production-security-runbook.md).

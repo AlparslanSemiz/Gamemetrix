@@ -19,18 +19,18 @@ export async function loader({ params }: LoaderFunctionArgs): Promise<CuratedPag
   }
 }
 
-export const meta: MetaFunction<typeof loader> = ({ data, location }) => data ? [
-  { title: `${data.title} | GameMetrix` },
-  { name: 'description', content: data.description },
-  { name: 'robots', content: data.games.length >= 5 && !location.search ? 'index,follow,max-image-preview:large' : 'noindex,follow' },
-  { tagName: 'link', rel: 'canonical', href: data.canonical },
-  { property: 'og:title', content: data.title },
-  { property: 'og:description', content: data.description },
+export const meta: MetaFunction<typeof loader> = ({ loaderData, location }) => loaderData ? [
+  { title: `${loaderData.title} | GameMetrix` },
+  { name: 'description', content: loaderData.description },
+  { name: 'robots', content: loaderData.games.length >= 5 && !location.search ? 'index,follow,max-image-preview:large' : 'noindex,follow' },
+  { tagName: 'link', rel: 'canonical', href: loaderData.canonical },
+  { property: 'og:title', content: loaderData.title },
+  { property: 'og:description', content: loaderData.description },
   { property: 'og:type', content: 'website' },
-  { property: 'og:url', content: data.canonical },
+  { property: 'og:url', content: loaderData.canonical },
   { name: 'twitter:card', content: 'summary' },
-  { name: 'twitter:title', content: data.title },
-  { name: 'twitter:description', content: data.description },
+  { name: 'twitter:title', content: loaderData.title },
+  { name: 'twitter:description', content: loaderData.description },
 ] : []
 export const headers = () => ({ 'Cache-Control': 'public, max-age=60, s-maxage=900, stale-while-revalidate=3600' })
 export default function YearRoute({ loaderData }: { loaderData: CuratedPageData }) { return <CuratedPage data={loaderData} /> }

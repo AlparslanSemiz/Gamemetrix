@@ -64,6 +64,10 @@ class TokenPayload(StrictPayload):
     token: str = Field(min_length=MIN_TOKEN_LENGTH, max_length=MAX_TOKEN_LENGTH)
 
 
+class UnsubscribePayload(StrictPayload):
+    token: str = Field(min_length=MIN_TOKEN_LENGTH, max_length=1024)
+
+
 class VerifyEmailPayload(TokenPayload):
     password: str = Field(min_length=1, max_length=MAX_PASSWORD_LENGTH)
 

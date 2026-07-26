@@ -13,6 +13,7 @@ Public API:
 
 import logging
 from datetime import UTC, datetime, timedelta
+from urllib.parse import parse_qsl, urlencode
 
 import jwt
 from fastapi import Request
@@ -35,12 +36,28 @@ _MAX_USERNAME_LENGTH = 64
 _FAILURE_STATUS_FLOOR = 400
 _DEFAULT_AUDIT_PAGE_SIZE = 100
 _ANONYMOUS_USERNAME = None
+_SENSITIVE_QUERY_PARTS = ("token", "password", "secret", "code", "key", "credential")
 
 
 def _truncate(value: str | None, limit: int) -> str | None:
     if not value:
         return None
     return value[:limit]
+
+
+def redact_query(query: str | None) -> str | None:
+    if not query:
+        return None
+    redacted = [
+        (
+            key,
+            "[REDACTED]"
+            if any(part in key.casefold() for part in _SENSITIVE_QUERY_PARTS)
+            else value,
+        )
+        for key, value in parse_qsl(query, keep_blank_values=True)
+    ]
+    return _truncate(urlencode(redacted), _MAX_QUERY_LENGTH)
 
 
 def _username_from_bearer_token(request: Request) -> str | None:
@@ -86,7 +103,7 @@ def record_admin_event(
         action=action,
         method=method,
         path=_truncate(path, _MAX_PATH_LENGTH) or path[:_MAX_PATH_LENGTH],
-        query=_truncate(query, _MAX_QUERY_LENGTH),
+        query=redact_query(query),
         status_code=status_code,
         success=status_code < _FAILURE_STATUS_FLOOR,
         ip_address=ip_address,

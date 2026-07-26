@@ -1,4 +1,4 @@
-FROM node:22-alpine AS build
+FROM node:22-alpine@sha256:16e22a550f3863206a3f701448c45f7912c6896a62de43add43bb9c86130c3e2 AS build
 
 WORKDIR /app
 
@@ -14,7 +14,7 @@ ENV VITE_GA_MEASUREMENT_ID=$VITE_GA_MEASUREMENT_ID
 
 RUN npm run build
 
-FROM node:22-alpine AS runtime
+FROM node:22-alpine@sha256:16e22a550f3863206a3f701448c45f7912c6896a62de43add43bb9c86130c3e2 AS runtime
 
 WORKDIR /app
 
@@ -22,10 +22,12 @@ ENV NODE_ENV=production
 ENV HOST=0.0.0.0
 ENV PORT=3000
 
-COPY package*.json ./
+COPY --chown=node:node package*.json ./
 RUN npm ci --omit=dev && npm cache clean --force
-COPY --from=build /app/build ./build
+COPY --from=build --chown=node:node /app/build ./build
 
 EXPOSE 3000
+
+USER node
 
 CMD ["npm", "run", "start"]

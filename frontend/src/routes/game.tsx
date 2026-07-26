@@ -22,23 +22,23 @@ function summary(value: string): string {
   return clean.length > 158 ? `${clean.slice(0, 155).trimEnd()}...` : clean
 }
 
-export const meta: MetaFunction<typeof loader> = ({ data, location }) => {
-  if (!data) return [{ title: 'Game Not Found | GameMetrix' }, { name: 'robots', content: 'noindex,follow' }]
-  const canonical = `https://gamemetrix.me/game/${encodeURIComponent(data.slug)}`
-  const description = summary(data.summary)
-  const image = data.cover_url || data.image_url || undefined
+export const meta: MetaFunction<typeof loader> = ({ loaderData, location }) => {
+  if (!loaderData) return [{ title: 'Game Not Found | GameMetrix' }, { name: 'robots', content: 'noindex,follow' }]
+  const canonical = `https://gamemetrix.me/game/${encodeURIComponent(loaderData.slug)}`
+  const description = summary(loaderData.summary)
+  const image = loaderData.cover_url || loaderData.image_url || undefined
   return [
-    { title: `${data.title} Scores, Linux Compatibility and Playtime | GameMetrix` },
+    { title: `${loaderData.title} Scores, Linux Compatibility and Playtime | GameMetrix` },
     { name: 'description', content: description },
-    { name: 'robots', content: data.seo_indexable && !location.search ? 'index,follow,max-image-preview:large' : 'noindex,follow' },
+    { name: 'robots', content: loaderData.seo_indexable && !location.search ? 'index,follow,max-image-preview:large' : 'noindex,follow' },
     { tagName: 'link', rel: 'canonical', href: canonical },
-    { property: 'og:title', content: `${data.title} | GameMetrix` },
+    { property: 'og:title', content: `${loaderData.title} | GameMetrix` },
     { property: 'og:description', content: description },
     { property: 'og:type', content: 'website' },
     { property: 'og:url', content: canonical },
     ...(image ? [{ property: 'og:image', content: image }] : []),
     { name: 'twitter:card', content: image ? 'summary_large_image' : 'summary' },
-    { name: 'twitter:title', content: `${data.title} | GameMetrix` },
+    { name: 'twitter:title', content: `${loaderData.title} | GameMetrix` },
     { name: 'twitter:description', content: description },
     ...(image ? [{ name: 'twitter:image', content: image }] : []),
   ]

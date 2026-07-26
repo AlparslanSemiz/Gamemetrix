@@ -94,7 +94,7 @@ try {
   mock = await startMockApi(API_PORT)
   frontendProcess = spawn(
     process.execPath,
-    ['node_modules/@react-router/serve/bin.js', 'build/server/index.js'],
+    ['node_modules/@react-router/serve/bin.cjs', 'build/server/index.js'],
     {
       env: {
         ...process.env,

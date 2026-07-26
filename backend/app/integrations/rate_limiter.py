@@ -257,9 +257,10 @@ class RateLimiter:
     def settle_tokens(self, source: str, reserved: int, actual: int) -> None:
         """Replace a reservation with what the provider actually charged.
 
-        Best-effort: an accounting failure must never take down the caller. A
-        request that never reached the provider settles with actual=0, which
-        returns the whole reservation to the day's budget.
+        Best-effort: an accounting failure must never take down the caller.
+        Callers must settle to zero only for a definite no-charge rejection.
+        Ambiguous timeout, network, server, or malformed-response outcomes keep
+        the reservation so provider usage cannot be under-counted.
         """
         delta = max(0, int(actual)) - max(0, int(reserved))
         if not delta:

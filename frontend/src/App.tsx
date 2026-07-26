@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { useLocation } from 'react-router-dom'
+import { useLocation } from 'react-router'
 import './App.css'
 import { CatalogWorkspace } from './components/catalog-workspace'
 import type { ViewMode } from './components/CatalogToolbar'

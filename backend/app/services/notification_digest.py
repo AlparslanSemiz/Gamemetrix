@@ -119,7 +119,9 @@ async def send_notification_digests() -> int:
             fresh = [item for item in candidates if item[0] not in existing][:100]
             if not fresh:
                 continue
-            unsubscribe = f"{cfg.ACCOUNT_BASE_URL}/api/account/email/unsubscribe?token={_unsubscribe_token(user.id)}"
+            unsubscribe = (
+                f"{cfg.ACCOUNT_BASE_URL}/unsubscribe#token={_unsubscribe_token(user.id)}"
+            )
             body = "Your GameMetrix watchlist updates:\n\n" + "\n".join(f"- {line}" for _, line in fresh)
             body += f"\n\nManage alerts in your account or unsubscribe: {unsubscribe}"
             await send_account_email(user.email, "Your GameMetrix watchlist updates", body)

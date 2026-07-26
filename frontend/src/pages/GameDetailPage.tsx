@@ -1,4 +1,4 @@
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router'
 import { SeriesRow } from '../components/SeriesRow'
 import { TrailerModal } from '../components/TrailerModal'
 import type { Game } from '../types/game'

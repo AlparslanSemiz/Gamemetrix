@@ -7,10 +7,8 @@ classification. Requires GROQ_API_KEY in .env (free key at
 https://console.groq.com/keys); the model is selected via GROQ_MODEL. No
 third-party SDK — plain httpx, matching the other integration clients.
 
-Budgeting is token-based, not request-based: the free gpt-oss-20b tier allows
-1,000 requests but only 200,000 tokens a day, and catalog prompts exhaust the
-tokens first. Each call reserves its worst case up front and settles against
-Groq's reported `usage.total_tokens` afterwards.
+Persistent budgeting, concurrency and request bounds are enforced by the
+central AI orchestrator rather than by this transport adapter.
 """
 
 import asyncio
@@ -31,7 +29,6 @@ from .ai_types import (
     transport_failure,
 )
 from .http_retry import DEFAULT_HEADERS
-from .rate_limiter import get_rate_limiter
 
 log = logging.getLogger(__name__)
 
@@ -39,12 +36,6 @@ _GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
 _HTTP_TIMEOUT = 20
 _MAX_OUTPUT_TOKENS = 400
 _TEMPERATURE = 0.7
-# Groq bills tokens, not requests, and the free tier runs out of tokens first.
-# We reserve a worst-case estimate before the call and settle it against the
-# reported usage afterwards. English averages ~4 characters per token; the
-# margin covers chat and JSON scaffolding the raw prompt text does not include.
-_CHARS_PER_TOKEN = 4
-_PROMPT_OVERHEAD_TOKENS = 40
 _request_lock = asyncio.Lock()
 _last_request_started = 0.0
 
@@ -57,22 +48,16 @@ async def generate_text(
     temperature: float = _TEMPERATURE,
     json_object: bool = False,
 ) -> str | None:
-    """Compatibility wrapper for callers that explicitly want only Groq."""
-    provider = GroqProvider()
-    if not provider.is_configured():
-        return None
-    request = GenerationRequest(
-        system_prompt=system_prompt,
-        user_prompt=user_prompt,
+    """Compatibility wrapper routed through centralized controls and fallback."""
+    from .ai import generate_text as generate_with_controls
+
+    return await generate_with_controls(
+        system_prompt,
+        user_prompt,
         max_output_tokens=max_output_tokens,
         temperature=temperature,
         json_object=json_object,
     )
-    try:
-        result = await provider.generate(request, _HTTP_TIMEOUT)
-    except ProviderFailure:
-        return None
-    return result.text
 
 
 class GroqProvider:
@@ -104,15 +89,7 @@ class GroqProvider:
             raise ProviderFailure(ErrorCategory.NOT_CONFIGURED)
 
         cfg = get_settings()
-        reserved = estimate_tokens(
-            request.system_prompt,
-            request.user_prompt,
-            request.max_output_tokens,
-        )
-        data: object | None = None
         async with _request_lock:
-            if not await get_rate_limiter().acquire("Groq", estimated_tokens=reserved):
-                raise ProviderFailure(ErrorCategory.BUDGET_EXHAUSTED)
             try:
                 await _wait_for_request_slot(cfg.GROQ_MIN_REQUEST_INTERVAL_SECONDS)
                 headers = {
@@ -155,12 +132,6 @@ class GroqProvider:
                 )
             except httpx.HTTPError as exc:
                 raise transport_failure(exc) from None
-            finally:
-                get_rate_limiter().settle_tokens(
-                    "Groq",
-                    reserved,
-                    openai_total_tokens(data),
-                )
 
 
 async def _wait_for_request_slot(interval_seconds: float) -> None:
@@ -169,16 +140,6 @@ async def _wait_for_request_slot(interval_seconds: float) -> None:
     if wait_seconds > 0:
         await asyncio.sleep(wait_seconds)
     _last_request_started = time.monotonic()
-
-
-def estimate_tokens(system_prompt: str, user_prompt: str, max_output_tokens: int) -> int:
-    """Worst-case token cost of a call, for the pre-request reservation."""
-    prompt_chars = len(system_prompt) + len(user_prompt)
-    return (
-        prompt_chars // _CHARS_PER_TOKEN
-        + _PROMPT_OVERHEAD_TOKENS
-        + max(0, max_output_tokens)
-    )
 
 
 def _used_tokens(data: dict[str, object] | None) -> int:

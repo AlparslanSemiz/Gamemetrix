@@ -11,6 +11,7 @@ export default [
   route('forgot-password', './routes/forgot-password.tsx'),
   route('reset-password', './routes/reset-password.tsx'),
   route('verify-email', './routes/verify-email.tsx'),
+  route('unsubscribe', './routes/unsubscribe.tsx'),
   route('account', './routes/account.tsx'),
   route('alerts', './routes/alerts.tsx'),
   route('settings', './routes/settings.tsx'),

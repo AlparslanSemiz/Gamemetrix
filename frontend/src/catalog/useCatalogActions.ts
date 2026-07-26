@@ -1,5 +1,5 @@
 import { useCallback, type Dispatch, type RefObject, type SetStateAction } from 'react'
-import { useLocation, useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router'
 import type { ClearableFilterKey } from '../components/ActiveFilterChips'
 import type { GameFilters } from '../types/game'
 import {

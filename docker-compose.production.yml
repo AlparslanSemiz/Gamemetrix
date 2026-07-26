@@ -1,0 +1,8 @@
+services:
+  nginx:
+    ports:
+      - "443:8443"
+    volumes:
+      - ./ops/nginx-origin-tls.conf:/etc/nginx/origin-tls.conf:ro
+      - ${ORIGIN_CERT_PATH:?Set ORIGIN_CERT_PATH}:/run/gamemetrix-origin-tls/origin.crt:ro
+      - ${ORIGIN_KEY_PATH:?Set ORIGIN_KEY_PATH}:/run/gamemetrix-origin-tls/origin.key:ro

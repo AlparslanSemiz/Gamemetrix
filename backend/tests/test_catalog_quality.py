@@ -17,6 +17,7 @@ from app.services.catalog_quality.remediation import (
 )
 from app.services.catalog_quality import research as research_module
 from app.services.catalog_quality import batch as quality_batch_module
+from app.services.catalog_quality.review import QualityVerdict
 from app.services.metadata import clean_game_summary
 
 
@@ -87,6 +88,33 @@ def test_missing_summary_alone_does_not_spend_an_ai_review() -> None:
 
 def test_quality_scan_has_a_bounded_orm_window() -> None:
     assert quality_batch_module._MAX_SCAN_ROWS <= 200
+
+
+def test_ai_quality_verdict_is_advisory_until_an_admin_decides() -> None:
+    class _Session:
+        def __init__(self) -> None:
+            self.added: list[object] = []
+
+        def add(self, value: object) -> None:
+            self.added.append(value)
+
+    game = _game(content_type="game", data_complete=True)
+    db = _Session()
+
+    outcome = quality_batch_module._apply_verdict(
+        db,
+        game,
+        None,
+        ["non_game_marker"],
+        QualityVerdict("NOT_GAME", ("content_type",), "Looks like downloadable content."),
+    )
+
+    review = db.added[0]
+    assert outcome == "needs_review"
+    assert game.content_type == "game"
+    assert game.data_complete is True
+    assert review.status == "needs_review"
+    assert "ai:verdict:not_game" in review.signals
 
 
 @pytest.mark.asyncio

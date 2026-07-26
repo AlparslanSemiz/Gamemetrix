@@ -2,15 +2,33 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Query
+from typing import Literal
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ...database import get_db
-from ...models import CatalogQualityReview, ExternalId, Game, RatingSnapshot, SourceSnapshot
+from ...models import (
+    CatalogQualityReview,
+    ExternalId,
+    Game,
+    RatingSnapshot,
+    SourceSnapshot,
+    UserCollection,
+)
+from ...security import AuthenticatedUser, require_admin_user
+from ...services.admin_audit import record_admin_event
+from ...account_security import utcnow
 from ._common import game_id_path, get_game_or_404
 
 router = APIRouter()
+
+
+class CatalogQualityDecision(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    decision: Literal["approve", "quarantine", "delete"]
 
 
 @router.get("/catalog-quality")
@@ -48,6 +66,68 @@ def get_catalog_quality(
             for review, title, slug in rows
         ],
     }
+
+
+@router.post("/catalog-quality/{game_id}/decision")
+def decide_catalog_quality(
+    payload: CatalogQualityDecision,
+    game_id: int = game_id_path(),
+    admin: AuthenticatedUser = Depends(require_admin_user),
+    db: Session = Depends(get_db),
+) -> dict[str, object]:
+    game = get_game_or_404(db, game_id)
+    review = db.scalar(
+        select(CatalogQualityReview)
+        .where(CatalogQualityReview.game_id == game_id)
+        .with_for_update()
+    )
+    if review is None:
+        raise HTTPException(status_code=409, detail="No catalog-quality review is pending.")
+
+    if payload.decision == "delete":
+        references = db.scalar(
+            select(func.count(UserCollection.id)).where(UserCollection.game_id == game_id)
+        ) or 0
+        if references:
+            raise HTTPException(
+                status_code=409,
+                detail="A game in user collections cannot be deleted; quarantine it instead.",
+            )
+        db.delete(game)
+        db.commit()
+        _record_catalog_decision(admin.username, game_id, payload.decision)
+        return {"game_id": game_id, "decision": payload.decision, "deleted": True}
+
+    game.content_type = "game" if payload.decision == "approve" else "non-game"
+    if payload.decision == "quarantine":
+        game.data_complete = False
+    review.status = "approved" if payload.decision == "approve" else "quarantined"
+    review.checked_at = utcnow()
+    db.add(game)
+    db.add(review)
+    db.commit()
+    _record_catalog_decision(admin.username, game_id, payload.decision)
+    return {
+        "game_id": game_id,
+        "decision": payload.decision,
+        "deleted": False,
+        "status": review.status,
+    }
+
+
+def _record_catalog_decision(
+    username: str,
+    game_id: int,
+    decision: str,
+) -> None:
+    record_admin_event(
+        username=username,
+        action="catalog_quality_decision",
+        method="POST",
+        path=f"/admin/catalog-quality/{game_id}/decision",
+        status_code=200,
+        query=f"decision={decision}",
+    )
 
 
 @router.get("/external-ids/{game_id}")

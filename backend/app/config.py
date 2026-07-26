@@ -155,6 +155,17 @@ class Settings:
         self.AI_INTERACTIVE_DEADLINE_SECONDS: float = _env_float(
             "AI_INTERACTIVE_DEADLINE_SECONDS", 15.0
         )
+        self.AI_MAX_CONCURRENCY: int = _clamp(_env_int("AI_MAX_CONCURRENCY", 2), 1, 2)
+        self.AI_MAX_PROMPT_CHARS: int = _clamp(
+            _env_int("AI_MAX_PROMPT_CHARS", 16_000),
+            1_000,
+            16_000,
+        )
+        self.AI_MAX_OUTPUT_TOKENS: int = _clamp(
+            _env_int("AI_MAX_OUTPUT_TOKENS", 1_024),
+            64,
+            1_024,
+        )
         self.ITAD_API_KEY: str = _env("ITAD_API_KEY")
         self.STEAM_WEB_API_KEY: str = _env("STEAM_WEB_API_KEY")
         self.GAMEBRAIN_API_KEY: str = _env("GAMEBRAIN_API_KEY")
@@ -214,6 +225,18 @@ class Settings:
         # paid plan; neither value is capped in code.
         self.GROQ_DAILY_LIMIT: int = _env_int("GROQ_DAILY_LIMIT", 1000)
         self.GROQ_DAILY_TOKEN_LIMIT: int = _env_int("GROQ_DAILY_TOKEN_LIMIT", 200_000)
+        self.GEMINI_DAILY_LIMIT: int = _env_int("GEMINI_DAILY_LIMIT", 100)
+        self.GEMINI_DAILY_TOKEN_LIMIT: int = _env_int("GEMINI_DAILY_TOKEN_LIMIT", 100_000)
+        self.CLOUDFLARE_AI_DAILY_LIMIT: int = _env_int("CLOUDFLARE_AI_DAILY_LIMIT", 100)
+        self.CLOUDFLARE_AI_DAILY_TOKEN_LIMIT: int = _env_int(
+            "CLOUDFLARE_AI_DAILY_TOKEN_LIMIT",
+            100_000,
+        )
+        self.OPENROUTER_DAILY_LIMIT: int = _env_int("OPENROUTER_DAILY_LIMIT", 50)
+        self.OPENROUTER_DAILY_TOKEN_LIMIT: int = _env_int(
+            "OPENROUTER_DAILY_TOKEN_LIMIT",
+            100_000,
+        )
         # Free GameBrain accounts get 50 tokens/day. Keep this hard default below
         # that ceiling even when the global reserve is explicitly set to zero.
         self.GAMEBRAIN_DAILY_LIMIT: int = _clamp(
@@ -291,11 +314,18 @@ class Settings:
         # game detail page. Never touches any score — display order only.
         self.SIMILARITY_USE_AI: bool = _env_bool("SIMILARITY_USE_AI", False)
         self.SIMILARITY_AI_POOL: int = _env_int("SIMILARITY_AI_POOL", 20)
+        self.SIMILARITY_AI_DAILY_LIMIT: int = _env_int(
+            "SIMILARITY_AI_DAILY_LIMIT",
+            25,
+        )
+        self.SIMILARITY_AI_MIN_INTERVAL_SECONDS: float = max(
+            1.0,
+            _env_float("SIMILARITY_AI_MIN_INTERVAL_SECONDS", 2.0),
+        )
         # ── Catalog quality review ───────────────────────────────────────────
         # Deterministic signals select suspicious titles, descriptions and core
-        # metadata for Groq review. Confirmed non-games are quarantined. Deletion
-        # additionally needs a strong marker and this explicit opt-in.
-        self.NONGAME_AUTODELETE_ENABLED: bool = _env_bool("NONGAME_AUTODELETE_ENABLED", False)
+        # metadata for advisory AI review. Only a separate authenticated admin
+        # decision may approve, quarantine, or delete a catalog row.
         self.CATALOG_QUALITY_BATCH_SIZE: int = _env_int("CATALOG_QUALITY_BATCH_SIZE", 40)
         self.CATALOG_REPAIR_BATCH_SIZE: int = _env_int("CATALOG_REPAIR_BATCH_SIZE", 10)
 
@@ -358,11 +388,20 @@ class Settings:
             "Wikidata": self.WIKIDATA_DAILY_LIMIT,
             "GameBrain": self.GAMEBRAIN_DAILY_LIMIT,
             "Groq": self.GROQ_DAILY_LIMIT,
+            "Gemini": self.GEMINI_DAILY_LIMIT,
+            "CloudflareAI": self.CLOUDFLARE_AI_DAILY_LIMIT,
+            "OpenRouter": self.OPENROUTER_DAILY_LIMIT,
+            "AI:Similarity": self.SIMILARITY_AI_DAILY_LIMIT,
         }
 
     def provider_daily_token_limits(self) -> dict[str, int]:
         """source -> daily token ceiling. Absent means requests are the only cap."""
-        return {"Groq": self.GROQ_DAILY_TOKEN_LIMIT}
+        return {
+            "Groq": self.GROQ_DAILY_TOKEN_LIMIT,
+            "Gemini": self.GEMINI_DAILY_TOKEN_LIMIT,
+            "CloudflareAI": self.CLOUDFLARE_AI_DAILY_TOKEN_LIMIT,
+            "OpenRouter": self.OPENROUTER_DAILY_TOKEN_LIMIT,
+        }
 
     def provider_budget_aliases(self) -> dict[str, str]:
         # Metacritic scores are fetched through the RAWG API with the same key,

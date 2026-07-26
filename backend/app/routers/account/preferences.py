@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import jwt
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from ...account_security import (
@@ -22,7 +22,7 @@ from ...services.account_state import (
     get_or_create_preference,
     sanitized_settings,
 )
-from .schemas import MessageResponse, PreferencePatch
+from .schemas import MessageResponse, PreferencePatch, UnsubscribePayload
 
 router = APIRouter()
 
@@ -30,8 +30,6 @@ UNSUBSCRIBE_RATE_LIMIT = "20/minute"
 
 _UNSUBSCRIBE_PURPOSE = "unsubscribe_digest"
 _INVALID_UNSUBSCRIBE_DETAIL = "Unsubscribe link is invalid or expired."
-_MIN_UNSUBSCRIBE_TOKEN_LENGTH = 32
-_MAX_UNSUBSCRIBE_TOKEN_LENGTH = 1024
 
 
 @router.patch("/preferences")
@@ -68,18 +66,14 @@ def _apply_alert_thresholds(preference: UserPreference, payload: PreferencePatch
         preference.alert_upcoming_days = payload.upcoming_days
 
 
-@router.get("/email/unsubscribe", response_model=MessageResponse)
+@router.post("/email/unsubscribe", response_model=MessageResponse)
 @limiter.limit(UNSUBSCRIBE_RATE_LIMIT)
 def unsubscribe_email_digest(
     request: Request,
-    token: str = Query(
-        ...,
-        min_length=_MIN_UNSUBSCRIBE_TOKEN_LENGTH,
-        max_length=_MAX_UNSUBSCRIBE_TOKEN_LENGTH,
-    ),
+    payload: UnsubscribePayload,
     db: Session = Depends(get_db),
 ) -> MessageResponse:
-    preference = db.get(UserPreference, _unsubscribe_subject(token))
+    preference = db.get(UserPreference, _unsubscribe_subject(payload.token))
     if preference is not None:
         preference.email_digest_enabled = False
         preference.updated_at = utcnow()

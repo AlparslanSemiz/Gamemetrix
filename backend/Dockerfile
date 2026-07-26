@@ -1,4 +1,4 @@
-FROM python:3.11-slim
+FROM python:3.11-slim@sha256:db3ff2e1800a8581e2c48a27c3995339d47bdf046da21c7627accd3d51053a93
 
 WORKDIR /app
 
@@ -6,8 +6,15 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Tüm backend kodunu içeri aktaralım
-COPY . .
+RUN groupadd --system --gid 10001 gamemetrix \
+    && useradd --system --uid 10001 --gid gamemetrix --home-dir /app --shell /usr/sbin/nologin gamemetrix
+
+COPY --chown=gamemetrix:gamemetrix . .
+
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
+USER gamemetrix
 
 EXPOSE 8000
 

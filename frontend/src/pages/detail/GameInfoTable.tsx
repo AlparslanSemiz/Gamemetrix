@@ -1,6 +1,6 @@
 import { ExternalLink, Info } from 'lucide-react'
 import type { ReactNode } from 'react'
-import { Link } from 'react-router-dom'
+import { Link } from 'react-router'
 import { PlatformIcons } from '../../components/PlatformIcons'
 import type { Game } from '../../types/game'
 import { formatPlaytimeHours } from '../../utils/playtime'

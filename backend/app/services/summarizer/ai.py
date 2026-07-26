@@ -187,8 +187,9 @@ async def shorten_summary(title: str, summary: str) -> str:
     if not generated:
         return extract_short_summary(summary)
     if len(generated) > MAX_SHORT_CHARS:
-        return extract_sentences(generated, MAX_SHORT_CHARS)
-    return generated
+        generated = extract_sentences(generated, MAX_SHORT_CHARS)
+    accepted = _accept_rewrite(title, summary, generated)
+    return accepted if accepted is not None else extract_short_summary(summary)
 
 
 def extract_short_summary(summary: str) -> str:

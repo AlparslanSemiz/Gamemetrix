@@ -115,6 +115,13 @@ export function verifyAccountEmail(token: string, password: string) {
   return accountFetch<{ message: string }>('/email/verify', { method: 'POST', body: JSON.stringify({ token, password }) })
 }
 
+export function unsubscribeEmailDigest(token: string) {
+  return accountFetch<{ message: string }>('/email/unsubscribe', {
+    method: 'POST',
+    body: JSON.stringify({ token }),
+  })
+}
+
 export function mergeAccountState(payload: Omit<AccountState, 'account'>): Promise<AccountState> {
   return accountFetch('/state/merge', { method: 'POST', body: JSON.stringify(payload) })
 }

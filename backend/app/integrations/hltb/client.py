@@ -12,6 +12,7 @@ import re
 import time
 from dataclasses import dataclass
 from typing import Any
+from urllib.parse import urljoin, urlparse
 
 import httpx
 
@@ -31,6 +32,9 @@ USER_AGENT = (
 _HTTP_TIMEOUT = 30
 _SEARCH_PAGE_SIZE = 20
 _UNAUTHORIZED_STATUSES = {401, 403}
+_MAX_RESPONSE_BYTES = 2 * 1024 * 1024
+_MAX_REDIRECTS = 2
+_ALLOWED_ORIGIN = ("https", "howlongtobeat.com", 443)
 
 SCRIPT_SRC_RE = re.compile(r"<script[^>]+src=[\"']([^\"']+)[\"']", re.IGNORECASE)
 POST_ENDPOINT_RE = re.compile(
@@ -56,6 +60,8 @@ class HltbClient:
             timeout=_HTTP_TIMEOUT,
             headers={"User-Agent": USER_AGENT, "Referer": BASE_URL},
             follow_redirects=True,
+            max_redirects=_MAX_REDIRECTS,
+            event_hooks={"response": [_validate_redirect]},
         ) as client:
             return await self._search_with_client(client, title, release_year)
 
@@ -76,7 +82,7 @@ class HltbClient:
             return None
 
         try:
-            rows = response.json().get("data") or []
+            rows = _bounded_json(response).get("data") or []
         except ValueError:
             return None
         return best_match(
@@ -99,14 +105,16 @@ class HltbClient:
 
         response = await client.get(BASE_URL)
         response.raise_for_status()
-        scripts = SCRIPT_SRC_RE.findall(response.text)
+        scripts = SCRIPT_SRC_RE.findall(_bounded_text(response))
         preferred = [src for src in scripts if "_app-" in src]
         for src in [*preferred, *scripts]:
-            script_url = src if src.startswith("http") else f"{BASE_URL}{src.lstrip('/')}"
+            script_url = _same_origin_url(src)
+            if script_url is None:
+                continue
             script_resp = await client.get(script_url)
             if not script_resp.is_success:
                 continue
-            match = POST_ENDPOINT_RE.search(script_resp.text)
+            match = POST_ENDPOINT_RE.search(_bounded_text(script_resp))
             if match:
                 self._search_path = f"/api/{match.group(1).split('/')[0]}"
                 return self._search_path
@@ -126,7 +134,7 @@ class HltbClient:
             self._auth = _AuthToken(token=None, key=None, value=None)
             return self._auth
 
-        data = response.json()
+        data = _bounded_json(response)
         key = value = None
         for field_name, field_value in data.items():
             lower = field_name.lower()
@@ -181,3 +189,50 @@ class HltbClient:
         if auth.key:
             payload[auth.key] = auth.value
         return payload
+
+
+def _same_origin_url(value: str) -> str | None:
+    candidate = urljoin(BASE_URL, value)
+    parsed = urlparse(candidate)
+    port = parsed.port or (443 if parsed.scheme == "https" else None)
+    if (
+        (parsed.scheme, parsed.hostname, port) != _ALLOWED_ORIGIN
+        or parsed.username is not None
+        or parsed.password is not None
+    ):
+        return None
+    return candidate
+
+
+async def _validate_redirect(response: httpx.Response) -> None:
+    location = response.headers.get("location")
+    if response.is_redirect and location and _same_origin_url(location) is None:
+        raise httpx.TooManyRedirects(
+            "HLTB redirected outside its allowed origin.",
+            request=response.request,
+        )
+    content_length = response.headers.get("content-length")
+    if content_length:
+        try:
+            if int(content_length) > _MAX_RESPONSE_BYTES:
+                raise httpx.DecodingError(
+                    "HLTB response exceeded the configured size limit.",
+                    request=response.request,
+                )
+        except ValueError:
+            pass
+
+
+def _bounded_text(response: httpx.Response) -> str:
+    if len(response.content) > _MAX_RESPONSE_BYTES:
+        raise httpx.DecodingError(
+            "HLTB response exceeded the configured size limit.",
+            request=response.request,
+        )
+    return response.text
+
+
+def _bounded_json(response: httpx.Response) -> dict[str, Any]:
+    _bounded_text(response)
+    data = response.json()
+    return data if isinstance(data, dict) else {}

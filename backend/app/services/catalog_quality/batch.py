@@ -1,4 +1,4 @@
-"""Persistent catalog-quality scan, verdict application and safe quarantine."""
+"""Persistent catalog-quality scan with advisory-only AI verdicts."""
 
 from datetime import UTC, datetime
 
@@ -6,12 +6,10 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, load_only, noload
 
 from ...config import get_settings
-from ...models import CatalogQualityReview, Game, UserCollection
-from ..admin_audit import record_admin_event
+from ...models import CatalogQualityReview, Game
 from .review import QualityVerdict, ai_review
 from .signals import catalog_quality_signals
 
-_QUARANTINE_CONTENT_TYPE = "non-game"
 _SCAN_MULTIPLIER = 25
 _MAX_SCAN_ROWS = 200
 
@@ -120,17 +118,6 @@ def _store_review(
     db.add(row)
 
 
-def _log_deletion(game: Game) -> None:
-    record_admin_event(
-        username="system",
-        action="catalog_quality_delete",
-        method="JOB",
-        path=f"/games/{game.slug}",
-        status_code=200,
-        query="reason=strong_marker+ai",
-    )
-
-
 def _apply_verdict(
     db: Session,
     game: Game,
@@ -138,51 +125,20 @@ def _apply_verdict(
     signals: list[str],
     verdict: QualityVerdict,
 ) -> str:
-    review_signals = [*signals, *(f"ai:{field}" for field in verdict.fields)]
-    if verdict.verdict == "OK":
-        _store_review(
-            db,
-            game,
-            review,
-            status="approved",
-            signals=review_signals,
-            reason=verdict.reason or None,
-        )
-        return "approved"
-    if verdict.verdict == "BAD_METADATA":
-        game.data_complete = False
-        db.add(game)
-        _store_review(
-            db,
-            game,
-            review,
-            status="needs_review",
-            signals=review_signals,
-            reason=verdict.reason or None,
-        )
-        return "needs_review"
-
-    referenced = db.scalar(
-        select(func.count(UserCollection.id)).where(UserCollection.game_id == game.id)
-    ) or 0
-    cfg = get_settings()
-    if "non_game_marker" in signals and cfg.NONGAME_AUTODELETE_ENABLED and referenced == 0:
-        _log_deletion(game)
-        db.delete(game)
-        return "deleted"
-
-    game.content_type = _QUARANTINE_CONTENT_TYPE
-    game.data_complete = False
-    db.add(game)
+    review_signals = [
+        *signals,
+        f"ai:verdict:{verdict.verdict.casefold()}",
+        *(f"ai:{field}" for field in verdict.fields),
+    ]
     _store_review(
         db,
         game,
         review,
-        status="quarantined",
+        status="needs_review",
         signals=review_signals,
         reason=verdict.reason or None,
     )
-    return "quarantined"
+    return "needs_review"
 
 
 async def catalog_quality_batch(db: Session, limit: int) -> dict[str, int]:
