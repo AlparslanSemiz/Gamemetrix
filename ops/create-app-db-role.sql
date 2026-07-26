@@ -20,14 +20,32 @@ SELECT format(
 )
 \gexec
 
-SELECT format('REASSIGN OWNED BY %I TO %I', :'admin_user', :'app_user')
-WHERE :'admin_user' <> :'app_user'
-\gexec
-
 SELECT format('ALTER DATABASE %I OWNER TO %I', :'database_name', :'app_user')
 \gexec
 
 SELECT format('ALTER SCHEMA public OWNER TO %I', :'app_user')
+\gexec
+
+SELECT format('ALTER TABLE %I.%I OWNER TO %I', schemaname, tablename, :'app_user')
+FROM pg_tables
+WHERE schemaname = 'public'
+\gexec
+
+SELECT format('ALTER SEQUENCE %I.%I OWNER TO %I', sequence_schema, sequence_name, :'app_user')
+FROM information_schema.sequences
+WHERE sequence_schema = 'public'
+\gexec
+
+SELECT format(
+    'ALTER FUNCTION %I.%I(%s) OWNER TO %I',
+    namespace.nspname,
+    procedure.proname,
+    pg_get_function_identity_arguments(procedure.oid),
+    :'app_user'
+)
+FROM pg_proc AS procedure
+JOIN pg_namespace AS namespace ON namespace.oid = procedure.pronamespace
+WHERE namespace.nspname = 'public'
 \gexec
 
 REVOKE CREATE ON SCHEMA public FROM PUBLIC;
