@@ -32,4 +32,6 @@ EXPOSE 8000
 #   nginx is the sole peer. '*' would let anything that reaches this port dictate
 #   its own client IP and bypass the auth rate limiter. The port is `expose`d, not
 #   published, so the docker bridge range is the full trust boundary.
-CMD ["sh", "-c", "alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1 --limit-concurrency 100 --proxy-headers --forwarded-allow-ips \"${FORWARDED_ALLOW_IPS:-172.16.0.0/12}\""]
+# nginx emits the canonical request log with `$uri` (never `$request_uri`), so
+# Uvicorn's duplicate access log is disabled to keep query-string secrets out.
+CMD ["sh", "-c", "alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1 --limit-concurrency 100 --proxy-headers --forwarded-allow-ips \"${FORWARDED_ALLOW_IPS:-172.16.0.0/12}\" --no-access-log"]
