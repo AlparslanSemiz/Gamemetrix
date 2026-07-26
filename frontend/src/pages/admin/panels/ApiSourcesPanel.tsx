@@ -39,10 +39,14 @@ export function ApiSourcesPanel({ apiSources }: ApiSourcesPanelProps) {
 }
 
 function SourceRow({ source }: { source: ApiSource }) {
-  const usable = source.usable_limit || source.limit || 1
-  const remainingPercent = Math.max(0, Math.min(100, (source.remaining / usable) * 100))
-  const exhausted = source.remaining <= 0
-  const low = !exhausted && source.remaining < usable * LOW_REMAINING_RATIO
+  // Token-metered providers run out of tokens long before requests, so the bar
+  // has to track whichever budget actually binds.
+  const tokenUsable = source.token_usable_limit ?? 0
+  const usable = tokenUsable || source.usable_limit || source.limit || 1
+  const left = tokenUsable ? source.tokens_remaining ?? 0 : source.remaining
+  const remainingPercent = Math.max(0, Math.min(100, (left / usable) * 100))
+  const exhausted = left <= 0
+  const low = !exhausted && left < usable * LOW_REMAINING_RATIO
   const budgetClass = exhausted ? 'is-bad' : low ? 'is-warn' : 'is-ok'
   return (
     <div className="admin-src">
@@ -72,13 +76,18 @@ function SourceRow({ source }: { source: ApiSource }) {
             />
           </div>
           <strong className={exhausted ? 'is-bad-text' : undefined}>
-            {formatAdminNumber(source.remaining)}/{formatAdminNumber(source.limit)}
+            {tokenUsable
+              ? `${formatAdminNumber(left)}/${formatAdminNumber(source.token_limit ?? 0)} tok`
+              : `${formatAdminNumber(source.remaining)}/${formatAdminNumber(source.limit)}`}
           </strong>
         </div>
       </div>
       <div className="admin-src-meta">
         <span className="admin-src-provider">real limit: {source.provider_limit}</span>
         <span>{formatAdminNumber(source.used)} used today</span>
+        {tokenUsable ? (
+          <span>{formatAdminNumber(source.tokens_used ?? 0)} tokens used</span>
+        ) : null}
         <span>reserve {source.reserve_percent}%</span>
         {Object.entries(source.windows).map(([kind, window]) => (
           <span key={kind}>

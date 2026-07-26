@@ -188,7 +188,7 @@ def _apply_verdict(
 async def catalog_quality_batch(db: Session, limit: int) -> dict[str, int]:
     """Review suspicious catalog rows and persist progress without trusting AI edits."""
     cfg = get_settings()
-    if not cfg.groq_configured() or limit <= 0:
+    if not cfg.ai_configured() or limit <= 0:
         return _empty_counts()
 
     scan_limit = min(_MAX_SCAN_ROWS, max(limit, limit * _SCAN_MULTIPLIER))

@@ -9,6 +9,7 @@ Routes:
   POST /api/ratings/enrich               — trigger a rating refresh batch
   POST /api/metadata/fix-years           — fix games with release_year=1970
   POST /api/metadata/backfill             — fill missing cover/media/source metadata
+  POST /api/metadata/audit-descriptions  — clean/rewrite/shorten game descriptions
   POST /api/metadata/enrich-summaries    — enrich weak/placeholder summaries
 """
 
@@ -37,7 +38,7 @@ from ..services.background import fix_year_batch, rating_refresh_candidates, ref
 from ..services.metadata_backfill import metadata_backfill_batch
 from ..services.metadata import summary_needs_enrichment
 from ..services.rawg_import import apply_rawg_metadata
-from ..services.summarizer import shorten_summary_batch
+from ..services.summarizer import refresh_summary_batch
 from ..security import require_admin_user
 from ..heavy_jobs import require_not_peak_hours
 
@@ -158,14 +159,14 @@ async def backfill_missing_metadata(
     return await metadata_backfill_batch(limit=limit, inter_game_delay=inter_game_delay)
 
 
-@router.post("/api/metadata/shorten-summaries", response_model=MetadataFixResponse)
-async def shorten_summaries(
+@router.post("/api/metadata/audit-descriptions")
+async def audit_descriptions(
     limit: int = Query(default=50, ge=1, le=500),
+    ai_limit: int = Query(default=4, ge=0, le=100),
     db: Session = Depends(get_db),
     _admin=Depends(require_admin_user),
 ) -> dict[str, int]:
-    result = await shorten_summary_batch(db, limit)
-    return {"fixed": result["shortened"], "skipped": result["skipped"]}
+    return await refresh_summary_batch(db, limit, ai_limit)
 
 
 @router.post("/api/metadata/enrich-summaries", response_model=MetadataFixResponse)

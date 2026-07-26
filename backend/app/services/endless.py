@@ -3,7 +3,7 @@
 Some games have no fixed completion time — roguelikes, MMOs, sandbox, sports,
 competitive multiplayer. HowLongToBeat has nothing for them, so without this
 they read as "missing playtime" forever. Genre/mode heuristics decide the clear
-cases; Groq classifies the ambiguous ones.
+cases; the configured AI chain classifies the ambiguous ones.
 
 Public API:
   detect_endless(game)          -> bool | None   (None = ambiguous)
@@ -18,7 +18,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, noload
 
 from ..config import get_settings
-from ..integrations.groq import generate_text
+from ..integrations.ai import generate_text
 from ..models import Game
 
 log = logging.getLogger(__name__)
@@ -79,6 +79,7 @@ async def classify_endless_ai(game: Game) -> bool | None:
     answer = await generate_text(
         _ENDLESS_PROMPT,
         f"Game: {game.title}\nGenres: {genres}\nModes: {modes}",
+        max_output_tokens=8,
     )
     if not answer:
         return None
@@ -109,7 +110,12 @@ async def backfill_endless_batch(db: Session, limit: int) -> dict[str, int]:
 
     for game in games:
         verdict = detect_endless(game)
-        if verdict is None and cfg.ENDLESS_USE_AI and not _has_completion_time(game):
+        if (
+            verdict is None
+            and cfg.ENDLESS_USE_AI
+            and cfg.ai_configured()
+            and not _has_completion_time(game)
+        ):
             verdict = await classify_endless_ai(game)
             ai_used += 1
         if verdict is not None and game.is_endless != verdict:

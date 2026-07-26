@@ -25,6 +25,8 @@ Rules every AI session on this project must follow without exception. Read this 
 | **I-5** | `SOURCE_WEIGHTS` in `integrations/sync/constants.py` is derived from `source_registry.REGISTRY[*].weight`. Never re-declare weights as literals there — change the registry. |
 | **I-6** | The sidebar stays short — no per-year entries. "Best of the Year" is one sidebar item; year selection happens via in-page chips. |
 | **I-7** | `applicable_for_game()` in `source_registry.py` is the authoritative function for which sources apply to a game. The `Game.applicable_primary_sources` property delegates to it — never re-implement this logic inline. |
+| **I-8** | Every writer of `Game.summary` must call `metadata.invalidate_summary_audit(game)`. A `summary_quality` verdict describes one specific text; a stale `unusable` keeps the row queued for provider re-enrichment forever. |
+| **I-9** | `summary_refreshed_at` moves only when the description text actually changed. `summary_checked_at` moves on every audit pass. Other jobs treat the former as "content changed" — never bump it just because a row was inspected. |
 
 ---
 

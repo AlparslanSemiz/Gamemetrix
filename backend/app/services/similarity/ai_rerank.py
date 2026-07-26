@@ -1,7 +1,7 @@
-"""Optional Groq re-rank of the heuristic "games like X" candidates.
+"""Optional AI re-rank of the heuristic "games like X" candidates.
 
 The heuristic ranker (ranking.py) stays authoritative and always runs first.
-When SIMILARITY_USE_AI is on and Groq is configured, Groq reorders the top
+When SIMILARITY_USE_AI is on and any AI provider is configured, AI reorders the top
 heuristic candidates into the best `limit`. Any failure falls back to the
 heuristic order. This never touches any score — it orders display only.
 """
@@ -10,7 +10,7 @@ import logging
 import re
 
 from ...config import get_settings
-from ...integrations.groq import generate_text
+from ...integrations.ai import generate_text
 from ...models import Game
 
 log = logging.getLogger(__name__)
@@ -39,9 +39,9 @@ def _parse_order(answer: str, count: int) -> list[int]:
 
 
 async def rerank_with_ai(source: Game, ranked: list[Game], limit: int) -> list[Game]:
-    """Reorder the heuristic candidates via Groq, or return them unchanged."""
+    """Reorder the heuristic candidates via AI, or return them unchanged."""
     cfg = get_settings()
-    if not (cfg.SIMILARITY_USE_AI and cfg.groq_configured()):
+    if not (cfg.SIMILARITY_USE_AI and cfg.ai_configured()):
         return ranked[:limit]
 
     pool = ranked[: max(limit, cfg.SIMILARITY_AI_POOL)]
@@ -52,7 +52,12 @@ async def rerank_with_ai(source: Game, ranked: list[Game], limit: int) -> list[G
         f"Reference game: {_describe(source)}\n\nCandidates:\n"
         + "\n".join(f"{i}. {_describe(game)}" for i, game in enumerate(pool, start=1))
     )
-    answer = await generate_text(_SYSTEM_PROMPT, prompt)
+    answer = await generate_text(
+        _SYSTEM_PROMPT,
+        prompt,
+        max_output_tokens=96,
+        deadline_seconds=cfg.AI_INTERACTIVE_DEADLINE_SECONDS,
+    )
     if not answer:
         return pool[:limit]
 

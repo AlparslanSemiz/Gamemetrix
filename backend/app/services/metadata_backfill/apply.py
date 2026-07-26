@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from ...integrations.types import NormalizedGame
 from ...models import Game
-from ..metadata import clean_game_summary, summary_needs_enrichment
+from ..metadata import clean_game_summary, invalidate_summary_audit, summary_needs_enrichment
 from .sanitize import (
     GENERIC_GENRES,
     GENERIC_PLATFORMS,
@@ -66,6 +66,7 @@ def _apply_summary(game: Game, result: NormalizedGame) -> bool:
     if not summary or not (summary_needs_enrichment(game) or len(summary) > len(game.summary)):
         return False
     game.summary = summary
+    invalidate_summary_audit(game)
     return True
 
 

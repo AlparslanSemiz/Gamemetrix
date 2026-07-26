@@ -125,6 +125,36 @@ class Settings:
         self.GROQ_MIN_REQUEST_INTERVAL_SECONDS: float = max(
             12.0, _env_float("GROQ_MIN_REQUEST_INTERVAL_SECONDS", 12.0)
         )
+        self.GEMINI_API_KEY: str = _env("GEMINI_API_KEY")
+        self.GEMINI_MODEL: str = _env("GEMINI_MODEL", "gemini-2.5-flash-lite")
+        self.GEMINI_MIN_REQUEST_INTERVAL_SECONDS: float = _env_float(
+            "GEMINI_MIN_REQUEST_INTERVAL_SECONDS", 6.0
+        )
+        self.CLOUDFLARE_API_TOKEN: str = _env("CLOUDFLARE_API_TOKEN")
+        self.CLOUDFLARE_ACCOUNT_ID: str = _env_stripped("CLOUDFLARE_ACCOUNT_ID")
+        self.CLOUDFLARE_MODEL: str = _env(
+            "CLOUDFLARE_MODEL", "@cf/openai/gpt-oss-20b"
+        )
+        self.OPENROUTER_API_KEY: str = _env("OPENROUTER_API_KEY")
+        self.OPENROUTER_MODEL: str = _env("OPENROUTER_MODEL", "openrouter/free")
+        self.AI_PROVIDER_ORDER: list[str] = [
+            item.casefold()
+            for item in _csv(
+                _env(
+                    "AI_PROVIDER_ORDER",
+                    "groq,gemini,cloudflare,openrouter",
+                )
+            )
+        ]
+        self.AI_PROVIDER_TIMEOUT_SECONDS: float = _env_float(
+            "AI_PROVIDER_TIMEOUT_SECONDS", 10.0
+        )
+        self.AI_BACKGROUND_DEADLINE_SECONDS: float = _env_float(
+            "AI_BACKGROUND_DEADLINE_SECONDS", 60.0
+        )
+        self.AI_INTERACTIVE_DEADLINE_SECONDS: float = _env_float(
+            "AI_INTERACTIVE_DEADLINE_SECONDS", 15.0
+        )
         self.ITAD_API_KEY: str = _env("ITAD_API_KEY")
         self.STEAM_WEB_API_KEY: str = _env("STEAM_WEB_API_KEY")
         self.GAMEBRAIN_API_KEY: str = _env("GAMEBRAIN_API_KEY")
@@ -176,12 +206,14 @@ class Settings:
         self.ITAD_DAILY_LIMIT: int = _env_int("ITAD_DAILY_LIMIT", 200)
         self.HLTB_DAILY_LIMIT: int = _env_int("HLTB_DAILY_LIMIT", 250)
         self.WIKIDATA_DAILY_LIMIT: int = _env_int("WIKIDATA_DAILY_LIMIT", 200)
-        # The free gpt-oss-20b allowance is token-limited before its 1,000 RPD
-        # ceiling for our catalog prompts. Keep one shared conservative budget
-        # across summaries, quality review, endless detection, and reranking.
-        self.GROQ_DAILY_LIMIT: int = _clamp(
-            _env_int("GROQ_DAILY_LIMIT", 150), 1, 150
-        )
+        # Groq's free gpt-oss-20b tier allows 1,000 requests but only 200,000
+        # tokens a day, and our catalog prompts exhaust the tokens first — so the
+        # token ceiling is the real budget and the request count is a backstop.
+        # Both are shared across summaries, quality review, endless detection and
+        # reranking. Raise GROQ_DAILY_TOKEN_LIMIT to the tier's TPD when on a
+        # paid plan; neither value is capped in code.
+        self.GROQ_DAILY_LIMIT: int = _env_int("GROQ_DAILY_LIMIT", 1000)
+        self.GROQ_DAILY_TOKEN_LIMIT: int = _env_int("GROQ_DAILY_TOKEN_LIMIT", 200_000)
         # Free GameBrain accounts get 50 tokens/day. Keep this hard default below
         # that ceiling even when the global reserve is explicitly set to zero.
         self.GAMEBRAIN_DAILY_LIMIT: int = _clamp(
@@ -236,12 +268,17 @@ class Settings:
         self.HLTB_BACKFILL_INTERVAL_MINUTES: float = _env_float("HLTB_BACKFILL_INTERVAL_MINUTES", 60)
         self.HLTB_BACKFILL_BATCH_SIZE: int = _env_int("HLTB_BACKFILL_BATCH_SIZE", 50)
         self.HLTB_BACKFILL_INTER_GAME_DELAY: float = _env_float("HLTB_BACKFILL_INTER_GAME_DELAY", 1.0)
-        # ── Description shortening (summary_short) backfill ──────────────────
+        # ── Description audit + shortening backfill ──────────────────────────
+        # Each cycle re-checks a slice of the catalog: deterministic clean-up is
+        # free, so the batch can be wide, while AI calls are capped per batch.
+        # GROQ_DAILY_LIMIT is the real ceiling — it is shared with catalog
+        # quality, endless detection and reranking.
         self.SUMMARY_SHORTEN_INTERVAL_MINUTES: float = _env_float("SUMMARY_SHORTEN_INTERVAL_MINUTES", 30)
         self.SUMMARY_SHORTEN_BATCH_SIZE: int = _env_int("SUMMARY_SHORTEN_BATCH_SIZE", 40)
         self.SUMMARY_SHORTEN_STARTUP_LIMIT: int = _env_int(
             "SUMMARY_SHORTEN_STARTUP_LIMIT", 0
         )
+        self.SUMMARY_QUALITY_AI_LIMIT: int = _env_int("SUMMARY_QUALITY_AI_LIMIT", 4)
         # ── Endless (∞) playtime classification ──────────────────────────────
         # Roguelikes/MMOs/sandbox etc. have no completion time; flag them so they
         # stop reading as "missing HLTB". Heuristic first, Groq for the unclear ones.
@@ -323,6 +360,10 @@ class Settings:
             "Groq": self.GROQ_DAILY_LIMIT,
         }
 
+    def provider_daily_token_limits(self) -> dict[str, int]:
+        """source -> daily token ceiling. Absent means requests are the only cap."""
+        return {"Groq": self.GROQ_DAILY_TOKEN_LIMIT}
+
     def provider_budget_aliases(self) -> dict[str, str]:
         # Metacritic scores are fetched through the RAWG API with the same key,
         # so they must draw from one budget — separate budgets would let combined
@@ -361,6 +402,24 @@ class Settings:
 
     def groq_configured(self) -> bool:
         return bool(self.GROQ_API_KEY)
+
+    def gemini_configured(self) -> bool:
+        return bool(self.GEMINI_API_KEY)
+
+    def cloudflare_ai_configured(self) -> bool:
+        return bool(self.CLOUDFLARE_API_TOKEN and self.CLOUDFLARE_ACCOUNT_ID)
+
+    def openrouter_configured(self) -> bool:
+        return bool(self.OPENROUTER_API_KEY)
+
+    def ai_configured(self) -> bool:
+        checks = {
+            "groq": self.groq_configured,
+            "gemini": self.gemini_configured,
+            "cloudflare": self.cloudflare_ai_configured,
+            "openrouter": self.openrouter_configured,
+        }
+        return any(checks[name]() for name in self.AI_PROVIDER_ORDER)
 
     def itad_configured(self) -> bool:
         return bool(self.ITAD_API_KEY)

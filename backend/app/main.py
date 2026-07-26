@@ -33,7 +33,7 @@ from .services.background import (
     hltb_backfill_loop,
     metadata_backfill_loop,
     raw_analytics_retention_loop,
-    summary_backfill_loop,
+    summary_audit_loop,
 )
 from .services.data_fill import data_fill_loop, recover_interrupted_runs
 from .services.deduplication import consolidate_duplicate_games
@@ -137,7 +137,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     refresh_task = asyncio.create_task(daily_refresh_loop())
     metadata_task = asyncio.create_task(metadata_backfill_loop())
     hltb_task = asyncio.create_task(hltb_backfill_loop())
-    summary_task = asyncio.create_task(summary_backfill_loop())
+    summary_task = asyncio.create_task(summary_audit_loop())
     endless_task = asyncio.create_task(endless_backfill_loop())
     data_fill_task = asyncio.create_task(data_fill_loop())
     notification_task = asyncio.create_task(notification_digest_loop())

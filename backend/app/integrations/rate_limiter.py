@@ -1,12 +1,16 @@
-"""Persistent provider request budgets across daily, monthly, and short windows."""
+"""Persistent provider request and token budgets across daily, monthly, and short windows."""
 
 import asyncio
 import calendar
 import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 from ..config import METERED_SOURCES, get_settings
+
+if TYPE_CHECKING:
+    from ..models import ApiRequestBudget
 
 
 log = logging.getLogger(__name__)
@@ -26,6 +30,7 @@ class RateLimiter:
     def __init__(self) -> None:
         cfg = get_settings()
         self._limits: dict[str, int] = dict(cfg.provider_daily_limits())
+        self._token_limits: dict[str, int] = dict(cfg.provider_daily_token_limits())
         self._aliases: dict[str, str] = dict(cfg.provider_budget_aliases())
         self._window_limits: dict[str, list[WindowSpec]] = {}
         for source, specs in cfg.provider_window_limits().items():
@@ -42,6 +47,9 @@ class RateLimiter:
 
     def set_limit(self, source: str, daily_limit: int) -> None:
         self._limits[source] = max(0, int(daily_limit))
+
+    def set_token_limit(self, source: str, daily_tokens: int) -> None:
+        self._token_limits[source] = max(0, int(daily_tokens))
 
     def block(self, source: str, seconds: int) -> None:
         """Temporarily stop a provider without corrupting its configured limit."""
@@ -92,6 +100,10 @@ class RateLimiter:
         canonical = self._canonical(source)
         return self._limits.get(canonical, _FALLBACK_DAILY_LIMIT)
 
+    def _token_limit(self, source: str) -> int:
+        """0 = this source has no token ceiling, only a request ceiling."""
+        return self._token_limits.get(self._canonical(source), 0)
+
     def _effective_limit(self, source: str, value: int) -> int:
         """Usable slots after the safety reserve — metered providers reserve more."""
         reserve = get_settings().budget_reserve_percent(self._canonical(source))
@@ -123,6 +135,7 @@ class RateLimiter:
             )
         )
         limit = self._limit(canonical)
+        token_limit = self._token_limit(canonical)
         now = datetime.now(UTC)
         if row is None:
             row = ApiRequestBudget(
@@ -130,12 +143,15 @@ class RateLimiter:
                 bucket_date=today,
                 request_count=0,
                 daily_limit=limit,
+                token_count=0,
+                token_limit=token_limit,
                 updated_at=now,
             )
             db.add(row)
             db.flush()
-        elif row.daily_limit != limit:
+        elif row.daily_limit != limit or row.token_limit != token_limit:
             row.daily_limit = limit
+            row.token_limit = token_limit
             row.updated_at = now
         return row
 
@@ -192,7 +208,14 @@ class RateLimiter:
             rows.append((spec, row))
         return rows
 
-    async def acquire(self, source: str) -> bool:
+    async def acquire(self, source: str, estimated_tokens: int = 0) -> bool:
+        """Claim one request slot, plus a token reservation for LLM providers.
+
+        The reservation is the caller's worst case. Settle it against the real
+        usage with `settle_tokens` once the provider reports it — reserving the
+        worst case first is what keeps a burst of concurrent calls from
+        overshooting the daily token ceiling.
+        """
         if self._blocked(source):
             return False
         async with self._lock(source):
@@ -206,6 +229,14 @@ class RateLimiter:
                     db.commit()
                     log.debug("Daily request budget exhausted for %s", source)
                     return False
+                reservation = max(0, int(estimated_tokens))
+                if daily.token_limit and (
+                    daily.token_count + reservation
+                    > self._effective_limit(source, daily.token_limit)
+                ):
+                    db.commit()
+                    log.debug("Daily token budget exhausted for %s", source)
+                    return False
                 if any(
                     row.request_count >= self._effective_limit(source, row.request_limit)
                     for _, row in windows
@@ -215,12 +246,35 @@ class RateLimiter:
                     return False
                 now = datetime.now(UTC)
                 daily.request_count += 1
+                daily.token_count += reservation
                 daily.updated_at = now
                 for _, row in windows:
                     row.request_count += 1
                     row.updated_at = now
                 db.commit()
                 return True
+
+    def settle_tokens(self, source: str, reserved: int, actual: int) -> None:
+        """Replace a reservation with what the provider actually charged.
+
+        Best-effort: an accounting failure must never take down the caller. A
+        request that never reached the provider settles with actual=0, which
+        returns the whole reservation to the day's budget.
+        """
+        delta = max(0, int(actual)) - max(0, int(reserved))
+        if not delta:
+            return
+        from ..database import SessionLocal
+
+        try:
+            with SessionLocal() as db:
+                self._lock_database_budget(db, source)
+                daily = self._get_or_create_daily(db, source)
+                daily.token_count = max(0, daily.token_count + delta)
+                daily.updated_at = datetime.now(UTC)
+                db.commit()
+        except Exception:
+            log.debug("Token settlement failed for %s", source, exc_info=True)
 
     def remaining(self, source: str) -> int:
         from ..database import SessionLocal
@@ -233,9 +287,16 @@ class RateLimiter:
                 self._effective_limit(source, row.request_limit) - row.request_count
                 for _, row in self._get_window_rows(db, source)
             )
+            # A token-limited source with no tokens left can serve no request,
+            # whatever its request counter says.
+            starved = bool(daily.token_limit) and self._tokens_remaining(source, daily) <= 0
             db.commit()
-            remaining = max(0, min(remaining_values))
-            return 0 if self._blocked(source) else remaining
+            if self._blocked(source) or starved:
+                return 0
+            return max(0, min(remaining_values))
+
+    def _tokens_remaining(self, source: str, daily: "ApiRequestBudget") -> int:
+        return max(0, self._effective_limit(source, daily.token_limit) - daily.token_count)
 
     def status(self) -> dict[str, dict[str, object]]:
         from ..database import SessionLocal
@@ -261,15 +322,24 @@ class RateLimiter:
                         "window_start": row.window_start.isoformat(),
                         "window_seconds": row.window_seconds,
                     }
+                tokens_left = self._tokens_remaining(source, daily) if daily.token_limit else None
                 output[source] = {
                     "remaining": (
                         0
-                        if self._blocked(source)
+                        if self._blocked(source) or tokens_left == 0
                         else max(0, min(remaining_values))
                     ),
                     "limit": daily.daily_limit,
                     "usable_limit": usable_daily,
                     "used": daily.request_count,
+                    "token_limit": daily.token_limit or None,
+                    "token_usable_limit": (
+                        self._effective_limit(source, daily.token_limit)
+                        if daily.token_limit
+                        else None
+                    ),
+                    "tokens_used": daily.token_count if daily.token_limit else None,
+                    "tokens_remaining": tokens_left,
                     "reserve_percent": get_settings().budget_reserve_percent(self._canonical(source)),
                     "metered": self._canonical(source) in METERED_SOURCES,
                     "updated_at": daily.updated_at.isoformat() if daily.updated_at else None,

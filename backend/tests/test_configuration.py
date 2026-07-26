@@ -58,3 +58,34 @@ def test_opencritic_direct_and_rapidapi_credentials_stay_separate(monkeypatch: p
     assert Settings().opencritic_configured() is False
     monkeypatch.setenv("RAPIDAPI_KEY", "rapidapi-subscription-key")
     assert Settings().opencritic_configured() is True
+
+
+def test_ai_provider_order_is_centralized_and_validated(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(
+        "AI_PROVIDER_ORDER",
+        "groq,gemini,cloudflare,openrouter",
+    )
+    settings = Settings()
+
+    assert settings.AI_PROVIDER_ORDER == [
+        "groq",
+        "gemini",
+        "cloudflare",
+        "openrouter",
+    ]
+
+    monkeypatch.setenv("AI_PROVIDER_ORDER", "groq,gemini,groq")
+    with pytest.raises(RuntimeError, match="AI_PROVIDER_ORDER"):
+        Settings().validate()
+
+
+def test_cloudflare_credentials_must_be_configured_together(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "token-only")
+    monkeypatch.delenv("CLOUDFLARE_ACCOUNT_ID", raising=False)
+
+    with pytest.raises(RuntimeError, match="CLOUDFLARE_API_TOKEN"):
+        Settings().validate()

@@ -12,6 +12,7 @@ from ...config import Settings, get_settings
 from ...content_type import infer_content_type_with_parent
 from ...database import SessionLocal, get_db
 from ...heavy_jobs import HEAVY_JOB_LOCK
+from ...integrations.ai import provider_statuses
 from ...models import Game
 from ...services.data_fill import data_fill_status, execute_data_fill_run, queue_data_fill_run
 from ...services.deduplication import consolidate_duplicate_games, preview_duplicate_groups
@@ -38,13 +39,17 @@ def _job_schedule(cfg: Settings) -> dict[str, int]:
 
 
 def _ai_status(cfg: Settings) -> dict[str, object]:
-    configured = cfg.groq_configured()
+    configured = cfg.ai_configured()
     return {
+        # Kept for older admin clients; the ordered provider list below is the
+        # source of truth for the fallback chain.
         "provider": "Groq",
         "model": cfg.GROQ_MODEL,
-        "configured": configured,
+        "configured": cfg.groq_configured(),
+        "providers": provider_statuses(cfg),
+        "order": list(cfg.AI_PROVIDER_ORDER),
         "uses": {
-            "summary_rewrite": configured,
+            "description_audit": configured,
             "catalog_quality_review": configured,
             "catalog_quality_repair_verification": configured,
             "endless_classification": cfg.ENDLESS_USE_AI and configured,

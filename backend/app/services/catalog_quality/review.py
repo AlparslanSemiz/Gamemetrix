@@ -1,10 +1,10 @@
-"""Structured Groq prompt and strict response parsing for catalog quality."""
+"""Structured AI prompt and strict response parsing for catalog quality."""
 
 import json
 import logging
 from dataclasses import dataclass
 
-from ...integrations.groq import generate_text
+from ...integrations.ai import generate_text
 from ...models import Game
 
 log = logging.getLogger(__name__)
@@ -80,10 +80,11 @@ async def ai_review(
         max_output_tokens=_AI_MAX_OUTPUT_TOKENS,
         temperature=_AI_TEMPERATURE,
         json_object=True,
+        response_validator=_valid_quality_response,
     )
     verdict = parse_quality_verdict(answer)
     if answer and verdict is None:
-        log.debug("Groq catalog-quality response was not valid JSON")
+        log.debug("AI catalog-quality response was not valid JSON")
     return verdict
 
 
@@ -115,3 +116,7 @@ def _quality_record_prompt(
         "same_summary_other_titles": list(duplicate_titles[:_MAX_DUPLICATE_TITLES]),
     }
     return json.dumps(row, ensure_ascii=False, separators=(",", ":"))
+
+
+def _valid_quality_response(answer: str) -> bool:
+    return parse_quality_verdict(answer) is not None

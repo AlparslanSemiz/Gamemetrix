@@ -148,6 +148,12 @@ def _source_entry(bucket: str, budget: dict[str, object]) -> dict[str, object]:
         "limit": budget.get("limit", 0),
         "usable_limit": budget.get("usable_limit", 0),
         "remaining": budget.get("remaining", 0),
+        # Present only for token-metered providers, where the request counter
+        # runs out long after the token allowance does.
+        "token_limit": budget.get("token_limit"),
+        "token_usable_limit": budget.get("token_usable_limit"),
+        "tokens_used": budget.get("tokens_used"),
+        "tokens_remaining": budget.get("tokens_remaining"),
         "reserve_percent": budget.get("reserve_percent", 0),
         "last_used_at": budget.get("updated_at"),
         "windows": budget.get("windows", {}),

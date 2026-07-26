@@ -6,6 +6,7 @@ behaviours that keep real usage below the provider ceiling — a throttled reque
 is never retried, and every ceiling is reduced by a safety reserve.
 """
 
+import asyncio
 from datetime import UTC, datetime
 
 import httpx
@@ -133,9 +134,68 @@ def test_ordered_data_fill_owns_the_first_provider_budget_after_boot() -> None:
 def test_groq_free_tier_has_one_shared_persistent_budget() -> None:
     cfg = get_settings()
 
-    assert 0 < cfg.provider_daily_limits()["Groq"] <= 150
+    # Tokens, not requests, are what the free tier actually runs out of.
+    assert 0 < cfg.provider_daily_token_limits()["Groq"] <= 200_000
+    assert 0 < cfg.provider_daily_limits()["Groq"] <= 1_000
     assert cfg.budget_reserve_percent("Groq") > 0
+    # 5 calls/min at our prompt sizes stays under the 8,000 TPM ceiling.
     assert cfg.GROQ_MIN_REQUEST_INTERVAL_SECONDS >= 12
+
+
+class _Budget:
+    """Stand-in for one api_request_budgets row."""
+
+    def __init__(self, token_limit: int, token_count: int = 0) -> None:
+        self.request_count = 0
+        self.daily_limit = 1_000
+        self.token_limit = token_limit
+        self.token_count = token_count
+        self.updated_at = datetime.now(UTC)
+
+
+def _token_limiter(row: _Budget) -> RateLimiter:
+    """Limiter whose every database touchpoint is stubbed.
+
+    The session object is still the real one, but it is opened and committed
+    without a single query, so it never connects.
+    """
+    limiter = RateLimiter()
+    limiter._get_or_create_daily = lambda _db, _source: row  # type: ignore[method-assign]
+    limiter._get_window_rows = lambda _db, _source: []  # type: ignore[method-assign]
+    limiter._lock_database_budget = lambda _db, _source: None  # type: ignore[method-assign]
+    return limiter
+
+
+@pytest.mark.asyncio
+async def test_a_token_budget_refuses_a_call_that_would_overshoot_it() -> None:
+    row = _Budget(token_limit=10_000, token_count=8_400)
+    limiter = _token_limiter(row)
+
+    # 15% reserve leaves 8,500 usable: a 100-token call fits, a 2,000 one does not.
+    assert await limiter.acquire("Groq", estimated_tokens=2_000) is False
+    assert row.token_count == 8_400
+    assert row.request_count == 0
+
+    assert await limiter.acquire("Groq", estimated_tokens=100) is True
+    assert row.token_count == 8_500
+    assert row.request_count == 1
+
+
+def test_settling_tokens_replaces_the_reservation_with_real_usage() -> None:
+    row = _Budget(token_limit=10_000, token_count=1_600)
+    limiter = _token_limiter(row)
+
+    limiter.settle_tokens("Groq", reserved=1_600, actual=420)
+
+    assert row.token_count == 420
+
+
+def test_a_source_without_a_token_limit_is_unaffected() -> None:
+    row = _Budget(token_limit=0)
+    limiter = _token_limiter(row)
+
+    assert asyncio.run(limiter.acquire("RAWG", estimated_tokens=999_999)) is True
+    assert row.request_count == 1
 
 
 def test_primary_score_catalog_scans_stream_plain_columns() -> None:

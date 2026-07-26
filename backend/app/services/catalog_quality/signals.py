@@ -1,4 +1,4 @@
-"""Pure deterministic signals that decide which catalog rows need Groq review."""
+"""Pure deterministic signals that decide which catalog rows need AI review."""
 
 import re
 

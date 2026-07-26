@@ -2,6 +2,7 @@
 
 from ...game_signals import safe_review_count, valid_score
 from ...models import Game
+from ..metadata import invalidate_summary_audit
 from .matching import UNKNOWN_YEAR, duplicate_quality_key
 
 _COPY_IF_EMPTY_ATTRS = (
@@ -37,6 +38,7 @@ def _merge_summaries(keeper: Game, duplicate: Game) -> bool:
     changed = False
     if duplicate.summary and len(duplicate.summary) > len(keeper.summary or ""):
         keeper.summary = duplicate.summary
+        invalidate_summary_audit(keeper)
         changed = True
     if duplicate.summary_short and not keeper.summary_short:
         keeper.summary_short = duplicate.summary_short

@@ -18,7 +18,7 @@ from ..content_type import infer_content_type
 from ..models import Game
 from ..integrations.sync import calculate_metrix_score
 from ..integrations.types import normalize_game_modes
-from .metadata import clean_game_summary, summary_needs_enrichment
+from .metadata import clean_game_summary, invalidate_summary_audit, summary_needs_enrichment
 
 
 def parse_rawg_date(value: str | None) -> date:
@@ -226,6 +226,7 @@ def apply_rawg_metadata(game: Game, raw_game: dict) -> bool:
     summary = clean_game_summary(raw_game.get("description_raw"), game.title)
     if summary and (summary_needs_enrichment(game) or len(summary) > len(game.summary)):
         game.summary = summary
+        invalidate_summary_audit(game)
         changed = True
 
     image_url = raw_game.get("background_image")

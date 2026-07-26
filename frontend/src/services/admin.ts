@@ -155,6 +155,11 @@ export interface ApiSource {
   limit: number
   usable_limit: number
   remaining: number
+  /** Token-metered providers only (Groq): null elsewhere. */
+  token_limit?: number | null
+  token_usable_limit?: number | null
+  tokens_used?: number | null
+  tokens_remaining?: number | null
   reserve_percent: number
   last_used_at?: string | null
   windows: Record<string, ApiSourceWindow>
@@ -182,8 +187,15 @@ export interface PeriodicJobsAi {
   provider: string
   model: string
   configured: boolean
+  order: string[]
+  providers: Array<{
+    provider: string
+    model: string
+    configured: boolean
+    position: number
+  }>
   uses: {
-    summary_rewrite: boolean
+    description_audit: boolean
     endless_classification: boolean
     similar_games_rerank: boolean
   }

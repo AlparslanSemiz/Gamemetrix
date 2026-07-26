@@ -33,7 +33,7 @@ from ..metacritic_backfill import cheapshark_metacritic_backfill_batch
 from ..metadata_backfill import metadata_backfill_batch
 from ..price_backfill import price_backfill_batch
 from ..primary_score_backfill import primary_score_backfill_batch, primary_score_coverage_status
-from ..summarizer import shorten_summary_batch
+from ..summarizer import refresh_summary_batch
 
 log = logging.getLogger(__name__)
 
@@ -312,7 +312,11 @@ async def fill_endless() -> dict[str, int]:
 async def fill_summaries() -> dict[str, int]:
     cfg = get_settings()
     with SessionLocal() as db:
-        return await shorten_summary_batch(db, cfg.SUMMARY_SHORTEN_BATCH_SIZE)
+        return await refresh_summary_batch(
+            db,
+            cfg.SUMMARY_SHORTEN_BATCH_SIZE,
+            cfg.SUMMARY_QUALITY_AI_LIMIT,
+        )
 
 
 async def audit_catalog_quality() -> dict[str, int]:

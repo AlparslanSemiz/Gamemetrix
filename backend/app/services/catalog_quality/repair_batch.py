@@ -31,8 +31,8 @@ _TRUSTED_CONFIDENCE = 0.97
 
 
 async def catalog_repair_batch(db: Session, limit: int) -> dict[str, int]:
-    """Repair Groq-confirmed bad fields from normalized provider metadata."""
-    if not get_settings().groq_configured() or limit <= 0:
+    """Repair AI-confirmed bad fields from normalized provider metadata."""
+    if not get_settings().ai_configured() or limit <= 0:
         return _empty_counts()
 
     rows = db.execute(

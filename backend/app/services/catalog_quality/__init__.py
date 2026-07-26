@@ -1,4 +1,4 @@
-"""Groq-backed review of suspicious catalog titles, summaries and metadata."""
+"""AI-backed review of suspicious catalog titles, summaries and metadata."""
 
 from .batch import catalog_quality_batch
 from .repair_batch import catalog_repair_batch

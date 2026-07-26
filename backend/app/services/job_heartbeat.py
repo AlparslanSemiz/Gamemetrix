@@ -36,7 +36,7 @@ JOB_LABELS: dict[str, str] = {
     "rating_refresh": "Score refresh",
     "metadata_backfill": "Metadata backfill",
     "hltb_backfill": "HowLongToBeat playtimes",
-    "summary_backfill": "Summary rewrite (AI)",
+    "summary_backfill": "Description audit (AI)",
     "endless_backfill": "Endless classification (AI)",
 }
 

@@ -9,7 +9,7 @@ from datetime import date, datetime
 from ...integrations.title_matching import normalize_title
 from ...integrations.types import NormalizedGame
 from ...models import Game
-from ..metadata import clean_game_summary
+from ..metadata import clean_game_summary, invalidate_summary_audit
 
 _SOURCE_PRIORITY = {
     "IGDB": 5,
@@ -58,6 +58,8 @@ class RepairSnapshot:
     summary: str
     summary_short: str | None
     summary_refreshed_at: datetime | None
+    summary_checked_at: datetime | None
+    summary_quality: str | None
     release_date: date
     release_year: int
     official_release_date: date | None
@@ -239,8 +241,8 @@ def apply_repair_plan(game: Game, plan: RepairPlan, now: datetime) -> RepairSnap
         game.title = str(title)
     if summary := plan.changes.get("summary"):
         game.summary = str(summary)
-        game.summary_short = None
         game.summary_refreshed_at = None
+        invalidate_summary_audit(game)
     released = plan.changes.get("release_date")
     if isinstance(released, date):
         game.release_date = released
@@ -264,6 +266,8 @@ def restore_repair(game: Game, snapshot: RepairSnapshot) -> None:
     game.summary = snapshot.summary
     game.summary_short = snapshot.summary_short
     game.summary_refreshed_at = snapshot.summary_refreshed_at
+    game.summary_checked_at = snapshot.summary_checked_at
+    game.summary_quality = snapshot.summary_quality
     game.release_date = snapshot.release_date
     game.release_year = snapshot.release_year
     game.official_release_date = snapshot.official_release_date
@@ -281,6 +285,8 @@ def _snapshot(game: Game) -> RepairSnapshot:
         summary=game.summary,
         summary_short=game.summary_short,
         summary_refreshed_at=game.summary_refreshed_at,
+        summary_checked_at=game.summary_checked_at,
+        summary_quality=game.summary_quality,
         release_date=game.release_date,
         release_year=game.release_year,
         official_release_date=game.official_release_date,

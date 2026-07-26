@@ -20,7 +20,11 @@ class Game(Base):
     slug: Mapped[str] = mapped_column(String(180), unique=True, nullable=False, index=True)
     summary: Mapped[str] = mapped_column(Text, nullable=False)
     summary_short: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # refreshed_at moves only when the text actually changed; checked_at moves on
+    # every audit pass and orders the rotation.
     summary_refreshed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    summary_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    summary_quality: Mapped[str | None] = mapped_column(String(20), nullable=True, index=True)
     cover_url: Mapped[str] = mapped_column(String(500), nullable=False)
     release_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
     release_year: Mapped[int] = mapped_column(Integer, nullable=False, index=True)

@@ -37,8 +37,15 @@ export function PeriodicJobsPanel({ periodic }: PeriodicJobsPanelProps) {
 }
 
 function AiBanner({ ai }: { ai: PeriodicJobsAi }) {
+  const providers = ai.providers ?? [{
+    provider: ai.provider,
+    model: ai.model,
+    configured: ai.configured,
+    position: 1,
+  }]
+  const configured = providers.some((provider) => provider.configured)
   const uses = [
-    ['Summaries', ai.uses.summary_rewrite],
+    ['Descriptions', ai.uses.description_audit],
     ['Endless', ai.uses.endless_classification],
     ['Similar games', ai.uses.similar_games_rerank],
   ] as const
@@ -46,12 +53,16 @@ function AiBanner({ ai }: { ai: PeriodicJobsAi }) {
     <div className="admin-ai-banner">
       <div className="admin-ai-head">
         <span
-          className={`admin-dot ${ai.configured ? 'is-ok' : 'is-muted'}`}
+          className={`admin-dot ${configured ? 'is-ok' : 'is-muted'}`}
           aria-hidden="true"
         />
-        <strong>{ai.provider}</strong>
-        <small>{ai.model}</small>
-        <em>{ai.configured ? 'configured' : 'not configured'}</em>
+        <strong>AI fallback</strong>
+        <small>
+          {providers.map((provider) => (
+            `${provider.position}. ${provider.provider} (${provider.model})`
+          )).join(' → ')}
+        </small>
+        <em>{configured ? 'configured' : 'not configured'}</em>
       </div>
       <div className="admin-job-chips">
         {uses.map(([label, on]) => (

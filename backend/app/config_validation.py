@@ -19,6 +19,9 @@ _MIN_JWT_SECRET_LENGTH = 32
 _MAX_JWT_EXPIRE_MINUTES = 1440
 _MAX_REFRESH_CONCURRENCY = 32
 _MAX_HOUR = 23
+_AI_PROVIDERS = frozenset({"groq", "gemini", "cloudflare", "openrouter"})
+_MODEL_NAME_RE = re.compile(r"^[A-Za-z0-9@._:/-]+$")
+_CLOUDFLARE_ACCOUNT_ID_RE = re.compile(r"^[A-Fa-f0-9]{32}$")
 
 
 def validate_settings(settings: "Settings") -> None:
@@ -55,6 +58,31 @@ def _validate_core(settings: "Settings", errors: list[str]) -> None:
         errors.append("SMTP_PORT must be between 1 and 65535")
     if bool(settings.GOOGLE_CLIENT_ID) != bool(settings.GOOGLE_CLIENT_SECRET):
         errors.append("GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET must be configured together")
+    if bool(settings.CLOUDFLARE_API_TOKEN) != bool(settings.CLOUDFLARE_ACCOUNT_ID):
+        errors.append(
+            "CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID must be configured together"
+        )
+    if (
+        not settings.AI_PROVIDER_ORDER
+        or len(settings.AI_PROVIDER_ORDER) != len(set(settings.AI_PROVIDER_ORDER))
+        or any(name not in _AI_PROVIDERS for name in settings.AI_PROVIDER_ORDER)
+    ):
+        errors.append(
+            "AI_PROVIDER_ORDER must contain unique names chosen from "
+            "groq, gemini, cloudflare, openrouter"
+        )
+    for name, model in {
+        "GROQ_MODEL": settings.GROQ_MODEL,
+        "GEMINI_MODEL": settings.GEMINI_MODEL,
+        "CLOUDFLARE_MODEL": settings.CLOUDFLARE_MODEL,
+        "OPENROUTER_MODEL": settings.OPENROUTER_MODEL,
+    }.items():
+        if not model or not _MODEL_NAME_RE.fullmatch(model):
+            errors.append(f"{name} contains unsupported characters")
+    if settings.CLOUDFLARE_ACCOUNT_ID and not _CLOUDFLARE_ACCOUNT_ID_RE.fullmatch(
+        settings.CLOUDFLARE_ACCOUNT_ID
+    ):
+        errors.append("CLOUDFLARE_ACCOUNT_ID must be a 32-character hexadecimal ID")
 
 
 def _validate_numeric(settings: "Settings", errors: list[str]) -> None:
@@ -112,10 +140,12 @@ def _nonnegative_settings(s: "Settings") -> dict[str, float]:
         "WIKIDATA_DAILY_LIMIT": s.WIKIDATA_DAILY_LIMIT,
         "GAMEBRAIN_DAILY_LIMIT": s.GAMEBRAIN_DAILY_LIMIT,
         "GROQ_DAILY_LIMIT": s.GROQ_DAILY_LIMIT,
+        "GROQ_DAILY_TOKEN_LIMIT": s.GROQ_DAILY_TOKEN_LIMIT,
         "RAWG_MONTHLY_LIMIT": s.RAWG_MONTHLY_LIMIT,
         "ITAD_FIVE_MINUTE_LIMIT": s.ITAD_FIVE_MINUTE_LIMIT,
         "STARTUP_METADATA_BACKFILL_LIMIT": s.STARTUP_METADATA_BACKFILL_LIMIT,
         "SUMMARY_SHORTEN_STARTUP_LIMIT": s.SUMMARY_SHORTEN_STARTUP_LIMIT,
+        "SUMMARY_QUALITY_AI_LIMIT": s.SUMMARY_QUALITY_AI_LIMIT,
         "DATA_FILL_STARTUP_DELAY_SECONDS": s.DATA_FILL_STARTUP_DELAY_SECONDS,
     }
 
@@ -134,6 +164,9 @@ def _positive_settings(s: "Settings") -> dict[str, float]:
         "DATA_FILL_RATING_BATCH_SIZE": s.DATA_FILL_RATING_BATCH_SIZE,
         "DATA_FILL_PRICE_BATCH_SIZE": s.DATA_FILL_PRICE_BATCH_SIZE,
         "DATA_FILL_HLTB_TARGET": s.DATA_FILL_HLTB_TARGET,
+        "AI_PROVIDER_TIMEOUT_SECONDS": s.AI_PROVIDER_TIMEOUT_SECONDS,
+        "AI_BACKGROUND_DEADLINE_SECONDS": s.AI_BACKGROUND_DEADLINE_SECONDS,
+        "AI_INTERACTIVE_DEADLINE_SECONDS": s.AI_INTERACTIVE_DEADLINE_SECONDS,
     }
 
 
@@ -142,6 +175,7 @@ def _delay_settings(s: "Settings") -> dict[str, float]:
         "REFRESH_ALL_INTER_GAME_DELAY": s.REFRESH_ALL_INTER_GAME_DELAY,
         "METADATA_BACKFILL_INTER_GAME_DELAY": s.METADATA_BACKFILL_INTER_GAME_DELAY,
         "DATA_FILL_INTER_GAME_DELAY": s.DATA_FILL_INTER_GAME_DELAY,
+        "GEMINI_MIN_REQUEST_INTERVAL_SECONDS": s.GEMINI_MIN_REQUEST_INTERVAL_SECONDS,
     }
 
 

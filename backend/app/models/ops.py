@@ -31,6 +31,11 @@ class ApiRequestBudget(Base):
     bucket_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
     request_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     daily_limit: Mapped[int] = mapped_column(Integer, nullable=False, default=100)
+    # Token ceilings apply to LLM providers, where the request count runs out
+    # long after the token allowance does. Zero means "this source has no token
+    # limit" and only request_count is enforced.
+    token_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    token_limit: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 

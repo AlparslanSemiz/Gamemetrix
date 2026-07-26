@@ -68,6 +68,23 @@ def get_provider_statuses() -> list[dict[str, str]]:
             ),
         },
         {
+            "source": "Gemini",
+            "status": "ready" if cfg.gemini_configured() else "needs_credentials",
+            "detail": "Second AI fallback using the configured stable Flash-Lite model.",
+        },
+        {
+            "source": "Cloudflare Workers AI",
+            "status": (
+                "ready" if cfg.cloudflare_ai_configured() else "needs_credentials"
+            ),
+            "detail": "Third AI fallback; requires an account ID and scoped API token.",
+        },
+        {
+            "source": "OpenRouter",
+            "status": "ready" if cfg.openrouter_configured() else "needs_credentials",
+            "detail": "Final AI fallback, configured to use the free-model router.",
+        },
+        {
             "source": "OpenCritic",
             "status": "ready" if opencritic_ready else "needs_provider",
             "detail": "Configure an approved OpenCritic/RapidAPI/export provider before live calls.",

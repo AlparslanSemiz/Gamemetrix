@@ -9,7 +9,7 @@ Public API:
   daily_refresh_loop()                         -> Awaitable[None]  (runs forever; cancel to stop)
   metadata_backfill_loop()                     -> Awaitable[None]  (runs forever; cancel to stop)
   hltb_backfill_loop()                         -> Awaitable[None]  (runs forever; cancel to stop)
-  summary_backfill_loop()                      -> Awaitable[None]  (runs forever; cancel to stop)
+  summary_audit_loop()                         -> Awaitable[None]  (runs forever; cancel to stop)
   endless_backfill_loop()                      -> Awaitable[None]  (runs forever; cancel to stop)
   purge_expired_raw_analytics(db)              -> int
   raw_analytics_retention_loop()               -> Awaitable[None]  (runs forever; cancel to stop)
@@ -33,7 +33,7 @@ from .endless import backfill_endless_batch
 from .job_heartbeat import record_job_run
 from .metadata import fix_game_year
 from .metadata_backfill import metadata_backfill_batch
-from .summarizer import shorten_summary_batch
+from .summarizer import refresh_summary_batch
 
 
 log = logging.getLogger(__name__)
@@ -366,15 +366,16 @@ async def hltb_backfill_loop() -> None:
         await asyncio.sleep(interval_seconds)
 
 
-async def summary_backfill_loop() -> None:
+async def summary_audit_loop() -> None:
     """
-    Shortens long game descriptions into a compact `summary_short` in small
-    periodic batches, so the catalog list shows a complete short blurb instead
-    of a mid-sentence, ellipsis-clamped full summary.
+    Re-checks game descriptions in small periodic batches so the catalog does
+    not accumulate junk, promotional, broken or over-long text.
 
-    Uses Groq when GROQ_API_KEY is configured, otherwise falls back to a
-    clean sentence-boundary extract (see services/summarizer.py). Runs on its
-    own schedule, independent of the score/metadata refresh loops.
+    Each cycle takes the least recently checked slice, repairs mechanically what
+    it can for free, and asks Groq to judge and rewrite the rest — nonsense text,
+    descriptions belonging to another game, wrong language. It then derives the
+    compact `summary_short` blurb. AI calls are capped per batch because the
+    Groq daily budget is shared with the other AI jobs.
     """
     cfg = get_settings()
     await asyncio.sleep(120)
@@ -382,9 +383,13 @@ async def summary_backfill_loop() -> None:
     if cfg.SUMMARY_SHORTEN_STARTUP_LIMIT > 0:
         try:
             with SessionLocal() as db:
-                await shorten_summary_batch(db, cfg.SUMMARY_SHORTEN_STARTUP_LIMIT)
+                await refresh_summary_batch(
+                    db,
+                    cfg.SUMMARY_SHORTEN_STARTUP_LIMIT,
+                    cfg.SUMMARY_QUALITY_AI_LIMIT,
+                )
         except Exception:
-            log.exception("Startup summary backfill failed")
+            log.exception("Startup summary audit failed")
 
     interval_seconds = max(60, int(cfg.SUMMARY_SHORTEN_INTERVAL_MINUTES * 60))
     while True:
@@ -392,16 +397,22 @@ async def summary_backfill_loop() -> None:
         try:
             async with record_job_run("summary_backfill", interval_seconds) as run:
                 with SessionLocal() as db:
-                    result = await shorten_summary_batch(db, cfg.SUMMARY_SHORTEN_BATCH_SIZE)
+                    result = await refresh_summary_batch(
+                        db,
+                        cfg.SUMMARY_SHORTEN_BATCH_SIZE,
+                        cfg.SUMMARY_QUALITY_AI_LIMIT,
+                    )
                 run.set(result)
             log.info(
-                "Summary backfill: %s rewritten, %s shortened, %s skipped",
-                result["rewritten"],
+                "Summary audit: %s checked, %s sanitized, %s rewritten, %s unusable, %s shortened",
+                result["processed"],
+                result["sanitized"],
+                result["cleaned"],
+                result["unusable"],
                 result["shortened"],
-                result["skipped"],
             )
         except Exception:
-            log.exception("Periodic summary backfill failed")
+            log.exception("Periodic summary audit failed")
 
 
 async def endless_backfill_loop() -> None:
