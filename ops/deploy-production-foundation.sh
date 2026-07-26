@@ -70,6 +70,13 @@ if [[ ! "$database_name" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
   exit 2
 fi
 
+# Compose itself is fail-closed on these values, including for `exec`.
+# Write them before the role migration; existing containers keep running if the
+# migration fails and the script can be safely retried with a new app password.
+write_env .env ENV production
+write_env .env APP_DB_USER "$app_user"
+write_env .env APP_DB_PASSWORD "$app_password"
+
 docker compose exec -T db psql -v ON_ERROR_STOP=1 -U "$admin_user" -d "$database_name" <<SQL
 SELECT format(
   'CREATE ROLE %I LOGIN PASSWORD %L NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS',
@@ -93,10 +100,6 @@ SELECT format('ALTER SCHEMA public OWNER TO %I', '$app_user')
 \gexec
 REVOKE CREATE ON SCHEMA public FROM PUBLIC;
 SQL
-
-write_env .env ENV production
-write_env .env APP_DB_USER "$app_user"
-write_env .env APP_DB_PASSWORD "$app_password"
 
 write_env backend/.env ENV production
 write_env backend/.env ACCOUNT_AUTH_ENABLED false
