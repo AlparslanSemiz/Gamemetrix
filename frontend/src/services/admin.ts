@@ -115,20 +115,42 @@ export interface DataFillRun {
   finished_at?: string | null
 }
 
-export interface PrimaryScoreCoverage {
-  sources: Record<string, {
-    live: number
-    missing: number
-    applicable: number
-    not_applicable: number
-    configured: boolean
-  }>
+export interface PrimarySourceCoverage {
+  live: number
+  missing: number
+  applicable: number
+  not_applicable: number
+  configured: boolean
+}
+
+export interface PrimaryScoreTargetCoverage {
+  sources: Record<string, PrimarySourceCoverage>
   total_games: number
+  target_games: number
   complete_games: number
   incomplete_games: number
+  four_score_games: number
+  pc_games: number
+  non_pc_games: number
   live_score_slots: number
   missing_score_slots: number
   target_score_slots: number
+  score_count_distribution: Record<string, number>
+}
+
+export interface PrimaryScoreCoverage {
+  sources: Record<string, PrimarySourceCoverage>
+  total_games: number
+  complete_games: number
+  incomplete_games: number
+  four_score_games: number
+  pc_games: number
+  non_pc_games: number
+  live_score_slots: number
+  missing_score_slots: number
+  target_score_slots: number
+  score_count_distribution: Record<string, number>
+  top_target?: PrimaryScoreTargetCoverage
 }
 
 export interface DataFillStatus {

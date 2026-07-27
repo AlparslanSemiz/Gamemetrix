@@ -228,6 +228,59 @@ def test_primary_score_catalog_scans_stream_plain_columns() -> None:
     ]
 
 
+def test_primary_score_candidates_finish_top_games_closest_to_four_scores_first() -> None:
+    class RecordingDb:
+        def execute(self, _statement):
+            return [
+                (
+                    1,
+                    ["PC"],
+                    [{"source": "Steam", "status": "live", "score": 90}],
+                    99.0,
+                ),
+                (
+                    2,
+                    ["PC"],
+                    [
+                        {"source": "Steam", "status": "live", "score": 90},
+                        {"source": "IGDB", "status": "live", "score": 85},
+                        {"source": "Metacritic", "status": "live", "score": 88},
+                    ],
+                    95.0,
+                ),
+            ]
+
+    assert primary_scores.primary_score_backfill_candidates(RecordingDb(), 2) == [
+        (2, ("OpenCritic",)),
+        (1, ("OpenCritic", "Metacritic", "IGDB")),
+    ]
+
+
+def test_primary_score_target_distinguishes_four_scores_from_platform_applicability() -> None:
+    three_sources = [
+        {"source": "OpenCritic", "status": "live", "score": 80},
+        {"source": "Metacritic", "status": "live", "score": 81},
+        {"source": "IGDB", "status": "live", "score": 82},
+    ]
+    coverage = primary_scores._coverage_for_rows(
+        [
+            (["PlayStation 5"], three_sources),
+            (["PC"], [*three_sources, {"source": "Steam", "status": "live", "score": 83}]),
+        ]
+    )
+
+    assert coverage["complete_games"] == 2
+    assert coverage["four_score_games"] == 1
+    assert coverage["non_pc_games"] == 1
+    assert coverage["score_count_distribution"] == {
+        "0": 0,
+        "1": 0,
+        "2": 0,
+        "3": 1,
+        "4": 1,
+    }
+
+
 def test_all_catalog_sources_stop_after_the_combined_target_is_met() -> None:
     assert catalog_import_target(
         source="Steam",

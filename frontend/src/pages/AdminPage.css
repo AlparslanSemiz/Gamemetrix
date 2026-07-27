@@ -524,7 +524,7 @@
 
 .admin-fill-summary {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 10px;
   margin-bottom: 12px;
 }
@@ -558,6 +558,17 @@
   border-left: 2px solid rgba(167, 139, 250, 0.68);
   background: rgba(167, 139, 250, 0.045);
   color: #9ba2b1;
+  font-size: 11px;
+  line-height: 1.5;
+  padding: 8px 10px;
+}
+
+.admin-fill-eta {
+  margin: -8px 0 18px;
+  border: 1px solid rgba(251, 191, 36, 0.18);
+  border-radius: 8px;
+  background: rgba(251, 191, 36, 0.045);
+  color: #c9ad67;
   font-size: 11px;
   line-height: 1.5;
   padding: 8px 10px;

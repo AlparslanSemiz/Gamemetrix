@@ -22,6 +22,7 @@ from .stages import (
     fill_hltb,
     fill_igdb_optional_metadata,
     fill_igdb_playtime,
+    fill_igdb_scores,
     fill_metacritic,
     fill_metadata,
     fill_prices,
@@ -47,6 +48,7 @@ _EMPTY_RESULT: dict[str, object] = {
     "primary_scores": {},
     "metadata": {},
     "hltb": {},
+    "igdb_scores": {},
     "igdb_playtime": {},
     "igdb_optional_metadata": {},
     "endless": {},
@@ -102,8 +104,11 @@ async def _run_all_stages(
     save_run_progress(run_id, result)
     result["metacritic"] = await fill_metacritic()
     save_run_progress(run_id, result)
-    # HLTB has a separate budget. Then use IGDB's high-throughput batch endpoint
-    # before per-game score and metadata calls consume the official IGDB budget.
+    # Use the highest-value IGDB batch first: 500 known top-catalog ratings per
+    # request. Playtime and optional fields then rotate through remaining quota.
+    result["igdb_scores"] = await fill_igdb_scores(force=force)
+    save_run_progress(run_id, result)
+    # HLTB has a separate budget.
     result["hltb"] = await fill_hltb()
     save_run_progress(run_id, result)
     result["igdb_playtime"] = await fill_igdb_playtime()
@@ -172,6 +177,7 @@ def _data_fill_summary(result: dict[str, object]) -> dict[str, int]:
         "scores_refreshed": _int(_stage(result, "ratings").get("refreshed")),
         "metadata_enriched": _int(_stage(result, "metadata").get("enriched")),
         "hltb_imported": _int(_stage(result, "hltb").get("imported")),
+        "igdb_scores_filled": _int(_stage(result, "igdb_scores").get("filled")),
         "igdb_playtime_filled": _int(_stage(result, "igdb_playtime").get("filled")),
         "websites_filled": _int(
             _stage(result, "igdb_optional_metadata").get("website_filled")

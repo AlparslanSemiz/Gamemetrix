@@ -30,6 +30,7 @@ from ..catalog_quality import catalog_quality_batch, catalog_repair_batch
 from ..endless import backfill_endless_batch
 from ..igdb_optional_metadata_backfill import igdb_optional_metadata_backfill_batch
 from ..igdb_playtime_backfill import igdb_playtime_backfill_batch
+from ..igdb_score_backfill import igdb_score_backfill_batch
 from ..metacritic_backfill import cheapshark_metacritic_backfill_batch
 from ..metadata_backfill import metadata_backfill_batch
 from ..price_backfill import price_backfill_batch
@@ -291,6 +292,19 @@ async def fill_igdb_playtime() -> dict[str, object]:
     result = await igdb_playtime_backfill_batch(
         limit=cfg.DATA_FILL_HLTB_TARGET,
         inter_game_delay=cfg.DATA_FILL_INTER_GAME_DELAY,
+    )
+    return {"status": "ok", **result}
+
+
+async def fill_igdb_scores(*, force: bool) -> dict[str, object]:
+    """Fill known top-10k IGDB ratings with up to 500 games per API call."""
+    cfg = get_settings()
+    if not cfg.igdb_configured() or not remaining_any(("IGDB",)):
+        return {"status": "skipped", "filled": 0}
+    result = await igdb_score_backfill_batch(
+        limit=cfg.DATA_FILL_PRIMARY_SCORE_BATCH_SIZE,
+        force=force,
+        inter_batch_delay=cfg.DATA_FILL_INTER_GAME_DELAY,
     )
     return {"status": "ok", **result}
 

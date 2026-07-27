@@ -285,7 +285,11 @@ function useAdminMetrics(
       .sort(([left], [right]) => left.localeCompare(right))
   ), [dataFill])
   const primaryScoreRows = useMemo(() => (
-    Object.entries(dataFill?.primary_scores.sources ?? {})
+    Object.entries(
+      dataFill?.primary_scores.top_target?.sources
+      ?? dataFill?.primary_scores.sources
+      ?? {},
+    )
       .sort(([left], [right]) => left.localeCompare(right))
   ), [dataFill])
   return { dataGaps, maxDailyVisits, primaryScoreRows, rateLimitRows }

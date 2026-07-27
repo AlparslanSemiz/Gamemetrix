@@ -21,6 +21,7 @@ from ...services.primary_score_backfill import (
     primary_score_backfill_batch,
     primary_score_coverage_status,
 )
+from ...services.igdb_score_backfill import igdb_score_backfill_batch
 from ...services.seo import refresh_catalog_seo_states
 
 router = APIRouter()
@@ -139,6 +140,11 @@ async def _execute_primary_scores_run(*, force: bool, limit: int) -> None:
         return
     cfg = get_settings()
     async with HEAVY_JOB_LOCK:
+        await igdb_score_backfill_batch(
+            limit=limit,
+            force=force,
+            inter_batch_delay=cfg.DATA_FILL_INTER_GAME_DELAY,
+        )
         result = await primary_score_backfill_batch(
             limit=limit,
             force=force,

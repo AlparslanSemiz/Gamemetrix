@@ -14,6 +14,7 @@ from ..integrations.sync import refresh_game_sources, score_value
 from ..models import Game
 
 PRIMARY_SCORE_SOURCES: tuple[str, ...] = ("OpenCritic", "Metacritic", "IGDB", "Steam")
+PRIMARY_SCORE_TARGET_GAMES = 10_000
 _SCAN_CHUNK = 500
 
 
@@ -50,8 +51,8 @@ def _source_configured(source: str) -> bool:
     return True
 
 
-def primary_score_coverage_status() -> dict[str, object]:
-    source_rows: dict[str, dict[str, int | bool]] = {
+def _empty_source_rows() -> dict[str, dict[str, int | bool]]:
+    return {
         source: {
             "live": 0,
             "missing": 0,
@@ -61,40 +62,49 @@ def primary_score_coverage_status() -> dict[str, object]:
         }
         for source in PRIMARY_SCORE_SOURCES
     }
+
+
+def _coverage_for_rows(rows) -> dict[str, object]:
+    source_rows = _empty_source_rows()
     total = 0
     total_live_slots = 0
     total_missing_slots = 0
     complete_games = 0
+    four_score_games = 0
+    pc_games = 0
+    score_count_distribution: Counter[int] = Counter()
 
-    # Stream plain column tuples instead of materialising 50k full Game ORM
-    # objects (including every large metadata JSON field) in the API process.
-    with SessionLocal() as db:
-        rows = db.execute(
-            select(Game.platforms, Game.source_scores)
-            .where(Game.content_type == "game")
-            .execution_options(yield_per=_SCAN_CHUNK)
+    for platforms, source_scores in rows:
+        total += 1
+        applicable = applicable_for_game(
+            [value for value in (platforms or []) if isinstance(value, str)]
         )
-        for platforms, source_scores in rows:
-            total += 1
-            applicable = applicable_for_game(
-                [value for value in (platforms or []) if isinstance(value, str)]
-            )
-            missing_count = 0
-            for source in PRIMARY_SCORE_SOURCES:
-                source_row = source_rows[source]
-                if source not in applicable:
-                    source_row["not_applicable"] = int(source_row["not_applicable"]) + 1
-                    continue
-                source_row["applicable"] = int(source_row["applicable"]) + 1
-                if _has_live_score_values(source_scores or [], source):
-                    source_row["live"] = int(source_row["live"]) + 1
-                    total_live_slots += 1
-                else:
-                    source_row["missing"] = int(source_row["missing"]) + 1
-                    total_missing_slots += 1
-                    missing_count += 1
-            if missing_count == 0:
-                complete_games += 1
+        if "Steam" in applicable:
+            pc_games += 1
+        live_sources = {
+            source
+            for source in PRIMARY_SCORE_SOURCES
+            if _has_live_score_values(source_scores or [], source)
+        }
+        score_count_distribution[len(live_sources)] += 1
+        if len(live_sources) == len(PRIMARY_SCORE_SOURCES):
+            four_score_games += 1
+        missing_count = 0
+        for source in PRIMARY_SCORE_SOURCES:
+            source_row = source_rows[source]
+            if source not in applicable:
+                source_row["not_applicable"] = int(source_row["not_applicable"]) + 1
+                continue
+            source_row["applicable"] = int(source_row["applicable"]) + 1
+            if source in live_sources:
+                source_row["live"] = int(source_row["live"]) + 1
+                total_live_slots += 1
+            else:
+                source_row["missing"] = int(source_row["missing"]) + 1
+                total_missing_slots += 1
+                missing_count += 1
+        if missing_count == 0:
+            complete_games += 1
 
     return {
         "sources": source_rows,
@@ -107,7 +117,44 @@ def primary_score_coverage_status() -> dict[str, object]:
         "not_applicable_score_slots": total * len(PRIMARY_SCORE_SOURCES)
         - total_live_slots
         - total_missing_slots,
+        "four_score_games": four_score_games,
+        "pc_games": pc_games,
+        "non_pc_games": total - pc_games,
+        "score_count_distribution": {
+            str(score_count): score_count_distribution[score_count]
+            for score_count in range(len(PRIMARY_SCORE_SOURCES) + 1)
+        },
     }
+
+
+def primary_score_coverage_status() -> dict[str, object]:
+    # Stream plain column tuples instead of materialising 50k full Game ORM
+    # objects (including every large metadata JSON field) in the API process.
+    with SessionLocal() as db:
+        catalog = _coverage_for_rows(
+            db.execute(
+                select(Game.platforms, Game.source_scores)
+                .where(Game.content_type == "game")
+                .execution_options(yield_per=_SCAN_CHUNK)
+            )
+        )
+        top_target = _coverage_for_rows(
+            db.execute(
+                select(Game.platforms, Game.source_scores)
+                .where(Game.content_type == "game")
+                .order_by(
+                    Game.rank_score.desc(),
+                    Game.metrix_score.desc(),
+                    Game.id.asc(),
+                )
+                .limit(PRIMARY_SCORE_TARGET_GAMES)
+            )
+        )
+    catalog["top_target"] = {
+        **top_target,
+        "target_games": PRIMARY_SCORE_TARGET_GAMES,
+    }
+    return catalog
 
 
 def primary_score_backfill_candidates(db: Session, limit: int, *, force: bool = False) -> list[tuple[int, tuple[str, ...]]]:
@@ -115,6 +162,12 @@ def primary_score_backfill_candidates(db: Session, limit: int, *, force: bool = 
     rows = db.execute(
         select(Game.id, Game.platforms, Game.source_scores, Game.rank_score)
         .where(Game.content_type == "game")
+        .order_by(
+            Game.rank_score.desc(),
+            Game.metrix_score.desc(),
+            Game.id.asc(),
+        )
+        .limit(PRIMARY_SCORE_TARGET_GAMES)
         .execution_options(yield_per=_SCAN_CHUNK)
     )
     for game_id, platforms, source_scores, rank_score in rows:
@@ -134,11 +187,10 @@ def primary_score_backfill_candidates(db: Session, limit: int, *, force: bool = 
         if missing:
             scored.append((game_id, missing, rank_score))
 
-    # Emptiest-first: games missing the most primary sources are filled before
-    # the near-complete ones, so a per-source daily budget reaches the catalog
-    # tail instead of being spent top-down on already-covered games. Rank breaks
-    # ties so, among equally-empty games, the more prominent ones go first.
-    scored.sort(key=lambda item: (-len(item[1]), -item[2]))
+    # The active KPI is the top 10k, so spend scarce daily calls there and finish
+    # near-complete games first. This converts quota into completed four-score
+    # records instead of spreading one extra score across the 52k catalog tail.
+    scored.sort(key=lambda item: (len(item[1]), -item[2]))
     return [(game_id, missing) for game_id, missing, _ in scored[:limit]]
 
 

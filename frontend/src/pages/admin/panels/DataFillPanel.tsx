@@ -29,9 +29,11 @@ export function DataFillPanel({
   onStartPrimaryScores,
 }: DataFillPanelProps) {
   const totalGames = dataFill?.primary_scores.total_games ?? 0
-  const liveSlots = dataFill?.primary_scores.live_score_slots ?? 0
-  const targetSlots = dataFill?.primary_scores.target_score_slots ?? 0
-  const completeGames = dataFill?.primary_scores.complete_games ?? 0
+  const topTarget = dataFill?.primary_scores.top_target
+  const topTotal = topTarget?.total_games ?? 0
+  const topFourScores = topTarget?.four_score_games ?? 0
+  const topApplicableComplete = topTarget?.complete_games ?? 0
+  const openCriticSearchLimit = dataFill?.rate_limits['OpenCritic:search']?.limit ?? 0
   return (
     <Panel
       title="Data coverage & fill"
@@ -53,21 +55,32 @@ export function DataFillPanel({
           detail="searchable games"
         />
         <CoverageStat
-          label="Primary score coverage"
-          value={percent(liveSlots, targetSlots)}
-          detail={ratio(liveSlots, targetSlots)}
+          label="Top 10k — four scores"
+          value={percent(topFourScores, topTotal)}
+          detail={ratio(topFourScores, topTotal)}
           percentage
         />
         <CoverageStat
-          label="All applicable sources"
-          value={percent(completeGames, totalGames)}
-          detail={ratio(completeGames, totalGames)}
+          label="Top 10k — all applicable"
+          value={percent(topApplicableComplete, topTotal)}
+          detail={ratio(topApplicableComplete, topTotal)}
           percentage
+        />
+        <CoverageStat
+          label="Top 10k — non-PC"
+          value={topTarget?.non_pc_games ?? 0}
+          detail="Steam is not applicable"
         />
       </div>
       <p className="admin-fill-guidance">
-        Full-source completion is a strict catalog-wide ceiling, not the operating target.
-        Prioritize coverage for ranked games; playtime and fresh prices are optional rotating data.
+        The queue now prioritizes the top 10,000 and games closest to completion.
+        Four scores means four independent named providers; unavailable reviews are never
+        duplicated or invented. “All applicable” is the honest platform-aware ceiling.
+      </p>
+      <p className="admin-fill-eta">
+        {openCriticSearchLimit > 0 && openCriticSearchLimit <= 2
+          ? `ETA blocked: OpenCritic search is capped at ${openCriticSearchLimit}/day. Raise or replace this provider before a completion date is credible.`
+          : 'ETA becomes reliable after one full source-check cycle records the provider hit rates.'}
       </p>
       <div className="admin-data-fill-grid">
         <div>
@@ -199,7 +212,7 @@ function DataFillBudgets({
 }) {
   return (
     <div>
-      <h3 className="admin-fill-subtitle">Source coverage & daily headroom</h3>
+      <h3 className="admin-fill-subtitle">Top 10k source coverage & daily headroom</h3>
       <div className="admin-budget-list">
         {primaryScoreRows.map(([source, coverage]) => {
           const applicable = coverage.applicable || totalGames
