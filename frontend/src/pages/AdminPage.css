@@ -12,7 +12,6 @@
   grid-template-columns: 232px minmax(0, 1fr);
   gap: 30px;
   width: 100%;
-  max-width: 1920px;
   margin: 0;
 }
 
