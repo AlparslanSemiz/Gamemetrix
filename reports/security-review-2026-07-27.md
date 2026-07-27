@@ -4,7 +4,11 @@
 
 **Baseline commit:** `bac97b87502c1b3ab5a228951cb65447a3694ef2`
 
-**Status:** Repository remediation complete; coordinated production TLS/firewall rollout pending Origin CA material.
+**Remediated through:** `14b46bdac20d4ddac59982eb07cfa8fcc801330c`
+
+**Status:** Repository and production foundation remediation complete; coordinated
+origin TLS/firewall rollout pending user-supplied Origin CA material.
+
 **Frameworks:** OWASP ASVS 5.0, OWASP Top 10:2025, OWASP API Security Top 10
 
 ## Executive assessment
@@ -14,15 +18,16 @@ Pydantic payloads, parameterised SQLAlchemy queries, Argon2 password hashing, ha
 session tokens, CSRF validation, bounded public query parameters, provider timeouts,
 and secret-safe AI error logging.
 
-The deployment does not currently activate several of those controls. The production
-backend resolves `ENV` to `development`, the Cloudflare-to-origin hop is plaintext,
-and the origin is directly reachable over IPv6. Account routes are enabled while
-email bodies and reset tokens are configured for development logging. The backend
-also connects to PostgreSQL using a cluster superuser.
+Before remediation, the deployment did not activate several of those controls. The
+production backend resolved `ENV` to `development`, account routes were enabled
+with development email logging, and the backend connected to PostgreSQL using a
+cluster superuser. Those conditions are now closed in production. The remaining
+live risk is at the perimeter: the Cloudflare-to-origin hop is plaintext and the
+origin remains directly reachable until Origin CA material is supplied.
 
-The AI fallback implementation adds a separate resource risk: only Groq has a
-persistent request/token budget, so fallback providers can be consumed without the
-same cost ceiling.
+Before remediation, the AI fallback implementation added a separate resource risk:
+only Groq had a persistent request/token budget, so fallback providers could be
+consumed without the same cost ceiling.
 
 **Pre-remediation verdict: `SECURITY CHANGES REQUIRED`**
 
@@ -71,14 +76,43 @@ Repository validation after remediation:
 - Secret hook, base and production-overlay Compose validation, `git diff --check`,
   and non-root/read-only nginx `-t` — passed.
 
-**Repository verdict: `PASS WITH PRODUCTION DEPENDENCY`**
+Production foundation verification after deployment:
 
-GM-SEC-002 cannot be closed on the live origin until the user-supplied Cloudflare
-Origin CA certificate/private key is installed and Cloudflare is switched to Full
-(strict) before the Cloudflare-only firewall is enabled. GM-SEC-001 and
-GM-SEC-003 also require the prepared production environment/role migration to be
-deployed. Until that coordinated rollout completes, the live-system verdict
-remains `SECURITY CHANGES REQUIRED`.
+- All four Compose services are healthy.
+- The backend reports `ENV=production`, HTTPS account/CORS settings, a configured
+  JWT audience, and `ACCOUNT_AUTH_ENABLED=false`.
+- API docs and OpenAPI return 404; disabled account routes return 503.
+- Backend, frontend, and nginx run as non-root with read-only roots,
+  `no-new-privileges`, and all capabilities dropped.
+- The backend connects as `gamemetrix_app`; superuser, create-database,
+  create-role, replication, and bypass-RLS flags are all false.
+- Root and backend environment files are root-owned mode 600. The PostgreSQL
+  administrator password was rotated only after the new deployment was healthy.
+- Live AI limits are Groq `1000/200k`, Gemini `100/100k`, Cloudflare `100/100k`,
+  and OpenRouter `50/100k` requests/tokens with a 15% reserve. The chain limits
+  are two concurrent calls, 16,000 prompt characters, and 1,024 output tokens;
+  similarity AI is disabled.
+- A query-string sentinel was absent from both nginx and backend logs. Uvicorn's
+  duplicate access log is disabled; nginx records the method and path without
+  query arguments.
+- Live negative checks returned 401 for an unauthenticated admin request, 405 for
+  the removed unsubscribe GET, and 400 for a disallowed-origin CORS preflight.
+- Public home/API health return 200.
+- A 15-minute post-deployment observation sampled health 26 times. Every service
+  remained healthy with zero restarts and no OOM kill; service logs contained no
+  fatal, OOM, panic, or traceback signatures. Observed memory stayed within each
+  configured cgroup limit.
+
+**Repository verdict: `PASS`**
+
+**Live-system verdict: `PASS WITH ORIGIN PERIMETER DEPENDENCY`**
+
+GM-SEC-001 and GM-SEC-003 through GM-SEC-008 are closed in production.
+GM-SEC-002 cannot be closed until the user-supplied Cloudflare Origin CA
+certificate/private key is installed, Cloudflare is switched to Full (strict),
+and the Cloudflare-only firewall is then enabled. UFW intentionally remains
+inactive and the pending OS reboot is deferred to preserve the documented rollout
+order.
 
 ## Architecture and trust boundaries
 
