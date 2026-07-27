@@ -259,6 +259,27 @@ def test_primary_score_candidates_finish_top_games_closest_to_four_scores_first(
     ]
 
 
+def test_opencritic_without_an_id_stops_when_its_search_bucket_is_empty() -> None:
+    class Limiter:
+        def remaining(self, source: str) -> int:
+            return 0 if source == OPENCRITIC_SEARCH_SOURCE else 100
+
+    limiter = Limiter()
+
+    assert primary_scores._source_budget_available(
+        limiter,
+        "OpenCritic",
+        uses_local_metacritic=False,
+        has_opencritic_id=False,
+    ) is False
+    assert primary_scores._source_budget_available(
+        limiter,
+        "OpenCritic",
+        uses_local_metacritic=False,
+        has_opencritic_id=True,
+    ) is True
+
+
 def test_primary_score_target_distinguishes_four_scores_from_platform_applicability() -> None:
     three_sources = [
         {"source": "OpenCritic", "status": "live", "score": 80},

@@ -6,16 +6,17 @@ from collections import Counter
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..config import get_settings
+from ..config import OPENCRITIC_SEARCH_SOURCE, get_settings
 from ..database import SessionLocal
-from ..integrations.rate_limiter import get_rate_limiter
+from ..integrations.rate_limiter import RateLimiter, get_rate_limiter
 from ..integrations.source_registry import applicable_for_game
 from ..integrations.sync import refresh_game_sources, score_value
-from ..models import Game
+from ..models import ExternalId, Game
 
 PRIMARY_SCORE_SOURCES: tuple[str, ...] = ("OpenCritic", "Metacritic", "IGDB", "Steam")
 PRIMARY_SCORE_TARGET_GAMES = 10_000
 _SCAN_CHUNK = 500
+_MIN_EXTERNAL_ID_CONFIDENCE = 0.8
 
 
 def _has_live_score(game: Game, source: str) -> bool:
@@ -49,6 +50,24 @@ def _source_configured(source: str) -> bool:
     if source == "IGDB":
         return cfg.igdb_configured()
     return True
+
+
+def _source_budget_available(
+    limiter: RateLimiter,
+    source: str,
+    *,
+    uses_local_metacritic: bool,
+    has_opencritic_id: bool,
+) -> bool:
+    if uses_local_metacritic:
+        return True
+    if limiter.remaining(source) <= 0:
+        return False
+    return not (
+        source == "OpenCritic"
+        and not has_opencritic_id
+        and limiter.remaining(OPENCRITIC_SEARCH_SOURCE) <= 0
+    )
 
 
 def _empty_source_rows() -> dict[str, dict[str, int | bool]]:
@@ -209,6 +228,19 @@ async def primary_score_backfill_batch(
 
     with SessionLocal() as db:
         candidates = primary_score_backfill_candidates(db, limit, force=force)
+        candidate_ids = [game_id for game_id, _ in candidates]
+        opencritic_game_ids: set[int] = set()
+        if candidate_ids:
+            opencritic_game_ids = set(
+                db.scalars(
+                    select(ExternalId.game_id).where(
+                        ExternalId.game_id.in_(candidate_ids),
+                        ExternalId.source == "OpenCritic",
+                        ExternalId.is_primary.is_(True),
+                        ExternalId.confidence >= _MIN_EXTERNAL_ID_CONFIDENCE,
+                    )
+                ).all()
+            )
 
     for game_id, planned_sources in candidates:
         with SessionLocal() as db:
@@ -222,7 +254,12 @@ async def primary_score_backfill_batch(
                 if not uses_local_metacritic and not _source_configured(source):
                     skipped_by_reason[f"{source}:not_configured"] += 1
                     continue
-                if not uses_local_metacritic and limiter.remaining(source) <= 0:
+                if not _source_budget_available(
+                    limiter,
+                    source,
+                    uses_local_metacritic=uses_local_metacritic,
+                    has_opencritic_id=game.id in opencritic_game_ids,
+                ):
                     skipped_by_reason[f"{source}:budget_exhausted"] += 1
                     continue
                 configured_sources.append(source)
