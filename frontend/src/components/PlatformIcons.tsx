@@ -174,6 +174,13 @@ function deduplicatePlatforms(platforms: string[]): PlatformDef[] {
   })
 }
 
+/** One platform brand glyph, for contexts that render the platform name themselves. */
+export function PlatformGlyph({ platform }: { platform: string }) {
+  const def = PLATFORM_DEFS[normalizePlatform(platform)]
+  if (!def) return null
+  return <def.Icon />
+}
+
 // ─── PlatformIcons component ──────────────────────────────────────────────────
 
 interface PlatformIconsProps {

@@ -15,6 +15,7 @@ interface GameInfoTableProps {
 export function GameInfoTable({ game, model }: GameInfoTableProps) {
   return (
     <div className="dp-section">
+      <h2 className="dp-section-title">Game details</h2>
       <div className="dp-info-table">
         <CatalogMetadataRows game={game} />
         <GameplayMetadataRows game={game} model={model} />

@@ -1,6 +1,6 @@
 # Provider access and quota runbook
 
-Last reviewed: 2026-07-25
+Last reviewed: 2026-07-27
 
 GameMetrix never raises a local limit above a provider's published allowance or written approval. A larger value in `.env` does not grant a larger upstream quota.
 
@@ -47,9 +47,23 @@ fallback.
 
 ## Provider outreach status
 
+Coverage-gap priority for the current outreach round:
+
+1. **GOG** — a fourth independent user signal for the roughly 7,000 PC titles in the top 10,000.
+2. **OpenCritic** — the largest critic-score bottleneck; the RapidAPI Basic tier is the binding constraint.
+3. **MobyGames** — legacy, arcade, Sega, and older Nintendo/PlayStation coverage.
+4. **Metacritic** — broad critic coverage plus correct per-platform scores.
+5. **RAWG** — remains the Metacritic/metadata fallback until the above land.
+
+GOG does not close the ~3,000-title Nintendo/PlayStation-exclusive gap on its own;
+MobyGames, OpenCritic, Metacritic, and IGDB remain the sources for that segment.
+
 | Provider | Access route | Draft status |
 | --- | --- | --- |
-| OpenCritic | `admin@opencritic.com` | Ready to send |
+| GOG | `bizdev@gog.com`, `affiliate@gog.com` | Ready to send; no public data-partner API assumed |
+| OpenCritic | `developers@opencritic.com` (cc `bizdev@opencritic.com`) | Ready to send |
+| MobyGames | [subscription request form](https://www.mobygames.com/subscription-request-form) | Ready; no self-serve key exists, application is the only route |
+| Metacritic | [official support request](https://metacritichelp.zendesk.com/hc/en-us/requests/new) | Ready; no public read API assumed |
 | RAWG | `api@rawg.io` / authenticated portal | Ready to send |
 | IGDB | `partner@igdb.com` | Ready to send |
 | IsThereAnyDeal | `api@isthereanydeal.com` | Ready to send after key/account check |
@@ -58,11 +72,14 @@ fallback.
 | Gemini | Google AI Studio usage page | Configured as a bounded fallback |
 | Cloudflare Workers AI | Cloudflare AI usage page | Configured as a bounded fallback |
 | OpenRouter | OpenRouter activity/limits page | Configured as the final bounded fallback |
-| Metacritic | [official support request](https://metacritichelp.zendesk.com/hc/en-us/requests/new) | Ready; no public read API assumed |
 
 Before sending, replace the bracketed commercial model, MAU/page-view, contact
 name, and attribution fields. Save replies and their effective dates outside
 the repository.
+
+A granted key is not by itself permission to add a source to the score. Any new
+rating source still requires the `source_registry` weight change to be approved
+separately, because published scores shift the moment weights change.
 
 ## IGDB
 
@@ -251,6 +268,11 @@ website or interpret RAWG access as a direct Metacritic license.
 
 Submit the request through the
 [official Metacritic support form](https://metacritichelp.zendesk.com/hc/en-us/requests/new).
+Metacritic has been owned by Fandom since October 2022, so a data-licensing
+decision sits with Fandom's partnerships/licensing side rather than with
+Metacritic support. Expect the support form to be a routing step; if it stalls,
+follow up through Fandom's corporate contact route and reference the original
+ticket number instead of opening a second ticket.
 
 **Subject:** GameMetrix Metascore data API and display licensing request
 
@@ -343,7 +365,7 @@ GameMetrix
 
 ## OpenCritic
 
-The public OpenCritic portal documents API keys for publisher/review submission workflows, but it does not publish a general read API license for a score aggregation product. The portal directs API-key access questions to `admin@opencritic.com`. The current RapidAPI credential used by GameMetrix is not evidence of a direct OpenCritic read license.
+The public OpenCritic portal documents API keys for publisher/review submission workflows, but it does not publish a general read API license for a score aggregation product. The [contact page](https://opencritic.com/contact) currently routes API questions to `developers@opencritic.com` and partnership/commercial questions to `bizdev@opencritic.com`; `admin@opencritic.com` is the general fallback. The current RapidAPI credential used by GameMetrix is not evidence of a direct OpenCritic read license.
 
 The RapidAPI Basic subscription confirmed in the GameMetrix account on
 2026-07-27 shows hard limits of 200 total requests/day, 25 searches/day, and
@@ -359,12 +381,14 @@ do not assume a free quota increase and do not scrape OpenCritic pages.
 
 For approved direct access, set `OPENCRITIC_API_BASE` to the endpoint supplied by OpenCritic and put the direct credential in `OPENCRITIC_API_KEY`. Keep `RAPIDAPI_KEY` exclusively for the RapidAPI endpoint so the two credentials cannot be confused during rotation.
 
-**To:** `admin@opencritic.com` — **Subject:** GameMetrix score read API and display license request
+**To:** `developers@opencritic.com` — **Cc:** `bizdev@opencritic.com` — **Subject:** GameMetrix score read API and display license request
 
 ```text
 Hello OpenCritic team,
 
 I am building GameMetrix (https://gamemetrix.me), a public game decision tool that displays OpenCritic as one of four separately named score sources. Missing OpenCritic data remains missing and is never replaced by another provider.
+
+We currently access the API through the RapidAPI Basic subscription and stay under its published limits (200 requests/day, 25 searches/day, 4 requests/second) with local caps of 190, 24, and 3. At that allowance it would take us well over a year to reach first-time critic coverage across our catalog, so we would like to discuss direct access rather than work around the limit.
 
 Expected usage:
 - approximately 50,000 games at launch
@@ -386,6 +410,136 @@ GameMetrix
 GameMetrix does not assume a documented bulk API allowance for HowLongToBeat. HLTB enrichment is therefore a conservative, optional lookup job with a persistent local daily budget, a minimum delay between requests, long-lived no-match timestamps, and no request on page view. Keep `HLTB_DAILY_LIMIT=250` and `HLTB_REQUEST_DELAY_SECONDS=1.5` at or below the values approved for the deployed integration. Disable the job immediately if the service rejects automated traffic or its terms change.
 
 HLTB playtime is displayed as attributed decision context and never as a GameMetrix rating source. A failed or unmatched lookup remains missing; it is not estimated from another field.
+
+## GOG
+
+GOG publishes no third-party data-partner API. The
+[Dev Portal](https://devportal.gog.com/) and `developer-support@gog.com` serve
+publishers who ship games on GOG, not external consumers of GOG's catalog or
+user ratings, so a developer-support ticket is the wrong door and will be
+routed away. The two realistic routes are `bizdev@gog.com` for rights and data
+use, and `affiliate@gog.com` for the affiliate program, whose product feed and
+tagged store links are the one sanctioned way to consume GOG catalog data.
+
+The `api.gog.com/products/*` endpoint that unofficial documentation describes is
+undocumented and reportedly capped near 200 requests/hour/IP. Treat it as
+unapproved: do not build a backfill job on it, and do not read a 200 response as
+permission. GOG user ratings must not enter `source_registry` or
+`calculate_metrix_score()` before written approval and a separate weight review.
+
+The value of GOG is a fourth *user* signal for PC titles that already have
+Steam — it does not help console-exclusive coverage. Say that plainly in the
+request; a specific, bounded ask reads better than a generic data license
+request.
+
+**To:** `bizdev@gog.com` — **Cc:** `affiliate@gog.com` — **Subject:** GameMetrix request for GOG catalog and user-rating data access
+
+```text
+Hello GOG team,
+
+I am building GameMetrix (https://gamemetrix.me), a public game discovery and
+decision tool that shows each rating source separately and links back to it,
+rather than merging sources into one anonymous number.
+
+We would like to display the GOG user rating as a named, linked source alongside
+Steam, Metacritic, OpenCritic, and IGDB, and to link DRM-free purchases to GOG.
+For our catalog this affects roughly [PC TITLE COUNT] PC titles.
+
+Expected use:
+- scheduled server-side refreshes only; never a request per page view
+- estimated volume: [DAILY] requests/day, well under any limit you specify
+- stored fields: GOG product ID/slug, title, store URL, user rating and rating
+  count, price, and fetched/updated timestamps
+- PostgreSQL caching with the retention period you approve
+- visible linked GOG attribution beside every GOG-derived value
+- outbound links preserved exactly, including affiliate tags if we join the
+  affiliate program
+- commercial model: [NON-COMMERCIAL / ADS / AFFILIATE / SUBSCRIPTION]
+- estimated MAU/page views: [MAU] / [PAGE VIEWS]
+
+Is there an official route for this: an API key, a product/affiliate feed, or a
+written display permission? Please confirm permitted fields, request limits,
+cache and retention rules, attribution requirements, and any cost. We are not
+using undocumented endpoints and will not scrape GOG; we would rather wait for
+an approved path.
+
+Thank you,
+[NAME]
+GameMetrix
+```
+
+## MobyGames
+
+There is no self-serve free key (verified 2026-07-27 against the live site;
+older third-party walkthroughs describing a profile → `API` link are out of
+date). Every route now goes through an application:
+
+- Researchers and not-for-profits apply via the
+  [subscription request form](https://www.mobygames.com/subscription-request-form)
+  for a free short- or long-term subscription.
+- Commercial use runs through the paid API tiers on the
+  [subscribe page](https://www.mobygames.com/api/subscribe/) — reported around
+  $99.99/mo (Bronze, 1 req/s), $499.99/mo (Silver, 4 req/s), and $4,999.99/mo
+  (Gold, 8 req/s). Confirm current pricing on the page rather than quoting these
+  figures back to them.
+
+MobyGames blocks automated fetches of its own documentation, so the published
+rate limits cannot be checked from here. Read them off
+[the API page](https://www.mobygames.com/info/api/) in a browser at approval
+time and set the local budget below whatever it states. Historical figures near
+720 requests/hour with a 1 request/second ceiling are a rough expectation only,
+not a configuration input.
+
+This changes the sequencing: with no free key there is no measured volume to
+cite, so the application is a single attempt built on estimates. Derive the
+estimate from catalog arithmetic — legacy titles needing enrichment × requests
+per title, spread over the backfill window — and state the arithmetic rather
+than a bare number. Commit to a request-rate ceiling in the application; an
+explicit self-imposed cap is the cheapest credibility signal available when
+there is no usage history to point at.
+
+MobyGames' value is legacy, arcade, Sega, and older Nintendo/PlayStation
+coverage — the segment where IGDB and Steam are thin — so frame the request
+around historical preservation, which is the site's own stated mission.
+
+**Form:** [subscription request form](https://www.mobygames.com/subscription-request-form) — **Subject:** GameMetrix non-commercial research access request
+
+```text
+Hello MobyGames team,
+
+I am building GameMetrix (https://gamemetrix.me), a [NON-COMMERCIAL DESCRIPTION]
+game discovery and decision tool that presents each data source separately and
+attributed, and never merges sources into an unattributed number.
+
+Our coverage gap is historical: pre-2000 PC, arcade, Sega, and older
+Nintendo/PlayStation releases are poorly served by the storefront and
+critic-aggregation APIs we already use. MobyGames is the authoritative source
+for exactly that segment, which is why we are asking.
+
+Requested use:
+- catalog: approximately [CATALOG SIZE] games, of which roughly [LEGACY COUNT]
+  are the legacy titles this request is about
+- estimated volume: [LEGACY COUNT] titles needing roughly [CALLS PER TITLE]
+  calls each, spread over about [WINDOW] — approximately [DAILY] requests/day
+- self-imposed ceiling: we will cap our client at [REQUESTED RATE] and stay
+  below 1 request/second regardless of what our budget allows
+- scheduled server-side backfills only; never a request per page view
+- stored fields: MobyGames game ID/URL, title, release dates, platforms,
+  developers/publishers, genres, and cover art where your terms permit
+- PostgreSQL caching with the retention period you approve
+- visible linked MobyGames attribution beside every MobyGames-derived field
+- no redistribution of raw API responses and no bulk re-publication
+- commercial model: [NON-COMMERCIAL / ADS / AFFILIATE / SUBSCRIPTION]
+
+Would our project qualify for a research or not-for-profit subscription? If not,
+please tell us which paid tier fits this volume and we will evaluate it. Please
+also confirm permitted fields, cover-image rights, cache and retention rules,
+and required attribution wording.
+
+Thank you,
+[NAME]
+GameMetrix
+```
 
 ## Approval checklist
 

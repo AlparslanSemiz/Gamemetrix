@@ -164,13 +164,9 @@ function SystemRequirements({ game }: { game: Game }) {
   if (game.system_requirements.length === 0) return null
   return (
     <div className="dp-section">
+      <h2 className="dp-section-title">System requirements</h2>
       {game.system_requirements.map((requirement) => (
-        <div key={requirement.platform}>
-          <h2 className="dp-section-title">
-            System requirements for {requirement.platform}
-          </h2>
-          <SysReqBlock req={requirement} />
-        </div>
+        <SysReqBlock key={requirement.platform} req={requirement} />
       ))}
     </div>
   )

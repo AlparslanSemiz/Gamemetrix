@@ -1,4 +1,6 @@
+import { Gauge, Rocket } from 'lucide-react'
 import { useState } from 'react'
+import { PlatformGlyph } from '../../components/PlatformIcons'
 import type { SystemRequirement } from '../../types/game'
 
 function formatReqs(raw: string): string {
@@ -16,7 +18,10 @@ export function SysReqBlock({ req }: { req: SystemRequirement }) {
 
   return (
     <div className="dp-sysreq-block">
-      <h4 className="dp-sysreq-platform">{req.platform}</h4>
+      <h4 className="dp-sysreq-platform">
+        <PlatformGlyph platform={req.platform} />
+        {req.platform}
+      </h4>
       {hasRecommended && (
         <div className="dp-sysreq-tabs">
           <button
@@ -24,6 +29,7 @@ export function SysReqBlock({ req }: { req: SystemRequirement }) {
             className={tab === 'minimum' ? 'dp-sysreq-tab is-active' : 'dp-sysreq-tab'}
             onClick={() => setTab('minimum')}
           >
+            <Gauge size={13} aria-hidden="true" />
             Minimum
           </button>
           <button
@@ -31,6 +37,7 @@ export function SysReqBlock({ req }: { req: SystemRequirement }) {
             className={tab === 'recommended' ? 'dp-sysreq-tab is-active' : 'dp-sysreq-tab'}
             onClick={() => setTab('recommended')}
           >
+            <Rocket size={13} aria-hidden="true" />
             Recommended
           </button>
         </div>

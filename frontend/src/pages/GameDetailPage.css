@@ -372,12 +372,23 @@
   margin-bottom: 2rem;
 }
 .dp-section-title {
-  font-size: 0.72rem;
-  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  font-size: 1.05rem;
+  font-weight: 800;
   text-transform: uppercase;
-  letter-spacing: 0;
-  color: #9ca3af;
-  margin: 0 0 0.85rem;
+  letter-spacing: 0.05em;
+  color: #eef2f9;
+  margin: 0 0 1rem;
+}
+.dp-section-title::before {
+  content: '';
+  align-self: stretch;
+  width: 3px;
+  min-height: 1.05em;
+  border-radius: 2px;
+  background: var(--score-color, #3b82f6);
 }
 
 /* ─── Source ratings ─────────────────────────────────────────────────────── */
@@ -856,12 +867,18 @@
   margin-bottom: 1rem;
 }
 .dp-sysreq-platform {
-  font-size: 0.78rem;
-  font-weight: 700;
-  color: #6b7280;
-  text-transform: uppercase;
-  letter-spacing: 0;
-  margin: 0 0 0.65rem;
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: #d6dbe8;
+  letter-spacing: 0.01em;
+  margin: 0 0 0.7rem;
+}
+.dp-sysreq-platform svg {
+  width: 17px;
+  height: 17px;
 }
 .dp-sysreq-tabs {
   display: flex;
@@ -869,6 +886,9 @@
   margin-bottom: 0.75rem;
 }
 .dp-sysreq-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   padding: 4px 12px;
   border-radius: 6px;
   font-size: 0.75rem;
@@ -1454,6 +1474,10 @@
 @media (max-width: 560px) {
   .dp-inner {
     padding: 0.85rem 0.9rem 2.5rem;
+  }
+
+  .dp-section-title {
+    font-size: 0.92rem;
   }
 
   .dp-breadcrumb {
