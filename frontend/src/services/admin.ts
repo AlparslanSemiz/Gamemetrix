@@ -237,6 +237,19 @@ export interface AdminAuditLog {
   created_at: string
 }
 
+export interface AiCatalogChange {
+  id: number
+  game_id: number
+  game_title: string
+  game_slug: string
+  change_type: string
+  fields: string[]
+  before: Record<string, unknown>
+  after: Record<string, unknown>
+  reason?: string | null
+  created_at: string
+}
+
 export class AdminApiError extends Error {
   readonly status: number
 
@@ -307,6 +320,18 @@ export async function getAdminAuditLogs(
   if (!response.ok) throw await parseError(response)
   const body: { logs: AdminAuditLog[] } = await response.json()
   return body.logs
+}
+
+export async function getAiCatalogChanges(
+  token: string,
+  limit = 100,
+): Promise<AiCatalogChange[]> {
+  const response = await fetch(`${API_BASE_URL}/admin/ai-changes?limit=${limit}`, {
+    headers: adminHeaders(token),
+  })
+  if (!response.ok) throw await parseError(response)
+  const body: { changes: AiCatalogChange[] } = await response.json()
+  return body.changes
 }
 
 export async function getDataFillStatus(token: string): Promise<DataFillStatus> {

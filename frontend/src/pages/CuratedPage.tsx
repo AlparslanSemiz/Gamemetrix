@@ -107,7 +107,17 @@ export function CuratedPage({ data }: { data: CuratedPageData }) {
                   </Link>
                   <article>
                     <div className="curated-game-head">
-                      <div><Link to={`/game/${game.slug}`}><h2>{game.title}</h2></Link><p>{game.release_year > 1970 ? game.release_year : 'Release date pending'}{game.developer ? ` · ${game.developer}` : ''}</p></div>
+                      <div>
+                        <Link to={`/game/${game.slug}`}><h2>{game.title}</h2></Link>
+                        <p>
+                          {game.release_year > 1970 ? (
+                            <Link to={`/?year=${game.release_year}`}>
+                              {game.release_year}
+                            </Link>
+                          ) : 'Release date pending'}
+                          {game.developer ? ` · ${game.developer}` : ''}
+                        </p>
+                      </div>
                       <strong>{Math.round(game.metrix_score)}</strong>
                     </div>
                     <div className="curated-scores" aria-label={`${game.title} source scores`}>

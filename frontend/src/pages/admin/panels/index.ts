@@ -1,5 +1,6 @@
 export { ActivityPanels } from './ActivityPanels'
 export { AdminMetrics } from './AdminMetrics'
+export { AiChangesPanel } from './AiChangesPanel'
 export { ApiSourcesPanel } from './ApiSourcesPanel'
 export { CatalogAdditionsPanel } from './CatalogAdditionsPanel'
 export { DataFillPanel } from './DataFillPanel'

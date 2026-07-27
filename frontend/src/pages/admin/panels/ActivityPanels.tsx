@@ -9,21 +9,25 @@ export function ActivityPanels({
   auditOnlyFailures,
   dashboard,
   onToggleAuditFailures,
+  section = 'all',
 }: {
   auditLogs: AdminAuditLog[]
   auditOnlyFailures: boolean
   dashboard: AdminDashboard | null
   onToggleAuditFailures: () => void
+  section?: 'all' | 'visitors' | 'audit'
 }) {
   return (
     <>
-      <RecentVisitsPanel dashboard={dashboard} />
-      <RecentIpsPanel dashboard={dashboard} />
-      <AuditPanel
-        auditLogs={auditLogs}
-        onlyFailures={auditOnlyFailures}
-        onToggleFailures={onToggleAuditFailures}
-      />
+      {section !== 'audit' ? <RecentVisitsPanel dashboard={dashboard} /> : null}
+      {section !== 'audit' ? <RecentIpsPanel dashboard={dashboard} /> : null}
+      {section !== 'visitors' ? (
+        <AuditPanel
+          auditLogs={auditLogs}
+          onlyFailures={auditOnlyFailures}
+          onToggleFailures={onToggleAuditFailures}
+        />
+      ) : null}
     </>
   )
 }

@@ -54,6 +54,7 @@ def test_production_deploy_preserves_protected_environment_boundary() -> None:
     wrapper = _read("ops/deploy-server-wrapper.sh")
 
     assert "set -Eeuo pipefail" in deploy
+    assert 'flock -w 900 9' in deploy
     assert '[[ "${EUID}" -ne 0 ]]' in deploy
     assert "600:root:root" in deploy
     assert 'sudo -u "$git_user" git pull --ff-only origin main' in deploy

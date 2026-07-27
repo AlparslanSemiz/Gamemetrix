@@ -142,3 +142,29 @@ class CatalogSyncState(Base):
     completed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     last_success_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class AiCatalogChange(Base):
+    """Durable audit row for a catalog mutation whose decision came from AI."""
+
+    __tablename__ = "ai_catalog_changes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    game_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("games.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    game_title: Mapped[str] = mapped_column(String(160), nullable=False)
+    game_slug: Mapped[str] = mapped_column(String(180), nullable=False, index=True)
+    change_type: Mapped[str] = mapped_column(String(48), nullable=False, index=True)
+    fields: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    before_values: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    after_values: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        index=True,
+    )

@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session, noload
 from ...config import get_settings
 from ...models import CatalogQualityReview, Game
 from ..admin_audit import record_admin_event
+from ..ai_catalog_changes import record_ai_catalog_change
 from ..metadata_backfill.persistence import store_source_snapshot, upsert_external_id
 from ..seo import refresh_game_seo_state
 from .remediation import (
@@ -115,6 +116,23 @@ async def _repair_one(
     ]
     review.reason = _repair_reason(plan, review.reason)
     review.checked_at = datetime.now(UTC)
+    changed_fields = set(plan.changes)
+    record_ai_catalog_change(
+        db,
+        game,
+        change_type="catalog_quality_repair",
+        before={
+            field: getattr(snapshot, field)
+            for field in changed_fields
+            if hasattr(snapshot, field)
+        },
+        after={
+            field: getattr(game, field)
+            for field in changed_fields
+            if hasattr(game, field)
+        },
+        reason=_repair_reason(plan, verdict.reason),
+    )
     db.add_all([game, review])
     db.commit()
     _log_repair(game, plan)

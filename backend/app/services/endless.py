@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session, noload
 from ..config import get_settings
 from ..integrations.ai import generate_text
 from ..models import Game
+from .ai_catalog_changes import record_ai_catalog_change
 
 log = logging.getLogger(__name__)
 
@@ -109,6 +110,8 @@ async def backfill_endless_batch(db: Session, limit: int) -> dict[str, int]:
     now = datetime.now(UTC)
 
     for game in games:
+        before_endless = game.is_endless
+        used_ai = False
         verdict = detect_endless(game)
         if (
             verdict is None
@@ -118,8 +121,18 @@ async def backfill_endless_batch(db: Session, limit: int) -> dict[str, int]:
         ):
             verdict = await classify_endless_ai(game)
             ai_used += 1
+            used_ai = True
         if verdict is not None and game.is_endless != verdict:
             game.is_endless = verdict
+            if used_ai:
+                record_ai_catalog_change(
+                    db,
+                    game,
+                    change_type="endless_classification",
+                    before={"is_endless": before_endless},
+                    after={"is_endless": game.is_endless},
+                    reason="AI classified whether the game has a fixed completion.",
+                )
         game.endless_checked_at = now
         db.add(game)
         if game.is_endless:

@@ -24,6 +24,7 @@ from .analytics import AnalyticsEvent, VisitEvent
 from .catalog import ExternalId, Game, PriceSnapshot, RatingSnapshot, SourceSnapshot
 from .ops import (
     AdminAuditLog,
+    AiCatalogChange,
     ApiRequestBudget,
     ApiRequestWindow,
     CatalogQualityReview,
@@ -36,6 +37,7 @@ __all__ = [
     "AccountSession",
     "AccountToken",
     "AdminAuditLog",
+    "AiCatalogChange",
     "AnalyticsEvent",
     "ApiRequestBudget",
     "ApiRequestWindow",

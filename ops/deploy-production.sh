@@ -8,6 +8,16 @@ if [[ "${EUID}" -ne 0 ]]; then
   exit 2
 fi
 
+# Docker Compose recreate operations are not safe to overlap: a second deploy
+# can race the temporary rename of the current container and fail with a
+# "<container-id>_gamemetrix-backend is already in use" conflict. Serialize the
+# complete rollout and allow an interactive deploy to wait for an active one.
+exec 9>/tmp/gamemetrix-production-deploy.lock
+if ! flock -w 900 9; then
+  echo "Another production deployment did not finish within 15 minutes." >&2
+  exit 75
+fi
+
 repo_dir="${1:-/home/ubuntu/gamemetrix/Gamemetrix}"
 git_user="${DEPLOY_GIT_USER:-ubuntu}"
 repo_dir="$(realpath "$repo_dir")"

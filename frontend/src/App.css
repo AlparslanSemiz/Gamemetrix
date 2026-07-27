@@ -1408,6 +1408,18 @@ html { font-size: 16px; }
   font-size: 15px;
 }
 
+.card-year-link {
+  color: #aeb4c2;
+  text-decoration: underline;
+  text-decoration-color: rgba(167, 139, 250, 0.38);
+  text-underline-offset: 3px;
+}
+
+.card-year-link:hover {
+  color: #c4b5fd;
+  text-decoration-color: currentColor;
+}
+
 .genre-links {
   display: flex;
   flex-wrap: wrap;

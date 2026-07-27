@@ -20,6 +20,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, noload
 
 from ...models import Game
+from ..ai_catalog_changes import record_ai_catalog_change
 from ..metadata import UNUSABLE_SUMMARY_QUALITY
 from .ai import REJECTED_VERDICT, audit_description, extract_short_summary, shorten_summary
 from .issues import (
@@ -46,6 +47,7 @@ class _Candidate:
     text: str
     issues: list[str] = field(default_factory=list)
     changed: bool = False
+    ai_before: dict[str, object] | None = None
 
 
 def needs_short_summary(game: Game) -> bool:
@@ -78,8 +80,20 @@ async def refresh_summary_batch(db: Session, limit: int, ai_limit: int) -> dict[
     for candidate in candidates:
         _apply_text(candidate, now)
         if needs_short_summary(candidate.game):
-            candidate.game.summary_short = await _short_summary(candidate.game, budget)
+            short_summary, used_ai = await _short_summary(candidate.game, budget)
+            if used_ai and candidate.ai_before is None:
+                candidate.ai_before = _summary_state(candidate.game)
+            candidate.game.summary_short = short_summary
             counts["shortened"] += 1
+        if candidate.ai_before is not None:
+            record_ai_catalog_change(
+                db,
+                candidate.game,
+                change_type="summary_audit",
+                before=candidate.ai_before,
+                after=_summary_state(candidate.game),
+                reason="AI description audit or compact-summary generation.",
+            )
         candidate.game.summary_checked_at = now
         db.add(candidate.game)
         counts["processed"] += 1
@@ -157,6 +171,7 @@ def _ai_order(candidates: list[_Candidate]) -> list[_Candidate]:
 
 async def _ai_pass(candidate: _Candidate, counts: dict[str, int], budget: _Budget) -> None:
     game = candidate.game
+    candidate.ai_before = _summary_state(game)
     budget.spend()
     verdict = await audit_description(game.title, candidate.text, candidate.issues)
     if verdict is None:
@@ -184,7 +199,7 @@ async def _ai_pass(candidate: _Candidate, counts: dict[str, int], budget: _Budge
     counts["ok"] += 1
 
 
-async def _short_summary(game: Game, budget: _Budget) -> str:
+async def _short_summary(game: Game, budget: _Budget) -> tuple[str, bool]:
     """AI blurb while budget lasts, otherwise a sentence-boundary extract.
 
     Never skipped: the extract is good enough that leaving the field empty for a
@@ -192,9 +207,17 @@ async def _short_summary(game: Game, budget: _Budget) -> str:
     no configured AI provider at all.
     """
     if not budget.available:
-        return extract_short_summary(game.summary)
+        return extract_short_summary(game.summary), False
     budget.spend()
-    return await shorten_summary(game.title, game.summary)
+    return await shorten_summary(game.title, game.summary), True
+
+
+def _summary_state(game: Game) -> dict[str, object]:
+    return {
+        "summary": game.summary,
+        "summary_short": game.summary_short,
+        "summary_quality": game.summary_quality,
+    }
 
 
 def _apply_text(candidate: _Candidate, now: datetime) -> None:

@@ -7,6 +7,7 @@ import {
 } from 'react'
 import {
   AdminApiError,
+  getAiCatalogChanges,
   getAdminApiHealth,
   getAdminAuditLogs,
   getAdminDashboard,
@@ -19,6 +20,7 @@ import {
   type AdminApiHealth,
   type AdminAuditLog,
   type AdminDashboard,
+  type AiCatalogChange,
   type ApiSources,
   type DataFillStatus,
   type PeriodicJobs,
@@ -53,6 +55,7 @@ export function useAdminDashboard() {
 
   return {
     auditLogs: resources.auditLogs,
+    aiChanges: resources.aiChanges,
     auditOnlyFailures,
     dashboard: resources.dashboard,
     dataFill: resources.dataFill,
@@ -81,6 +84,7 @@ export function useAdminDashboard() {
     token: session.token,
     trafficDays,
     username: session.username,
+    lastUpdatedAt: resources.lastUpdatedAt,
   }
 }
 
@@ -147,7 +151,9 @@ function useAdminResources({
   const [periodic, setPeriodic] = useState<PeriodicJobs | null>(null)
   const [apiSources, setApiSources] = useState<ApiSources | null>(null)
   const [auditLogs, setAuditLogs] = useState<AdminAuditLog[]>([])
+  const [aiChanges, setAiChanges] = useState<AiCatalogChange[]>([])
   const [isLoading, setIsLoading] = useState(false)
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null)
 
   const clear = useCallback(() => {
     setDashboard(null)
@@ -156,6 +162,8 @@ function useAdminResources({
     setPeriodic(null)
     setApiSources(null)
     setAuditLogs([])
+    setAiChanges([])
+    setLastUpdatedAt(null)
   }, [])
 
   const load = useCallback(async () => {
@@ -171,6 +179,7 @@ function useAdminResources({
     }
     applyAdminResources(results, {
       setApiSources,
+      setAiChanges,
       setAuditLogs,
       setDashboard,
       setDataFill,
@@ -178,6 +187,7 @@ function useAdminResources({
       setPeriodic,
     })
     setError(failureMessage(results))
+    setLastUpdatedAt(new Date())
   }, [
     auditOnlyFailures,
     clear,
@@ -192,14 +202,24 @@ function useAdminResources({
     return () => window.clearTimeout(timer)
   }, [load])
 
+  useEffect(() => {
+    if (!token) return undefined
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === 'visible') void load()
+    }, 60_000)
+    return () => window.clearInterval(timer)
+  }, [load, token])
+
   return {
     apiSources,
+    aiChanges,
     auditLogs,
     clear,
     dashboard,
     dataFill,
     health,
     isLoading,
+    lastUpdatedAt,
     load,
     periodic,
     setDataFill,
@@ -306,6 +326,7 @@ function loadAdminResources(
 ) {
   return Promise.allSettled([
     getAdminDashboard(token, trafficDays),
+    getAiCatalogChanges(token),
     getAdminApiHealth(token),
     getDataFillStatus(token),
     getAdminAuditLogs(token, {
@@ -323,6 +344,7 @@ function applyAdminResources(
   results: AdminResourceResults,
   setters: {
     setApiSources: (apiSources: ApiSources) => void
+    setAiChanges: (changes: AiCatalogChange[]) => void
     setAuditLogs: (logs: AdminAuditLog[]) => void
     setDashboard: (dashboard: AdminDashboard) => void
     setDataFill: (status: DataFillStatus) => void
@@ -332,6 +354,7 @@ function applyAdminResources(
 ) {
   const [
     dashboardResult,
+    aiChangesResult,
     healthResult,
     dataFillResult,
     auditResult,
@@ -340,6 +363,9 @@ function applyAdminResources(
   ] = results
   if (dashboardResult.status === 'fulfilled') {
     setters.setDashboard(dashboardResult.value)
+  }
+  if (aiChangesResult.status === 'fulfilled') {
+    setters.setAiChanges(aiChangesResult.value)
   }
   if (healthResult.status === 'fulfilled') setters.setHealth(healthResult.value)
   if (dataFillResult.status === 'fulfilled') {
@@ -363,6 +389,7 @@ function isUnauthorizedResult(
 function failureMessage(results: AdminResourceResults): string | null {
   const labels = [
     'Dashboard',
+    'AI changes',
     'API health',
     'Data fill',
     'Audit log',

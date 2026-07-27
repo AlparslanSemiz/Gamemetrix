@@ -61,7 +61,15 @@ export function CompactGameCard({
           </Link>
         </h2>
         <p className="compact-meta">
-          {game.release_year} · {game.genres.slice(0, 2).join(' · ')}
+          {game.release_year > 1970 ? (
+            <Link
+              className="card-year-link"
+              to={`/?year=${game.release_year}`}
+              title={`Show all ${game.release_year} games`}
+            >
+              {game.release_year}
+            </Link>
+          ) : 'TBA'} · {game.genres.slice(0, 2).join(' · ')}
         </p>
         {game.developer ? (
           <p className="compact-dev">{game.developer}</p>

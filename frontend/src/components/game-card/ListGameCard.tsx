@@ -52,7 +52,15 @@ function ListCardBody(props: Pick<
             {game.title}
           </Link>
         </h2>
-        <span className="card-year">{game.release_year}</span>
+        {game.release_year > 1970 ? (
+          <Link
+            className="card-year card-year-link"
+            to={`/?year=${game.release_year}`}
+            title={`Show all ${game.release_year} games`}
+          >
+            {game.release_year}
+          </Link>
+        ) : <span className="card-year">TBA</span>}
         <div className="genre-links" aria-label={`${game.title} genres`}>
           {game.genres.slice(0, 4).map((genre, index, genres) => (
             <span key={genre} className="genre-item">

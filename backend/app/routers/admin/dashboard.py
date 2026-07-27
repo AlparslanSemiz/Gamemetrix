@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from ...database import get_db
 from ...services.admin_audit import recent_admin_audit_logs
+from ...services.ai_catalog_changes import recent_ai_catalog_changes
 from ...services.admin_dashboard import build_admin_dashboard
 
 router = APIRouter()
@@ -30,6 +31,15 @@ def get_audit_logs(
     """Who did what: every /admin/* request and login attempt, newest first."""
     rows = recent_admin_audit_logs(db, limit=limit, action=action, only_failures=only_failures)
     return {"logs": [_audit_row(row) for row in rows]}
+
+
+@router.get("/ai-changes")
+def get_ai_changes(
+    limit: int = Query(default=100, ge=1, le=500),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Recent persisted catalog changes whose decision came from the AI chain."""
+    return {"changes": recent_ai_catalog_changes(db, limit=limit)}
 
 
 def _audit_row(row) -> dict[str, object]:
