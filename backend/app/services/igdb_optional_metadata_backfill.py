@@ -52,7 +52,7 @@ def _candidates(db: Session, limit: int) -> list[tuple[int, int]]:
         .join(ExternalId, and_(ExternalId.game_id == Game.id, ExternalId.source == "IGDB"))
         .where(
             Game.content_type == "game",
-            or_(website_missing_or_profile, func.json_array_length(Game.game_modes) == 0),
+            or_(website_missing_or_profile, func.jsonb_array_length(Game.game_modes) == 0),
             ~checked_recently,
         )
         .order_by(Game.rank_score.desc(), Game.metrix_score.desc())
