@@ -15,6 +15,7 @@ import pytest
 from app.config import METERED_SOURCES, OPENCRITIC_SEARCH_SOURCE, get_settings
 from app.integrations.http_retry import request_with_retry
 from app.integrations.rate_limiter import RateLimiter, WindowSpec
+from app.services.data_fill import stages as data_fill_stages
 from app.services.data_fill.stages import RATING_BUDGET_SOURCES, catalog_import_target
 from app.services import primary_score_backfill as primary_scores
 
@@ -278,6 +279,20 @@ def test_opencritic_without_an_id_stops_when_its_search_bucket_is_empty() -> Non
         uses_local_metacritic=False,
         has_opencritic_id=True,
     ) is True
+
+
+def test_general_rating_fill_stops_when_only_opencritic_search_is_exhausted(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class Limiter:
+        def remaining(self, source: str) -> int:
+            if source == "OpenCritic":
+                return 100
+            return 0
+
+    monkeypatch.setattr(data_fill_stages, "get_rate_limiter", lambda: Limiter())
+
+    assert data_fill_stages.remaining_any(("OpenCritic",)) is False
 
 
 def test_primary_score_target_distinguishes_four_scores_from_platform_applicability() -> None:

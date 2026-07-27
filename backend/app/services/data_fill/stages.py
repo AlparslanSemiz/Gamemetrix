@@ -12,7 +12,7 @@ from datetime import UTC, datetime
 from sqlalchemy import desc, func, select
 from sqlalchemy.orm import Session, load_only, noload
 
-from ...config import get_settings
+from ...config import OPENCRITIC_SEARCH_SOURCE, get_settings
 from ...database import SessionLocal
 from ...integrations.cheapshark import import_cheapshark_deals
 from ...integrations.free_to_game import import_free_to_game_games
@@ -52,7 +52,16 @@ _SecondaryImporter = Callable[[Session, int], Awaitable[dict]]
 
 def remaining_any(sources: tuple[str, ...]) -> bool:
     limiter = get_rate_limiter()
-    return any(limiter.remaining(source) > 0 for source in sources)
+    for source in sources:
+        if limiter.remaining(source) <= 0:
+            continue
+        if (
+            source == "OpenCritic"
+            and limiter.remaining(OPENCRITIC_SEARCH_SOURCE) <= 0
+        ):
+            continue
+        return True
+    return False
 
 
 def _game_count(db: Session) -> int:
