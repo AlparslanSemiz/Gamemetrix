@@ -14,13 +14,14 @@ Public API:
 import logging
 from datetime import UTC, datetime
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session, noload
 
 from ..config import get_settings
 from ..integrations.ai import generate_text
 from ..models import Game
 from .ai_catalog_changes import record_ai_catalog_change
+from .metadata_backfill.sanitize import as_aware
 
 log = logging.getLogger(__name__)
 
@@ -74,6 +75,22 @@ def detect_endless(game: Game) -> bool | None:
     return None
 
 
+def needs_endless_check(game: Game) -> bool:
+    """Classify once, then only revisit after relevant catalog metadata changes."""
+    checked_at = as_aware(game.endless_checked_at)
+    if checked_at is None:
+        return True
+    changed_at = [
+        timestamp
+        for timestamp in (
+            as_aware(game.metadata_refreshed_at),
+            as_aware(game.hltb_refreshed_at),
+        )
+        if timestamp is not None
+    ]
+    return bool(changed_at) and max(changed_at) > checked_at
+
+
 async def classify_endless_ai(game: Game) -> bool | None:
     genres = ", ".join(game.genres or []) or "unknown"
     modes = ", ".join(game.game_modes or []) or "unknown"
@@ -97,7 +114,14 @@ async def backfill_endless_batch(db: Session, limit: int) -> dict[str, int]:
     games = list(
         db.scalars(
             select(Game)
-            .where(Game.content_type == "game")
+            .where(
+                Game.content_type == "game",
+                or_(
+                    Game.endless_checked_at.is_(None),
+                    Game.metadata_refreshed_at > Game.endless_checked_at,
+                    Game.hltb_refreshed_at > Game.endless_checked_at,
+                ),
+            )
             .options(noload(Game.price_snapshots))
             .order_by(Game.endless_checked_at.asc().nulls_first())
             .limit(limit)
@@ -107,9 +131,13 @@ async def backfill_endless_batch(db: Session, limit: int) -> dict[str, int]:
     endless = 0
     finite = 0
     ai_used = 0
+    processed = 0
     now = datetime.now(UTC)
 
     for game in games:
+        if not needs_endless_check(game):
+            continue
+        processed += 1
         before_endless = game.is_endless
         used_ai = False
         verdict = detect_endless(game)
@@ -141,4 +169,4 @@ async def backfill_endless_batch(db: Session, limit: int) -> dict[str, int]:
             finite += 1
 
     db.commit()
-    return {"processed": len(games), "endless": endless, "finite": finite, "ai_used": ai_used}
+    return {"processed": processed, "endless": endless, "finite": finite, "ai_used": ai_used}

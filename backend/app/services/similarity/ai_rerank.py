@@ -15,11 +15,14 @@ from ...config import get_settings
 from ...integrations.ai import generate_text
 from ...integrations.rate_limiter import get_rate_limiter
 from ...models import Game
+from .scoring import similarity_score
 
 log = logging.getLogger(__name__)
 
 _CACHE_TTL_SECONDS = 6 * 60 * 60
 _MAX_CACHE_ENTRIES = 256
+_AI_UNCERTAINTY_MARGIN = 12.0
+_GENERIC_GENRES = frozenset({"", "unknown", "uncategorized"})
 _cache: dict[tuple[object, ...], tuple[float, tuple[str, ...]]] = {}
 _rate_lock = asyncio.Lock()
 _last_request_started = 0.0
@@ -47,6 +50,24 @@ def _parse_order(answer: str, count: int) -> list[int]:
     return ordered
 
 
+def needs_ai_rerank(source: Game, ranked: list[Game], limit: int) -> bool:
+    """Escalate only when heuristic candidates are genuinely hard to separate."""
+    if limit <= 0 or len(ranked) <= limit or not _has_comparison_context(source):
+        return False
+    pool = ranked[: max(limit + 1, 2)]
+    if any(not _has_comparison_context(game) for game in pool):
+        return False
+    cutoff_gap = similarity_score(source, pool[limit - 1]) - similarity_score(source, pool[limit])
+    return cutoff_gap <= _AI_UNCERTAINTY_MARGIN
+
+
+def _has_comparison_context(game: Game) -> bool:
+    return any(
+        isinstance(genre, str) and genre.strip().casefold() not in _GENERIC_GENRES
+        for genre in (game.genres or [])
+    )
+
+
 async def rerank_with_ai(source: Game, ranked: list[Game], limit: int) -> list[Game]:
     """Reorder the heuristic candidates via AI, or return them unchanged."""
     cfg = get_settings()
@@ -55,6 +76,8 @@ async def rerank_with_ai(source: Game, ranked: list[Game], limit: int) -> list[G
 
     pool = ranked[: max(limit, cfg.SIMILARITY_AI_POOL)]
     if len(pool) <= 1:
+        return pool[:limit]
+    if not needs_ai_rerank(source, pool, limit):
         return pool[:limit]
 
     cache_key = (source.slug, limit, *(game.slug for game in pool))

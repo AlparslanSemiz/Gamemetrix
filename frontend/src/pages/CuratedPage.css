@@ -23,7 +23,8 @@
 .curated-game-head a { color: #f1f1f3; text-decoration: none; }
 .curated-game-head h2 { margin: 0; font-size: 18px; letter-spacing: 0; }
 .curated-game-head p { margin: 4px 0 0; color: #898d98; font-size: 12px; }
-.curated-game-head p a { color: #b8a8ed; text-decoration: underline; text-underline-offset: 2px; }
+.curated-game-head p a { color: #b8a8ed; text-decoration: none; }
+.curated-game-head p a:hover { color: #d2c8f5; text-decoration: none; }
 .curated-game-head > strong { min-width: 48px; color: #f0b94b; font-size: 26px; text-align: right; }
 .curated-scores { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin-top: 12px; }
 .curated-scores span { display: flex; justify-content: space-between; gap: 7px; border: 1px solid #2b2d35; border-radius: 5px; background: #18191f; padding: 6px 8px; }

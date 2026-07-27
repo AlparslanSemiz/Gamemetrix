@@ -313,22 +313,23 @@ async def test_batch_repairs_mechanically_with_no_ai_budget_at_all(
 
 
 @pytest.mark.asyncio
-async def test_a_clean_but_never_audited_description_still_gets_an_ai_opinion(
+async def test_a_clean_description_is_approved_without_an_ai_call(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    async def audit(_title: str, _text: str, _issues: list[str]):
-        return ai_module.DescriptionVerdict("OK", "", "reads fine")
+    async def fail(*_args: object, **_kwargs: object) -> None:
+        pytest.fail("clean descriptions must be decided by deterministic checks")
 
-    monkeypatch.setattr(batch_module, "audit_description", audit)
+    monkeypatch.setattr(batch_module, "audit_description", fail)
+    monkeypatch.setattr(batch_module, "shorten_summary", fail)
     game = _game(summary_short="already there")
     db = _Session([game])
 
     counts = await batch_module.refresh_summary_batch(db, limit=10, ai_limit=5)
 
     assert counts["ok"] == 1
+    assert counts["ai_checked"] == 0
     assert game.summary == _CLEAN_SUMMARY
     assert game.summary_quality == batch_module.OK_SUMMARY_QUALITY
-    # An unchanged description must not look freshly rewritten to other jobs.
     assert game.summary_refreshed_at is None
 
 
@@ -381,7 +382,7 @@ async def test_batch_never_exceeds_its_ai_budget(monkeypatch: pytest.MonkeyPatch
 
     monkeypatch.setattr(batch_module, "audit_description", audit)
     games = [
-        _game(id=index, slug=f"game-{index}", summary=f"{_CLEAN_SUMMARY} Wishlist it now!")
+        _game(id=index, slug=f"game-{index}", summary=_CLEAN_SUMMARY.upper())
         for index in range(5)
     ]
     db = _Session(games)
@@ -412,6 +413,57 @@ async def test_display_blurb_is_still_produced_without_any_ai(
     assert game.summary_short
     assert game.summary_short.startswith("Hollow Knight is a hand-drawn metroidvania")
     assert len(game.summary_short) <= 450
+
+
+@pytest.mark.asyncio
+async def test_display_blurb_prefers_a_good_deterministic_extract_with_ai_available(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fail(*_args: object, **_kwargs: object) -> None:
+        pytest.fail("a sufficient deterministic extract must not cost an AI call")
+
+    monkeypatch.setattr(batch_module, "audit_description", fail)
+    monkeypatch.setattr(batch_module, "shorten_summary", fail)
+    game = _game(summary_short=None)
+    db = _Session([game])
+
+    counts = await batch_module.refresh_summary_batch(db, limit=10, ai_limit=5)
+
+    assert counts["shortened"] == 1
+    assert game.summary_short == ai_module.extract_short_summary(_CLEAN_SUMMARY)
+    assert counts["ai_checked"] == 0
+
+
+@pytest.mark.asyncio
+async def test_display_blurb_uses_ai_only_when_the_extract_is_too_thin(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[str] = []
+
+    async def shorten(title: str, summary: str) -> str:
+        calls.append(title)
+        assert summary
+        return "A concise AI summary grounded in the supplied description."
+
+    summary = (
+        "Explore a haunted citadel and uncover the cause of its long decline. "
+        "The campaign follows an exiled guardian through interconnected districts "
+        "filled with environmental puzzles, tactical encounters, hidden routes, "
+        "optional character stories, ancient machinery, shifting alliances, and "
+        "a mystery whose clues are distributed across journals, murals, ruined "
+        "workshops, abandoned observatories, underground archives, and the memories "
+        "of the remaining inhabitants throughout the fortress."
+    )
+    assert len(ai_module.extract_short_summary(summary)) < batch_module._MIN_USEFUL_SHORT_CHARS
+    monkeypatch.setattr(batch_module, "shorten_summary", shorten)
+    game = _game(summary=summary, summary_short=None)
+    db = _Session([game])
+
+    counts = await batch_module.refresh_summary_batch(db, limit=10, ai_limit=1)
+
+    assert calls == ["Hollow Knight"]
+    assert game.summary_short == "A concise AI summary grounded in the supplied description."
+    assert counts["shortened"] == 1
 
 
 @pytest.mark.asyncio

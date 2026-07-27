@@ -5,8 +5,8 @@ audit and games come back around as their descriptions change. Each pass:
 
   1. deterministic issue detection (free)
   2. mechanical repair — markup, encoding, promo, boilerplate, duplication (free)
-  3. AI audit for what is left, unresolved problems before never-audited rows
-  4. regeneration of the compact display blurb when the text moved
+  3. AI audit only for unresolved semantic or language problems
+  4. deterministic compact blurb, with AI only when the extract is inadequate
 
 Step 3 is capped per batch: AI is one shared logical-call budget across summaries,
 catalog quality, endless detection and reranking.
@@ -37,6 +37,7 @@ OK_SUMMARY_QUALITY = "ok"
 CLEANED_SUMMARY_QUALITY = "cleaned"
 
 _MIN_SHORT_SOURCE_CHARS = 200
+_MIN_USEFUL_SHORT_CHARS = 120
 
 
 @dataclass(eq=False)
@@ -126,6 +127,9 @@ def _deterministic_pass(game: Game, counts: dict[str, int]) -> _Candidate:
         counts["unusable"] += 1
         return _Candidate(game=game, text=game.summary, issues=issues)
     if not issues:
+        if game.summary_quality is None:
+            game.summary_quality = OK_SUMMARY_QUALITY
+        counts["ok"] += 1
         return _Candidate(game=game, text=game.summary)
 
     sanitized = sanitize_description(game.summary)
@@ -156,17 +160,12 @@ def _is_safe_replacement(original: str, sanitized: str) -> bool:
 
 
 def _ai_order(candidates: list[_Candidate]) -> list[_Candidate]:
-    """Rows with unresolved issues first, then rows AI has never seen."""
-    flagged: list[_Candidate] = []
-    unverified: list[_Candidate] = []
-    for candidate in candidates:
-        if is_unfixable(candidate.issues):
-            continue
-        if needs_ai_review(candidate.issues):
-            flagged.append(candidate)
-        elif candidate.game.summary_quality is None:
-            unverified.append(candidate)
-    return [*flagged, *unverified]
+    """Only unresolved deterministic findings deserve an AI judgement."""
+    return [
+        candidate
+        for candidate in candidates
+        if not is_unfixable(candidate.issues) and needs_ai_review(candidate.issues)
+    ]
 
 
 async def _ai_pass(candidate: _Candidate, counts: dict[str, int], budget: _Budget) -> None:
@@ -200,16 +199,23 @@ async def _ai_pass(candidate: _Candidate, counts: dict[str, int], budget: _Budge
 
 
 async def _short_summary(game: Game, budget: _Budget) -> tuple[str, bool]:
-    """AI blurb while budget lasts, otherwise a sentence-boundary extract.
+    """Prefer a sentence-boundary extract and escalate only weak results.
 
-    Never skipped: the extract is good enough that leaving the field empty for a
-    whole rotation would be the worse outcome, and it keeps the job working with
-    no configured AI provider at all.
+    A normal clean description already contains a publishable compact prefix, so
+    asking AI to rewrite it adds cost and risk without adding information. AI is
+    reserved for unusual sentence structures where the extract is too thin.
     """
-    if not budget.available:
-        return extract_short_summary(game.summary), False
+    extracted = extract_short_summary(game.summary)
+    if _short_extract_is_sufficient(extracted) or not budget.available:
+        return extracted, False
     budget.spend()
     return await shorten_summary(game.title, game.summary), True
+
+
+def _short_extract_is_sufficient(text: str) -> bool:
+    return len(text.strip()) >= _MIN_USEFUL_SHORT_CHARS and not needs_ai_review(
+        describe_issues(text)
+    )
 
 
 def _summary_state(game: Game) -> dict[str, object]:
