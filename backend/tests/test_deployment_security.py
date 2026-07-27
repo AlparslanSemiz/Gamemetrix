@@ -47,3 +47,17 @@ def test_application_images_drop_root_and_origin_logs_exclude_queries() -> None:
     nginx = _read("nginx.conf")
     assert '"$request"' not in nginx
     assert "$request_method $uri $server_protocol" in nginx
+
+
+def test_production_deploy_preserves_protected_environment_boundary() -> None:
+    deploy = _read("ops/deploy-production.sh")
+    wrapper = _read("ops/deploy-server-wrapper.sh")
+
+    assert "set -Eeuo pipefail" in deploy
+    assert '[[ "${EUID}" -ne 0 ]]' in deploy
+    assert "600:root:root" in deploy
+    assert 'sudo -u "$git_user" git pull --ff-only origin main' in deploy
+    assert '"${compose[@]}" config --quiet' in deploy
+    assert '"${compose[@]}" up -d --wait --wait-timeout 240' in deploy
+    assert "Deployment completed successfully." in deploy
+    assert "exec sudo -n bash" in wrapper

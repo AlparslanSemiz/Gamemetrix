@@ -81,6 +81,22 @@ It deliberately does not enable origin TLS, Full (strict), UFW, upgrades, or a
 reboot; those remain ordered manual stages because the certificate and a second
 SSH session are external safety prerequisites.
 
+## Routine deployment
+
+Production environment files remain root-owned mode `600`; the unprivileged SSH
+user must never be granted read access to them. Routine deployments therefore use
+the root-only wrapper after the developer has pushed `main`:
+
+```bash
+sudo -n bash /home/ubuntu/gamemetrix/Gamemetrix/ops/deploy-production.sh
+```
+
+The script pulls Git as the unprivileged `ubuntu` owner, validates the protected
+file boundary and Compose configuration as root, builds the application images,
+waits for every service health check, and verifies the internal API before
+reporting success. If Origin CA files are present, it automatically includes the
+production TLS overlay.
+
 ## Origin TLS and Cloudflare
 
 Validate and deploy the production overlay:
