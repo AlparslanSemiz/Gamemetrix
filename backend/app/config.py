@@ -15,8 +15,9 @@ USER_AGENT = "GameMetrix/0.1"
 # more tightly than its other routes.
 OPENCRITIC_SEARCH_SOURCE = "OpenCritic:search"
 
-# Providers that bill for overage. They get METERED_BUDGET_RESERVE_PERCENT
-# instead of the ordinary reserve, because exceeding them costs money.
+# Providers with a possible monetary charge (for example bandwidth overage).
+# OpenCritic's request/search objects are hard-limited; its configured local
+# caps already include their own headroom below those provider ceilings.
 METERED_SOURCES: frozenset[str] = frozenset({"OpenCritic", OPENCRITIC_SEARCH_SOURCE})
 
 _TRUTHY = {"1", "true", "yes", "on"}
@@ -199,12 +200,16 @@ class Settings:
 
     def _load_provider_budget_settings(self) -> None:
         # ── Per-source daily request budgets ─────────────────────────────────
-        # Override these when on a paid API plan.
-        # Free-first defaults keep RapidAPI usage deliberately tiny. Raise these
-        # only after the selected OpenCritic plan or direct license is confirmed;
-        # search keeps its own, tighter bucket.
-        self.OPENCRITIC_DAILY_LIMIT: int = _env_int("OPENCRITIC_DAILY_LIMIT", 4)
-        self.OPENCRITIC_SEARCH_DAILY_LIMIT: int = _env_int("OPENCRITIC_SEARCH_DAILY_LIMIT", 2)
+        # The confirmed RapidAPI Basic plan hard-limits 200 total requests/day,
+        # 25 searches/day, and 4 requests/second. Local defaults retain one
+        # search, ten requests, and one request/second of headroom.
+        self.OPENCRITIC_DAILY_LIMIT: int = _env_int("OPENCRITIC_DAILY_LIMIT", 190)
+        self.OPENCRITIC_SEARCH_DAILY_LIMIT: int = _env_int(
+            "OPENCRITIC_SEARCH_DAILY_LIMIT", 24
+        )
+        self.OPENCRITIC_PER_SECOND_LIMIT: int = _env_int(
+            "OPENCRITIC_PER_SECOND_LIMIT", 3
+        )
         # IGDB (Twitch, ~4 req/s, no daily quota) and Steam (public endpoint, no
         # fixed daily cap) sit far below their real ceilings, so their budgets are
         # raised well above RAWG's to speed primary-score coverage at no cost.
@@ -412,6 +417,9 @@ class Settings:
     def provider_window_limits(self) -> dict[str, list[tuple[str, int, int]]]:
         """source -> [(kind, request_limit, seconds)]"""
         return {
+            "OpenCritic": [
+                ("rolling", self.OPENCRITIC_PER_SECOND_LIMIT, 1),
+            ],
             "RAWG": [("monthly", self.RAWG_MONTHLY_LIMIT, 31 * 24 * 60 * 60)],
             "ITAD": [("rolling", self.ITAD_FIVE_MINUTE_LIMIT, 5 * 60)],
         }
@@ -422,6 +430,10 @@ class Settings:
         return 1
 
     def budget_reserve_percent(self, source: str) -> int:
+        if source in {"OpenCritic", OPENCRITIC_SEARCH_SOURCE}:
+            # 190/24/3 are already below the 200/25/4 hard limits. Applying the
+            # generic reserve again would unnecessarily reduce the free plan.
+            return 0
         if source in METERED_SOURCES:
             return max(self.PROVIDER_BUDGET_RESERVE_PERCENT, self.METERED_BUDGET_RESERVE_PERCENT)
         return self.PROVIDER_BUDGET_RESERVE_PERCENT

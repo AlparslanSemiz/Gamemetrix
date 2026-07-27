@@ -104,6 +104,17 @@ def test_opencritic_direct_and_rapidapi_credentials_stay_separate(monkeypatch: p
     assert Settings().opencritic_configured() is True
 
 
+def test_rapidapi_opencritic_cannot_exceed_the_confirmed_free_plan(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OPENCRITIC_API_BASE", "https://opencritic-api.p.rapidapi.com")
+    monkeypatch.setenv("OPENCRITIC_DAILY_LIMIT", "201")
+    monkeypatch.setenv("OPENCRITIC_SEARCH_DAILY_LIMIT", "26")
+
+    with pytest.raises(RuntimeError, match="OPENCRITIC_DAILY_LIMIT"):
+        Settings().validate()
+
+
 def test_ai_provider_order_is_centralized_and_validated(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

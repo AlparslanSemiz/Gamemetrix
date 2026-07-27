@@ -52,12 +52,18 @@ _DRIVEN_BY: dict[str, str] = {
 # Bucket -> (provider's real limit note, headroom category).
 # headroom = our cap is far below the provider's real limit (safe to raise, free)
 # capped   = our cap already sits at the provider's hard ceiling (raising is pointless)
-# metered  = raising means paying overage
+# metered  = the provider can incur a monetary charge (including bandwidth)
 # window   = constrained by a short rolling window, not a daily cap
 # scrape   = no official API; deliberately paced
 _PROVIDER_LIMIT: dict[str, tuple[str, str]] = {
-    "OpenCritic": ("RapidAPI plan quota — billed on overage", "metered"),
-    "OpenCritic:search": ("RapidAPI search quota — billed on overage", "metered"),
+    "OpenCritic": (
+        "RapidAPI Basic: 200/day hard limit, local cap 190; non-commercial",
+        "capped",
+    ),
+    "OpenCritic:search": (
+        "RapidAPI Basic: 25/day hard limit, local cap 24",
+        "capped",
+    ),
     "IGDB": ("~4 req/sec (Twitch), no daily cap", "headroom"),
     "Steam": ("public endpoint, no fixed daily cap", "headroom"),
     "SteamSpy": ("~1 req/sec, no daily cap", "headroom"),

@@ -345,7 +345,17 @@ GameMetrix
 
 The public OpenCritic portal documents API keys for publisher/review submission workflows, but it does not publish a general read API license for a score aggregation product. The portal directs API-key access questions to `admin@opencritic.com`. The current RapidAPI credential used by GameMetrix is not evidence of a direct OpenCritic read license.
 
-Keep OpenCritic disabled or at the approved RapidAPI allowance until OpenCritic grants direct read/cache/display rights in writing. Do not scrape OpenCritic pages.
+The RapidAPI Basic subscription confirmed in the GameMetrix account on
+2026-07-27 shows hard limits of 200 total requests/day, 25 searches/day, and
+4 requests/second, with commercial use excluded. GameMetrix keeps local caps at
+190 total requests/day, 24 searches/day, and 3 requests/second. Search calls
+consume both the search bucket and the total-request bucket. Hard limits prevent
+request/search overage, but RapidAPI's separate bandwidth fee must still be
+monitored.
+
+Use OpenCritic only while GameMetrix remains non-commercial and at the approved
+RapidAPI allowance. Continue requesting direct read/cache/display permission;
+do not assume a free quota increase and do not scrape OpenCritic pages.
 
 For approved direct access, set `OPENCRITIC_API_BASE` to the endpoint supplied by OpenCritic and put the direct credential in `OPENCRITIC_API_KEY`. Keep `RAPIDAPI_KEY` exclusively for the RapidAPI endpoint so the two credentials cannot be confused during rotation.
 

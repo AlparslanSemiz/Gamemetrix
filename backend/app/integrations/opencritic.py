@@ -99,15 +99,23 @@ async def get_opencritic_score(
     if "rapidapi" in api_base.lower() and api_base.lower().endswith("/api"):
         api_base = api_base[:-4]
     headers = _build_headers(api_key, api_base)
+    limiter = get_rate_limiter()
+    required_total_requests = 1 if opencritic_id is not None else 2
+    if limiter.remaining("OpenCritic") < required_total_requests:
+        return _unavailable("OpenCritic request budget is too low for a complete lookup.")
+    if opencritic_id is None and limiter.remaining(OPENCRITIC_SEARCH_SOURCE) < 1:
+        return _unavailable("OpenCritic search budget exhausted — will retry next cycle.")
 
     async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT, headers=headers) as client:
         selected: dict = {}
         results: object = []
         game_id = opencritic_id
         if game_id is None:
-            # The search endpoint has its own, much tighter provider ceiling, so it
-            # draws from a separate bucket than the detail lookup below.
-            if not await get_rate_limiter().acquire(OPENCRITIC_SEARCH_SOURCE):
+            # RapidAPI counts a title search against both the custom Searches
+            # object and the plan-wide Requests object.
+            if not await limiter.acquire("OpenCritic"):
+                return _unavailable("OpenCritic request budget exhausted — will retry next cycle.")
+            if not await limiter.acquire(OPENCRITIC_SEARCH_SOURCE):
                 return _unavailable("OpenCritic search budget exhausted — will retry next cycle.")
             search_resp = await client.get(f"{api_base}/game/search", params={"criteria": title})
             if search_resp.status_code == 429:
@@ -124,8 +132,8 @@ async def get_opencritic_score(
             if not game_id:
                 return _unavailable("OpenCritic search result has no ID.")
 
-        # One general-bucket slot was already acquired by the caller for this
-        # detail request; the search above drew from its own bucket.
+        if not await limiter.acquire("OpenCritic"):
+            return _unavailable("OpenCritic request budget exhausted — will retry next cycle.")
         game_resp = await client.get(f"{api_base}/game/{game_id}")
         if game_resp.status_code == 429:
             return _unavailable("OpenCritic rate limit hit (RapidAPI quota exceeded).")

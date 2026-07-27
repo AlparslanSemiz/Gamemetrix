@@ -129,7 +129,9 @@ def _primary_fetch_tasks(
                 release_year=release_year,
                 opencritic_id=external_ids.get("OpenCritic"),
             ),
-            required_requests=1,
+            # OpenCritic owns both its total-request and search sub-budget so a
+            # title lookup can account for two actual RapidAPI calls.
+            budget_source=None,
         ))
     if _wants_source(requested, "IGDB"):
         tasks.append(resolve_score(

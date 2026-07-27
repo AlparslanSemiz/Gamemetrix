@@ -112,6 +112,19 @@ def _validate_numeric(settings: "Settings", errors: list[str]) -> None:
     )
     if not 1 <= settings.REFRESH_ALL_CONCURRENCY <= _MAX_REFRESH_CONCURRENCY:
         errors.append("REFRESH_ALL_CONCURRENCY must be between 1 and 32")
+    if "rapidapi" in settings.OPENCRITIC_API_BASE.lower():
+        if settings.OPENCRITIC_DAILY_LIMIT > 200:
+            errors.append(
+                "OPENCRITIC_DAILY_LIMIT cannot exceed the RapidAPI Basic hard limit of 200"
+            )
+        if settings.OPENCRITIC_SEARCH_DAILY_LIMIT > 25:
+            errors.append(
+                "OPENCRITIC_SEARCH_DAILY_LIMIT cannot exceed the RapidAPI Basic hard limit of 25"
+            )
+        if settings.OPENCRITIC_PER_SECOND_LIMIT > 4:
+            errors.append(
+                "OPENCRITIC_PER_SECOND_LIMIT cannot exceed the RapidAPI Basic rate limit of 4"
+            )
     if not 0 <= settings.HEAVY_JOB_BLOCK_START_HOUR <= _MAX_HOUR or not 0 <= settings.HEAVY_JOB_BLOCK_END_HOUR <= _MAX_HOUR:
         errors.append("HEAVY_JOB_BLOCK hours must be between 0 and 23")
 
@@ -129,6 +142,8 @@ def _nonnegative_settings(s: "Settings") -> dict[str, float]:
         "DAILY_METADATA_FIX_LIMIT": s.DAILY_METADATA_FIX_LIMIT,
         "STARTUP_METADATA_FIX_LIMIT": s.STARTUP_METADATA_FIX_LIMIT,
         "OPENCRITIC_DAILY_LIMIT": s.OPENCRITIC_DAILY_LIMIT,
+        "OPENCRITIC_SEARCH_DAILY_LIMIT": s.OPENCRITIC_SEARCH_DAILY_LIMIT,
+        "OPENCRITIC_PER_SECOND_LIMIT": s.OPENCRITIC_PER_SECOND_LIMIT,
         "IGDB_DAILY_LIMIT": s.IGDB_DAILY_LIMIT,
         "RAWG_DAILY_LIMIT": s.RAWG_DAILY_LIMIT,
         "STEAM_DAILY_LIMIT": s.STEAM_DAILY_LIMIT,

@@ -6,7 +6,6 @@ When unavailable, the rest of the system continues normally.
 """
 
 import logging
-import time
 from datetime import date
 from math import isfinite
 
@@ -23,7 +22,6 @@ log = logging.getLogger(__name__)
 
 OC_RAPIDAPI_BASE = "https://opencritic-api.p.rapidapi.com"
 OC_PUBLIC_BASE = "https://api.opencritic.com/api"
-SMOKE_TEST_TITLE = "Portal 2"
 
 
 class OpenCriticService:
@@ -61,7 +59,8 @@ class OpenCriticService:
                 status="missing",
                 message="OpenCritic credential not configured for the selected endpoint",
             )
-        if not await get_rate_limiter().acquire("OpenCritic"):
+        limiter = get_rate_limiter()
+        if limiter.remaining("OpenCritic") <= 0:
             return SourceHealth(
                 source="opencritic",
                 configured=True,
@@ -69,76 +68,28 @@ class OpenCriticService:
                 status="rate_limited",
                 message="Configured OpenCritic request budget is exhausted",
             )
-        t0 = time.monotonic()
-        try:
-            async with httpx.AsyncClient(timeout=14, headers=self._headers()) as client:
-                response = await client.get(
-                    f"{self._base()}/game/search",
-                    params={"criteria": SMOKE_TEST_TITLE},
-                )
-            latency = int((time.monotonic() - t0) * 1000)
-            if response.status_code in {401, 403}:
-                return SourceHealth(
-                    source="opencritic",
-                    configured=True,
-                    working=False,
-                    status="invalid_key",
-                    message=f"RapidAPI key or OpenCritic subscription rejected (HTTP {response.status_code})",
-                    latency_ms=latency,
-                )
-            if response.status_code == 429:
-                return SourceHealth(
-                    source="opencritic", configured=True, working=False,
-                    status="rate_limited", message="OpenCritic/RapidAPI quota reached (HTTP 429)",
-                    latency_ms=latency,
-                )
-            if not response.is_success:
-                return SourceHealth(
-                    source="opencritic",
-                    configured=True,
-                    working=False,
-                    status="provider_error" if response.status_code >= 500 else "failing",
-                    message=f"OpenCritic endpoint returned HTTP {response.status_code}",
-                    latency_ms=latency,
-                )
-            results = response.json()
-            if isinstance(results, list) and results:
-                return SourceHealth(
-                    source="opencritic",
-                    configured=True,
-                    working=True,
-                    status="ok",
-                    message=f'Test query "{SMOKE_TEST_TITLE}" returned result',
-                    latency_ms=latency,
-                )
-            return SourceHealth(
-                source="opencritic",
-                configured=True,
-                working=False,
-                status="failing",
-                message="OpenCritic returned no results for test query",
-                latency_ms=latency,
-            )
-        except httpx.TimeoutException:
-            return SourceHealth(
-                source="opencritic", configured=True, working=False,
-                status="timeout", message="OpenCritic health check timed out",
-            )
-        except Exception as exc:
-            return SourceHealth(
-                source="opencritic",
-                configured=True,
-                working=False,
-                status="failing",
-                message=f"OpenCritic request failed: {type(exc).__name__}",
-            )
+        return SourceHealth(
+            source="opencritic",
+            configured=True,
+            working=True,
+            status="ok",
+            message="Configured; live OpenCritic search is manual to preserve the 24/day quota",
+        )
 
     async def search_game(self, title: str, release_year: int | None = None) -> NormalizedGame | None:
         if not self.is_configured():
             return None
-        # Search and detail draw from separate buckets — the provider limits the
-        # search endpoint far more tightly than its other routes.
-        if not await get_rate_limiter().acquire(OPENCRITIC_SEARCH_SOURCE):
+        limiter = get_rate_limiter()
+        if (
+            limiter.remaining("OpenCritic") < 2
+            or limiter.remaining(OPENCRITIC_SEARCH_SOURCE) < 1
+        ):
+            return None
+        # A search consumes both the plan-wide Requests object and the tighter
+        # custom Searches object; the following detail consumes Requests again.
+        if not await limiter.acquire("OpenCritic"):
+            return None
+        if not await limiter.acquire(OPENCRITIC_SEARCH_SOURCE):
             return None
         base = self._base()
         headers = self._headers()
@@ -155,7 +106,7 @@ class OpenCriticService:
                 game_id = selected.get("id")
                 if not game_id:
                     return None
-                if not await get_rate_limiter().acquire("OpenCritic"):
+                if not await limiter.acquire("OpenCritic"):
                     return None
                 detail = await client.get(f"{base}/game/{game_id}")
                 if not detail.is_success:

@@ -1,9 +1,9 @@
 """
 Provider quota guards.
 
-OpenCritic is a metered plan: exceeding it is billed. These tests pin the two
-behaviours that keep real usage below the provider ceiling — a throttled request
-is never retried, and every ceiling is reduced by a safety reserve.
+OpenCritic's free RapidAPI plan has hard daily request/search ceilings and a
+separate paid bandwidth overage. These tests pin local caps below those hard
+ceilings and prevent retries from multiplying quota burn.
 """
 
 import asyncio
@@ -59,12 +59,12 @@ async def test_server_error_is_retried() -> None:
     assert attempts == 2
 
 
-def test_metered_sources_reserve_more_headroom() -> None:
+def test_opencritic_hard_limit_headroom_is_built_into_its_local_caps() -> None:
     cfg = get_settings()
-    metered = cfg.budget_reserve_percent("OpenCritic")
     ordinary = cfg.budget_reserve_percent("RAWG")
 
-    assert metered >= ordinary
+    assert cfg.budget_reserve_percent("OpenCritic") == 0
+    assert cfg.budget_reserve_percent(OPENCRITIC_SEARCH_SOURCE) == 0
     assert ordinary > 0, "every provider needs headroom below its ceiling"
     assert "OpenCritic" in METERED_SOURCES
     assert OPENCRITIC_SEARCH_SOURCE in METERED_SOURCES
@@ -79,10 +79,13 @@ def test_opencritic_search_has_its_own_tighter_bucket() -> None:
 
 
 def test_opencritic_defaults_stay_within_the_free_usage_policy() -> None:
-    limits = get_settings().provider_daily_limits()
+    cfg = get_settings()
+    limits = cfg.provider_daily_limits()
+    windows = cfg.provider_window_limits()
 
-    assert limits["OpenCritic"] == 4
-    assert limits[OPENCRITIC_SEARCH_SOURCE] == 2
+    assert limits["OpenCritic"] == 190
+    assert limits[OPENCRITIC_SEARCH_SOURCE] == 24
+    assert ("rolling", 3, 1) in windows["OpenCritic"]
 
 
 def test_metacritic_shares_the_rawg_budget() -> None:
