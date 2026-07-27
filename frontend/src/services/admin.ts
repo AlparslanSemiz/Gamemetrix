@@ -119,6 +119,8 @@ export interface PrimaryScoreCoverage {
   sources: Record<string, {
     live: number
     missing: number
+    applicable: number
+    not_applicable: number
     configured: boolean
   }>
   total_games: number

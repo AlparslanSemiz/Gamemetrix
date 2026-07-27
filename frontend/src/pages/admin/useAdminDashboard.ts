@@ -294,12 +294,12 @@ function useAdminMetrics(
 function catalogDataGaps(dataFill: DataFillStatus | null) {
   const catalog = dataFill?.catalog
   return [
-    ['Missing ratings', catalog?.missing_ratings ?? 0],
-    ['Missing 4-source score slots', catalog?.missing_primary_scores ?? 0],
-    ['Missing metadata', catalog?.missing_metadata ?? 0],
-    ['Missing HLTB', catalog?.missing_hltb ?? 0],
-    ['Missing prices', catalog?.missing_prices ?? 0],
-    ['Missing external IDs', catalog?.missing_external_ids ?? 0],
+    ['Never rating-checked', catalog?.missing_ratings ?? 0],
+    ['Missing applicable score slots', catalog?.missing_primary_scores ?? 0],
+    ['Never metadata-checked', catalog?.missing_metadata ?? 0],
+    ['No playtime match', catalog?.missing_hltb ?? 0],
+    ['No fresh price (24h)', catalog?.missing_prices ?? 0],
+    ['No external ID', catalog?.missing_external_ids ?? 0],
   ] as const
 }
 

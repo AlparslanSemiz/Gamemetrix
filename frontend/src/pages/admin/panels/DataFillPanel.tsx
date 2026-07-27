@@ -2,7 +2,7 @@ import { RefreshCw } from 'lucide-react'
 
 import type { DataFillStatus, PrimaryScoreCoverage } from '../../../services/admin'
 import { formatAdminDateTime } from '../format'
-import { AdminRow, Panel, RowList, TextRow } from './Panel'
+import { Panel, RowList } from './Panel'
 import { percent, ratio } from './math'
 
 const MINIMUM_BUDGET_BAR_PERCENT = 4
@@ -29,9 +29,12 @@ export function DataFillPanel({
   onStartPrimaryScores,
 }: DataFillPanelProps) {
   const totalGames = dataFill?.primary_scores.total_games ?? 0
+  const liveSlots = dataFill?.primary_scores.live_score_slots ?? 0
+  const targetSlots = dataFill?.primary_scores.target_score_slots ?? 0
+  const completeGames = dataFill?.primary_scores.complete_games ?? 0
   return (
     <Panel
-      title="Data Fill"
+      title="Data coverage & fill"
       width="wide"
       action={
         <DataFillActions
@@ -43,17 +46,38 @@ export function DataFillPanel({
         />
       }
     >
+      <div className="admin-fill-summary">
+        <CoverageStat
+          label="Catalog"
+          value={dataFill?.catalog.total_games ?? 0}
+          detail="searchable games"
+        />
+        <CoverageStat
+          label="Primary score coverage"
+          value={percent(liveSlots, targetSlots)}
+          detail={ratio(liveSlots, targetSlots)}
+          percentage
+        />
+        <CoverageStat
+          label="All applicable sources"
+          value={percent(completeGames, totalGames)}
+          detail={ratio(completeGames, totalGames)}
+          percentage
+        />
+      </div>
+      <p className="admin-fill-guidance">
+        Full-source completion is a strict catalog-wide ceiling, not the operating target.
+        Prioritize coverage for ranked games; playtime and fresh prices are optional rotating data.
+      </p>
       <div className="admin-data-fill-grid">
-        <RowList>
-          <AdminRow label="Total games" value={dataFill?.catalog.total_games ?? 0} />
-          <TextRow
-            label="4-source complete"
-            value={ratio(dataFill?.primary_scores.complete_games ?? 0, totalGames)}
-          />
-          {dataGaps.map(([label, value]) => (
-            <AdminRow key={label} label={label} value={value} />
-          ))}
-        </RowList>
+        <div>
+          <h3 className="admin-fill-subtitle">Work queue indicators</h3>
+          <RowList>
+            {dataGaps.map(([label, value]) => (
+              <GapRow key={label} label={label} total={totalGames} value={value} />
+            ))}
+          </RowList>
+        </div>
         <DataFillBudgets
           totalGames={totalGames}
           primaryScoreRows={primaryScoreRows}
@@ -61,12 +85,55 @@ export function DataFillPanel({
         />
       </div>
       <div className="admin-inline-stats">
-        <span>Last run: {dataFill?.last_run?.status ?? 'none'}</span>
+        <span>Last pipeline run: {dataFill?.last_run?.status ?? 'none'}</span>
         {dataFill?.last_run?.finished_at ? (
           <span>{formatAdminDateTime(dataFill.last_run.finished_at)}</span>
         ) : null}
       </div>
+      <small className="admin-run-status-note">
+        Pipeline status reports whether the workflow ended; it does not mean the catalog is complete.
+      </small>
     </Panel>
+  )
+}
+
+function CoverageStat({
+  label,
+  value,
+  detail,
+  percentage = false,
+}: {
+  label: string
+  value: number
+  detail: string
+  percentage?: boolean
+}) {
+  return (
+    <div>
+      <span>{label}</span>
+      <strong>{percentage ? `${value.toFixed(1)}%` : value.toLocaleString('en-US')}</strong>
+      <small>{detail}</small>
+    </div>
+  )
+}
+
+function GapRow({
+  label,
+  total,
+  value,
+}: {
+  label: string
+  total: number
+  value: number
+}) {
+  return (
+    <div className="admin-gap-row">
+      <div>
+        <span>{label}</span>
+        <small>{percent(value, total).toFixed(1)}% of catalog</small>
+      </div>
+      <strong>{value.toLocaleString('en-US')}</strong>
+    </div>
   )
 }
 
@@ -131,32 +198,45 @@ function DataFillBudgets({
   rateLimitRows: DataFillPanelProps['rateLimitRows']
 }) {
   return (
-    <div className="admin-budget-list">
-      {primaryScoreRows.map(([source, coverage]) => (
-        <TextRow
-          key={`coverage-${source}`}
-          label={`${source} live`}
-          value={ratio(coverage.live, totalGames)}
-        />
-      ))}
-      {rateLimitRows.map(([source, budget]) => (
-        <div className="admin-budget-row" key={source}>
-          <span>{source}</span>
-          <div className="admin-budget-track">
-            <i
-              style={{
-                width: `${Math.max(
-                  MINIMUM_BUDGET_BAR_PERCENT,
-                  percent(budget.remaining, budget.limit),
-                )}%`,
-              }}
-            />
+    <div>
+      <h3 className="admin-fill-subtitle">Source coverage & daily headroom</h3>
+      <div className="admin-budget-list">
+        {primaryScoreRows.map(([source, coverage]) => {
+          const applicable = coverage.applicable || totalGames
+          const coveragePercent = percent(coverage.live, applicable)
+          return (
+            <div className="admin-source-coverage" key={`coverage-${source}`}>
+              <div>
+                <span>{source}</span>
+                <small>{ratio(coverage.live, applicable)} applicable games</small>
+              </div>
+              <div className="admin-budget-track">
+                <i style={{ width: `${coveragePercent}%` }} />
+              </div>
+              <strong>{coveragePercent.toFixed(1)}%</strong>
+            </div>
+          )
+        })}
+        <div className="admin-budget-divider" />
+        {rateLimitRows.map(([source, budget]) => (
+          <div className="admin-budget-row" key={source}>
+            <span>{source}</span>
+            <div className="admin-budget-track">
+              <i
+                style={{
+                  width: `${Math.max(
+                    MINIMUM_BUDGET_BAR_PERCENT,
+                    percent(budget.remaining, budget.limit),
+                  )}%`,
+                }}
+              />
+            </div>
+            <strong>
+              {budget.remaining}/{budget.limit}
+            </strong>
           </div>
-          <strong>
-            {budget.remaining}/{budget.limit}
-          </strong>
-        </div>
-      ))}
+        ))}
+      </div>
     </div>
   )
 }
