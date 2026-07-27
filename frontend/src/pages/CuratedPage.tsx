@@ -3,7 +3,7 @@ import { Link } from 'react-router'
 import { useAccount } from '../state/useAccount'
 import { trackProductEvent } from '../services/analytics'
 import type { Game, PriceSnapshot } from '../types/game'
-import { currentPriceSnapshots } from '../utils/prices'
+import { ACTIONABLE_PRICE_MAX_AGE_MS, currentPriceSnapshots } from '../utils/prices'
 import { isProtonTier, PROTON_TIER_LABELS } from '../utils/proton'
 import { safeExternalUrl } from '../utils/url'
 import './CuratedPage.css'
@@ -21,7 +21,7 @@ export interface CuratedPageData {
 const PRIMARY_SOURCES = ['Metacritic', 'OpenCritic', 'Steam', 'IGDB'] as const
 
 function bestPrice(prices: PriceSnapshot[]): PriceSnapshot | undefined {
-  return currentPriceSnapshots(prices)
+  return currentPriceSnapshots(prices, ACTIONABLE_PRICE_MAX_AGE_MS)
     .filter((price) => price.is_free || price.sale_price != null || price.list_price != null)
     .sort((left, right) => Number(left.sale_price ?? left.list_price ?? Infinity) - Number(right.sale_price ?? right.list_price ?? Infinity))[0]
 }

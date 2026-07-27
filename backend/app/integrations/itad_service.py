@@ -7,6 +7,7 @@ Key passed with the current ITAD-API-Key header.
 Default region: EU / EUR.
 """
 
+import asyncio
 import logging
 import time
 from dataclasses import dataclass
@@ -16,6 +17,7 @@ import httpx
 
 from ..config import get_settings
 from .rate_limiter import get_rate_limiter
+from .title_matching import titles_match
 from .types import NormalizedGame, SourceHealth, bounded_float, bounded_int
 from .value_score import PriceData
 
@@ -25,6 +27,8 @@ ITAD_BASE = "https://api.isthereanydeal.com"
 DEFAULT_ITAD_COUNTRY = "DE"
 SMOKE_TEST_TITLE = "Hades"
 SMOKE_TEST_TITLES = ["Hades", "Portal 2", "Celeste", "Elden Ring", "Baldur's Gate 3"]
+_MAX_DEAL_URL_LENGTH = 500  # PriceSnapshot.url column width
+_AUTH_FAILURE_CODES = frozenset({401, 403})
 
 
 def _auth_header() -> dict[str, str]:
@@ -36,6 +40,24 @@ def _country_code(country: str) -> str:
     return normalized if len(normalized) == 2 and normalized.isalpha() else DEFAULT_ITAD_COUNTRY
 
 
+def _verified_id(game: dict, expected_title: str) -> str | None:
+    """ITAD's lookup is fuzzy, so an unverified hit stores another game's price."""
+    matched_title = game.get("title")
+    if not titles_match(expected_title, matched_title if isinstance(matched_title, str) else None):
+        log.info("ITAD lookup rejected: %r matched %r", expected_title, matched_title)
+        return None
+    return str(game["id"])
+
+
+def _log_failure(operation: str, subject: str, exc: Exception) -> None:
+    """A swallowed ITAD error is indistinguishable from 'no deals' — say which it was."""
+    status = exc.response.status_code if isinstance(exc, httpx.HTTPStatusError) else None
+    if status in _AUTH_FAILURE_CODES:
+        log.error("ITAD key rejected on %s (HTTP %s)", operation, status)
+        return
+    log.warning("ITAD %s failed for %s: %s", operation, subject, exc)
+
+
 @dataclass(frozen=True)
 class _DealSummary:
     store: str
@@ -43,6 +65,7 @@ class _DealSummary:
     list_price: float | None
     sale_price: float | None
     discount_percent: int | None
+    url: str | None
 
 
 def _best_deal_summary(deals: list[dict]) -> _DealSummary:
@@ -81,7 +104,21 @@ def _best_deal_summary(deals: list[dict]) -> _DealSummary:
         discount_percent = round(max(0.0, (list_price - sale_price) / list_price) * 100)
     if not discount_percent:
         discount_percent = None
-    return _DealSummary(store, currency, list_price, sale_price, discount_percent)
+    return _DealSummary(
+        store,
+        currency,
+        list_price,
+        sale_price,
+        discount_percent,
+        _deal_url(best.get("url") if best else None),
+    )
+
+
+def _deal_url(raw: object) -> str | None:
+    """ITAD's terms forbid altering supplied URLs — keep it verbatim or drop it."""
+    if not isinstance(raw, str) or not raw:
+        return None
+    return raw if len(raw) <= _MAX_DEAL_URL_LENGTH else None
 
 
 def _history_low(low: dict | None) -> tuple[float | None, date | None]:
@@ -208,9 +245,9 @@ class ITADService:
                 resp.raise_for_status()
                 data = resp.json()
                 if data.get("found") and isinstance(data.get("game"), dict):
-                    return str(data["game"]["id"])
+                    return _verified_id(data["game"], title)
         except Exception as exc:
-            log.debug("ITAD lookup failed for %r: %s", title, exc)
+            _log_failure("lookup", repr(title), exc)
         return None
 
     async def lookup_by_steam_appid(self, app_id: int) -> str | None:
@@ -231,7 +268,7 @@ class ITADService:
                 if data.get("found") and isinstance(data.get("game"), dict):
                     return str(data["game"]["id"])
         except Exception as exc:
-            log.debug("ITAD steam appid lookup failed for %d: %s", app_id, exc)
+            _log_failure("steam appid lookup", str(app_id), exc)
         return None
 
     async def get_prices(
@@ -263,7 +300,7 @@ class ITADService:
                     deals = entry.get("deals", [])
                     return [deal for deal in deals if isinstance(deal, dict)] if isinstance(deals, list) else []
         except Exception as exc:
-            log.debug("ITAD prices failed for %s: %s", itad_id, exc)
+            _log_failure("prices", itad_id, exc)
         return []
 
     async def get_history_low(
@@ -294,7 +331,7 @@ class ITADService:
                 if str(entry.get("id")) == itad_id and entry.get("low"):
                     return entry["low"] if isinstance(entry["low"], dict) else None
         except Exception as exc:
-            log.debug("ITAD history low failed for %s: %s", itad_id, exc)
+            _log_failure("history low", itad_id, exc)
         return None
 
     async def get_subscriptions(self, itad_id: str) -> list[str]:
@@ -327,7 +364,7 @@ class ITADService:
                         if isinstance(subscription, dict) and subscription.get("name")
                     ]
         except Exception as exc:
-            log.debug("ITAD subscriptions failed for %s: %s", itad_id, exc)
+            _log_failure("subscriptions", itad_id, exc)
         return []
 
     async def fetch_price_data(
@@ -343,7 +380,6 @@ class ITADService:
         if not itad_id:
             return None
 
-        import asyncio
         deals, low, subs = await asyncio.gather(
             self.get_prices(itad_id, country),
             self.get_history_low(itad_id, country),
@@ -372,6 +408,7 @@ class ITADService:
             itad_id=itad_id,
             fetched_at=datetime.now(UTC),
             source="ITAD",
+            url=deal.url,
         )
 
     def normalize_for_external_id(self, itad_id: str, title: str) -> NormalizedGame:

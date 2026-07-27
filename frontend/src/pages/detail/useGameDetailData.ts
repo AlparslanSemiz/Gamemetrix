@@ -5,7 +5,7 @@ import {
   getGameTrailer,
   getSimilarGames,
 } from '../../services/games'
-import type { Game } from '../../types/game'
+import type { Game, SeriesGameItem } from '../../types/game'
 import { SIMILAR_DISPLAY_LIMIT } from './SimilarGamesSection'
 
 export function useGameDetailGame(
@@ -53,7 +53,7 @@ export function useSimilarGames(
   slug: string | undefined,
   initialGame: Game | undefined,
 ) {
-  const [games, setGames] = useState<Game[]>([])
+  const [games, setGames] = useState<SeriesGameItem[]>([])
   const [loading, setLoading] = useState(false)
   const initialGameSlug = initialGame?.slug
 

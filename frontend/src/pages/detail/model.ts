@@ -7,7 +7,7 @@ import {
   formatProtonScore,
   isProtonTier,
 } from '../../utils/proton'
-import { currentPriceSnapshots } from '../../utils/prices'
+import { PANEL_PRICE_MAX_AGE_MS, currentPriceSnapshots } from '../../utils/prices'
 import { scoreColor, scoreColorRgb } from '../../utils/scoreColors'
 import { steamAppIdFromGame } from '../../utils/steam'
 import { safeExternalUrl } from '../../utils/url'
@@ -70,7 +70,7 @@ export function buildGameDetailModel(game: Game): GameDetailModel {
     earlyAccessSuffix,
     gameModes: (game.game_modes ?? []).filter(Boolean),
     playtime: playtimeDetail(game),
-    priceSnapshots: currentPriceSnapshots(game.price_snapshots ?? []),
+    priceSnapshots: currentPriceSnapshots(game.price_snapshots ?? [], PANEL_PRICE_MAX_AGE_MS),
     primaryReleaseLabel,
     protonText: protonLabel(game),
     protonUrl: steamAppId

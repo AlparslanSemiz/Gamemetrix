@@ -30,6 +30,7 @@ class PriceData:
     itad_id: str | None
     fetched_at: datetime
     source: str
+    url: str | None = None
 
 
 def calculate_value_score(

@@ -4,10 +4,11 @@ A top-ranked global pool alone buries niche titles, so genre-, series-, signal-
 and developer-targeted pools are unioned in before anything is scored.
 """
 
+import json
 from datetime import date
 
 from sqlalchemy import Select, or_, select, text
-from sqlalchemy.orm import Session, noload
+from sqlalchemy.orm import Session, defer, noload
 
 from ...models import Game
 from .ranking import rank_similar_games
@@ -40,20 +41,45 @@ _MIN_SERIES_PATTERN_LENGTH = 5
 # ("Dark Souls III" and "Dark Souls II" both normalize to "dark souls").
 _FRANCHISE_MIN_FIRST_TOKEN = 6
 
-_GENRE_MATCH_SQL = (
-    "EXISTS (SELECT 1 FROM jsonb_array_elements_text(games.genres::jsonb)"
-    " AS value WHERE value = :genre)"
+# Containment rather than a lateral expansion: `ix_games_genres_gin` indexes the
+# `genres::jsonb` cast, and only `@>` can use it. Expanding the array per row meant
+# a rare genre ("FPS") scanned the whole table before its LIMIT filled — 15s for 8
+# rows. Semantics are unchanged: both match an exact element string.
+_GENRE_MATCH_SQL = "games.genres::jsonb @> CAST(:genre AS jsonb)"
+
+
+# Ranking never reads these, and a candidate pool runs into four figures, so
+# leaving them in the SELECT means parsing megabytes of JSON to pick ten rows.
+_UNRANKED_COLUMNS = (
+    Game.screenshots,
+    Game.system_requirements,
+    Game.dlcs,
+    Game.similar_games,
+    Game.source_scores,
 )
 
 
 def _base_query(limit: int) -> Select[tuple[Game]]:
     return (
         select(Game)
-        .options(noload(Game.price_snapshots))
+        .options(noload(Game.price_snapshots), *(defer(column) for column in _UNRANKED_COLUMNS))
         .where(Game.content_type == "game")
         .order_by(Game.rank_score.desc())
         .limit(limit)
     )
+
+
+def games_by_slugs(db: Session, slugs: list[str]) -> list[Game]:
+    """Re-select cached related-game slugs into the caller's session, order preserved."""
+    if not slugs:
+        return []
+    rows = db.scalars(
+        select(Game)
+        .options(noload(Game.price_snapshots), *(defer(column) for column in _UNRANKED_COLUMNS))
+        .where(Game.slug.in_(slugs))
+    ).all()
+    by_slug = {game.slug: game for game in rows}
+    return [by_slug[slug] for slug in slugs if slug in by_slug]
 
 
 def find_similar_games(db: Session, source: Game, display_limit: int = 10) -> list[Game]:
@@ -76,7 +102,9 @@ def _candidate_queries(source: Game) -> list[Select[tuple[Game]]]:
 
 def _genre_queries(source: Game) -> list[Select[tuple[Game]]]:
     return [
-        _base_query(SIMILAR_GENRE_POOL).where(text(_GENRE_MATCH_SQL)).params(genre=genre)
+        _base_query(SIMILAR_GENRE_POOL)
+        .where(text(_GENRE_MATCH_SQL))
+        .params(genre=json.dumps([genre]))
         for genre in _search_genres(source)
     ]
 

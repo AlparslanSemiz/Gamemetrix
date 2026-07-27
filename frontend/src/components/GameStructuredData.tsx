@@ -1,5 +1,5 @@
 import type { Game } from '../types/game'
-import { currentPriceSnapshots } from '../utils/prices'
+import { ACTIONABLE_PRICE_MAX_AGE_MS, currentPriceSnapshots } from '../utils/prices'
 import { safeExternalUrl } from '../utils/url'
 
 function validHttpUrl(value: string | null | undefined): string | undefined {
@@ -22,7 +22,7 @@ export function GameStructuredData({ game }: { game: Game }) {
       && Number.isInteger(score.review_count ?? 0)
       && (score.review_count ?? 0) > 0
     ))
-  const price = currentPriceSnapshots(game.price_snapshots ?? [])
+  const price = currentPriceSnapshots(game.price_snapshots ?? [], ACTIONABLE_PRICE_MAX_AGE_MS)
     .filter((entry) => entry.is_free || entry.sale_price != null || entry.list_price != null)
     .sort((left, right) => Number(left.sale_price ?? left.list_price ?? Infinity) - Number(right.sale_price ?? right.list_price ?? Infinity))[0]
   const offerPrice = price?.is_free ? 0 : price?.sale_price ?? price?.list_price

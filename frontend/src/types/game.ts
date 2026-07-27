@@ -133,6 +133,11 @@ export interface SeriesResponse {
   total: number
 }
 
+export interface SimilarGamesResponse {
+  games: SeriesGameItem[]
+  total: number
+}
+
 export interface Facets {
   genres: string[]
   years: number[]

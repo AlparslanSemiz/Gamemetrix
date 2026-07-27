@@ -1,19 +1,23 @@
-import type { CSSProperties } from 'react'
+import { type CSSProperties, type SyntheticEvent } from 'react'
 import { Link } from 'react-router'
-import type { Game } from '../../types/game'
+import type { Game, SeriesGameItem } from '../../types/game'
+import { fallbackCoverUrl, isPlaceholderImageUrl } from '../../utils/coverImage'
 import { scoreColor } from '../../utils/scoreColors'
 import { safeExternalUrl } from '../../utils/url'
 import { normalizeSignal } from './format'
 
 export const SIMILAR_DISPLAY_LIMIT = 10
 
-function CatalogSimilarCard({ game }: { game: Game }) {
+function CatalogSimilarCard({ game }: { game: SeriesGameItem }) {
+  const coverSrc = isPlaceholderImageUrl(game.cover_url) ? fallbackCoverUrl(game.title) : game.cover_url
+  const handleError = (event: SyntheticEvent<HTMLImageElement>) => {
+    const fallback = fallbackCoverUrl(game.title)
+    if (event.currentTarget.src !== fallback) event.currentTarget.src = fallback
+  }
   return (
     <Link to={`/game/${game.slug}`} prefetch="intent" className="dp-similar-card">
       <div className="dp-similar-cover">
-        {game.cover_url || game.image_url ? (
-          <img src={game.cover_url || game.image_url || ''} alt="" loading="lazy" />
-        ) : null}
+        <img src={coverSrc} alt="" loading="lazy" decoding="async" onError={handleError} />
         <span className="dp-similar-score" style={{ '--score-color': scoreColor(Math.round(game.metrix_score)) } as CSSProperties}>
           {Math.round(game.metrix_score)}
         </span>
@@ -59,7 +63,7 @@ export function SimilarGamesSection({
   loading = false,
 }: {
   game: Game
-  catalogGames: Game[]
+  catalogGames: SeriesGameItem[]
   loading?: boolean
 }) {
   const rawgItems = game.similar_games.filter((item) => item.title !== game.title)
@@ -73,11 +77,21 @@ export function SimilarGamesSection({
 
   if (!hasItems && loading) {
     return (
-      <section className="dp-similar-section" aria-labelledby="similar-games-title">
+      <section className="dp-similar-section" aria-labelledby="similar-games-title" aria-busy="true">
         <div className="dp-similar-heading">
           <h2 id="similar-games-title">Games like {game.title}</h2>
         </div>
-        <p className="dp-no-scores">Finding similar games…</p>
+        <div className="dp-similar-grid">
+          {Array.from({ length: SIMILAR_DISPLAY_LIMIT }, (_, index) => (
+            <div className="dp-similar-card is-skeleton" key={index} aria-hidden="true">
+              <div className="dp-similar-cover" />
+              <div className="dp-similar-body">
+                <strong />
+                <span />
+              </div>
+            </div>
+          ))}
+        </div>
       </section>
     )
   }

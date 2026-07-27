@@ -228,6 +228,12 @@ class SeriesResponse(BaseModel):
     total: int
 
 
+class SimilarGamesResponse(BaseModel):
+    """Related-games strip: same lean tile payload as the franchise row."""
+    games: list[SeriesGameItem]
+    total: int
+
+
 class FacetsResponse(BaseModel):
     genres: list[str]
     years: list[int]

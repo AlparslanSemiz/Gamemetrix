@@ -3,7 +3,7 @@
 import asyncio
 import datetime
 
-from sqlalchemy import desc, select
+from sqlalchemy import desc, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from ..integrations.cheapshark_service import cheapshark_service
@@ -14,6 +14,12 @@ from ..integrations.types import bounded_float
 from ..models import Game, PriceSnapshot
 
 PRICE_REFRESH_MAX_AGE = datetime.timedelta(hours=12)
+
+# The SQL gate reads `prices_refreshed_at`, but the authoritative check also
+# inspects the snapshots themselves, so a few rows drop out afterwards. Over-fetch
+# enough that a full batch still survives the in-Python filter.
+_CANDIDATE_POOL_FACTOR = 4
+_MIN_CANDIDATE_POOL = 100
 
 
 def _cheapshark_price_sort_key(deal: dict) -> float:
@@ -164,6 +170,7 @@ async def _fetch_itad_snapshot(
         is_subscription_included=price_data.is_subscription_included,
         subscription_service=price_data.subscription_service,
         itad_id=price_data.itad_id,
+        url=price_data.url,
         fetched_at=now,
         created_at=now,
     ), attempted
@@ -270,16 +277,28 @@ def _cheapshark_deal_matches_game(raw: dict, game: Game, app_id: int | None) -> 
 
 
 def price_backfill_candidates(db: Session, limit: int) -> list[Game]:
-    pool_limit = max(limit * 8, 200)
-    games = list(
-        db.scalars(
-            select(Game)
-            .where(Game.content_type == "game")
-            .options(selectinload(Game.price_snapshots))
-            .order_by(desc(Game.rank_score), desc(Game.metrix_score))
-            .limit(pool_limit)
-        ).all()
-    )
+    """
+    Highest-ranked games whose prices are stale, best first.
+
+    The freshness gate is in SQL so the sweep advances through the catalog as rows
+    get stamped. Filtering a fixed top-N pool in Python instead kept re-offering the
+    same few hundred games forever, and nothing below that pool was ever priced.
+    """
+    cutoff = datetime.datetime.now(datetime.UTC) - PRICE_REFRESH_MAX_AGE
+    pool_limit = max(limit * _CANDIDATE_POOL_FACTOR, _MIN_CANDIDATE_POOL)
+    games = db.scalars(
+        select(Game)
+        .where(Game.content_type == "game")
+        .where(
+            or_(
+                Game.prices_refreshed_at.is_(None),
+                Game.prices_refreshed_at < cutoff,
+            )
+        )
+        .options(selectinload(Game.price_snapshots))
+        .order_by(desc(Game.rank_score), desc(Game.metrix_score))
+        .limit(pool_limit)
+    ).all()
     due = [game for game in games if price_snapshots_need_refresh(game)]
     return due[:limit]
 

@@ -1,7 +1,7 @@
 import { Link, useNavigate, useParams } from 'react-router'
 import { SeriesRow } from '../components/SeriesRow'
 import { TrailerModal } from '../components/TrailerModal'
-import type { Game } from '../types/game'
+import type { Game, SeriesGameItem } from '../types/game'
 import { CollectionActions } from './detail/CollectionActions'
 import { DlcSection } from './detail/DlcSection'
 import { Gallery } from './detail/Gallery'
@@ -12,7 +12,7 @@ import { GameScoreSummary } from './detail/GameScoreSummary'
 import { buildGameDetailModel } from './detail/model'
 import { PricePanel } from './detail/PricePanel'
 import { SimilarGamesSection } from './detail/SimilarGamesSection'
-import { SysReqBlock } from './detail/SysReqBlock'
+import { SysReqPanel } from './detail/SysReqPanel'
 import {
   useGameDetailGame,
   useGameTrailer,
@@ -99,7 +99,7 @@ function GameDetailContent({
   game: Game
   model: ReturnType<typeof buildGameDetailModel>
   onOpenTrailer: () => void
-  similarGames: Game[]
+  similarGames: SeriesGameItem[]
   similarLoading: boolean
 }) {
   const hasRelated = (
@@ -165,9 +165,7 @@ function SystemRequirements({ game }: { game: Game }) {
   return (
     <div className="dp-section">
       <h2 className="dp-section-title">System requirements</h2>
-      {game.system_requirements.map((requirement) => (
-        <SysReqBlock key={requirement.platform} req={requirement} />
-      ))}
+      <SysReqPanel requirements={game.system_requirements} />
     </div>
   )
 }

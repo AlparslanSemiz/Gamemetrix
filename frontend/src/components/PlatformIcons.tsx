@@ -1,6 +1,7 @@
 import type React from 'react'
 import type { Game } from '../types/game'
 import { storeUrlForGroup } from '../utils/storeLinks'
+import { deduplicatePlatforms, normalizePlatform } from './platforms'
 import './PlatformIcons.css'
 
 // ─── Platform icon SVGs ───────────────────────────────────────────────────────
@@ -87,98 +88,30 @@ const EpicIcon = () => (
   </svg>
 )
 
-// ─── Platform normalization map ───────────────────────────────────────────────
 
-const NORMALIZE: Record<string, string> = {
-  pc: 'pc', windows: 'pc', 'microsoft windows': 'pc', 'pc windows': 'pc',
-  steam: 'steam',
-  macos: 'macos', 'mac os': 'macos', mac: 'macos', 'apple mac': 'macos', 'os x': 'macos',
-  linux: 'linux',
-  playstation: 'ps', 'playstation 3': 'ps3', ps3: 'ps3',
-  'playstation 4': 'ps4', ps4: 'ps4',
-  'playstation 5': 'ps5', ps5: 'ps5',
-  xbox: 'xbox',
-  'xbox 360': 'xbox360',
-  'xbox one': 'xboxone',
-  'xbox series x': 'xboxseries', 'xbox series x/s': 'xboxseries',
-  'xbox series': 'xboxseries', 'xbox series s': 'xboxseries',
-  'nintendo switch': 'switch', switch: 'switch',
-  ios: 'ios', iphone: 'ios', ipad: 'ios',
-  android: 'android',
-  gog: 'gog', 'gog.com': 'gog',
-  'epic games store': 'epic', 'epic games': 'epic', epic: 'epic',
-  'nintendo wii': 'wii', wii: 'wii',
-  'nintendo wii u': 'wiiu', 'wii u': 'wiiu',
-  'nintendo 3ds': '3ds', '3ds': '3ds',
-  'nintendo ds': 'ds',
-  'playstation vita': 'vita', vita: 'vita',
-  'playstation portable': 'psp', psp: 'psp',
-}
+// ─── Key → glyph ──────────────────────────────────────────────────────────────
+// Display metadata (name, colour, grouping) lives in platforms.ts; this file only
+// maps a canonical key to its brand mark.
 
-interface PlatformDef {
-  name: string
-  short: string
-  color: string
-  group: string
-  priority: number
-  Icon: () => React.ReactElement
-}
-
-// Each entry: canonical key → display info
-const PLATFORM_DEFS: Record<string, PlatformDef> = {
-  pc:         { name: 'Windows PC',       short: 'Win',  color: '#00A4EF', group: 'pc',    priority: 2, Icon: WindowsIcon },
-  steam:      { name: 'Steam',            short: 'Steam',color: '#66C0F4', group: 'pc',    priority: 1, Icon: SteamIcon },
-  macos:      { name: 'macOS',            short: 'Mac',  color: '#A2AAAD', group: 'macos', priority: 1, Icon: AppleIcon },
-  linux:      { name: 'Linux',            short: 'Linux',color: '#FCC624', group: 'linux', priority: 1, Icon: LinuxIcon },
-  ps3:        { name: 'PlayStation 3',    short: 'PS3',  color: '#0070CC', group: 'ps',    priority: 3, Icon: PsIcon },
-  ps4:        { name: 'PlayStation 4',    short: 'PS4',  color: '#0070CC', group: 'ps',    priority: 2, Icon: PsIcon },
-  ps5:        { name: 'PlayStation 5',    short: 'PS5',  color: '#0070CC', group: 'ps',    priority: 1, Icon: PsIcon },
-  ps:         { name: 'PlayStation',      short: 'PS',   color: '#0070CC', group: 'ps',    priority: 4, Icon: PsIcon },
-  xbox:       { name: 'Xbox',             short: 'XB',   color: '#107C10', group: 'xbox',  priority: 4, Icon: XboxIcon },
-  xbox360:    { name: 'Xbox 360',         short: 'X360', color: '#107C10', group: 'xbox',  priority: 3, Icon: XboxIcon },
-  xboxone:    { name: 'Xbox One',         short: 'XB1',  color: '#107C10', group: 'xbox',  priority: 2, Icon: XboxIcon },
-  xboxseries: { name: 'Xbox Series X/S',  short: 'XBS',  color: '#107C10', group: 'xbox',  priority: 1, Icon: XboxIcon },
-  switch:     { name: 'Nintendo Switch',  short: 'NSW',  color: '#E60012', group: 'switch',priority: 1, Icon: SwitchIcon },
-  ios:        { name: 'iOS',              short: 'iOS',  color: '#A2AAAD', group: 'ios',   priority: 1, Icon: AppleIcon },
-  android:    { name: 'Android',          short: 'And',  color: '#3DDC84', group: 'android',priority:1, Icon: AndroidIcon },
-  gog:        { name: 'GOG',              short: 'GOG',  color: '#86328A', group: 'gog',   priority: 1, Icon: GogIcon },
-  epic:       { name: 'Epic Games Store', short: 'Epic', color: '#D3D3D3', group: 'epic',  priority: 1, Icon: EpicIcon },
-  wii:        { name: 'Wii',              short: 'Wii',  color: '#E60012', group: 'wii',   priority: 1, Icon: SwitchIcon },
-  wiiu:       { name: 'Wii U',            short: 'WiiU', color: '#E60012', group: 'wiiu',  priority: 1, Icon: SwitchIcon },
-}
-
-// ─── Normalization helpers ────────────────────────────────────────────────────
-
-function normalizePlatform(raw: string): string {
-  return NORMALIZE[raw.toLowerCase().trim()] ?? 'other'
-}
-
-/** Deduplicate platforms: keep only the highest-priority entry per group */
-function deduplicatePlatforms(platforms: string[]): PlatformDef[] {
-  const bestPerGroup = new Map<string, PlatformDef & { key: string }>()
-
-  for (const raw of platforms) {
-    const key = normalizePlatform(raw)
-    const def = PLATFORM_DEFS[key]
-    if (!def) continue
-
-    const existing = bestPerGroup.get(def.group)
-    if (!existing || def.priority < existing.priority) {
-      bestPerGroup.set(def.group, { ...def, key })
-    }
-  }
-
-  return Array.from(bestPerGroup.values()).sort((a, b) => {
-    const ORDER = ['pc', 'steam', 'ps', 'xbox', 'switch', 'macos', 'linux', 'ios', 'android', 'gog', 'epic']
-    return (ORDER.indexOf(a.group) ?? 99) - (ORDER.indexOf(b.group) ?? 99)
-  })
+const PLATFORM_ICONS: Record<string, () => React.ReactElement> = {
+  pc: WindowsIcon,
+  steam: SteamIcon,
+  macos: AppleIcon,
+  linux: LinuxIcon,
+  ps3: PsIcon, ps4: PsIcon, ps5: PsIcon, ps: PsIcon,
+  xbox: XboxIcon, xbox360: XboxIcon, xboxone: XboxIcon, xboxseries: XboxIcon,
+  switch: SwitchIcon, wii: SwitchIcon, wiiu: SwitchIcon,
+  ios: AppleIcon,
+  android: AndroidIcon,
+  gog: GogIcon,
+  epic: EpicIcon,
 }
 
 /** One platform brand glyph, for contexts that render the platform name themselves. */
 export function PlatformGlyph({ platform }: { platform: string }) {
-  const def = PLATFORM_DEFS[normalizePlatform(platform)]
-  if (!def) return null
-  return <def.Icon />
+  const Icon = PLATFORM_ICONS[normalizePlatform(platform)]
+  if (!Icon) return null
+  return <Icon />
 }
 
 // ─── PlatformIcons component ──────────────────────────────────────────────────
@@ -211,6 +144,8 @@ export function PlatformIcons({ platforms, mode = 'list', maxVisible, game }: Pl
         const label = mode === 'detail' ? def.name : mode === 'list' ? def.short : undefined
         const href = game ? storeUrlForGroup(def.group, game) : null
         const style = { '--pf-color': def.color } as React.CSSProperties
+        const Icon = PLATFORM_ICONS[def.key]
+        if (!Icon) return null
         if (href) {
           return (
             <a
@@ -223,7 +158,7 @@ export function PlatformIcons({ platforms, mode = 'list', maxVisible, game }: Pl
               title={`${def.name} — view in store`}
               aria-label={`${def.name} store page`}
             >
-              <def.Icon />
+              <Icon />
               {label ? <span className="pf-label">{label}</span> : null}
             </a>
           )
@@ -236,7 +171,7 @@ export function PlatformIcons({ platforms, mode = 'list', maxVisible, game }: Pl
             title={def.name}
             aria-label={def.name}
           >
-            <def.Icon />
+            <Icon />
             {label ? <span className="pf-label">{label}</span> : null}
           </span>
         )

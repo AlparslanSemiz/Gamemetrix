@@ -40,6 +40,7 @@ async def import_itad_price(db: Session, game: Game, country: str) -> dict[str, 
             is_subscription_included=price_data.is_subscription_included,
             subscription_service=price_data.subscription_service,
             itad_id=price_data.itad_id,
+            url=price_data.url,
             fetched_at=now,
             created_at=now,
         )

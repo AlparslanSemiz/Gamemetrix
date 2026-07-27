@@ -6,6 +6,7 @@ import type {
   ProviderStatus,
   ScoreWeightsResponse,
   SeriesResponse,
+  SimilarGamesResponse,
   TrailerResponse,
 } from '../types/game'
 import { API_BASE_URL } from './api'
@@ -96,16 +97,24 @@ export async function getGameBySlug(slug: string, refreshMetadata = false): Prom
   return response.json()
 }
 
-export async function getSimilarGames(slug: string, limit = 10): Promise<GameListResponse> {
-  const response = await fetch(`${API_BASE_URL}/api/games/${slug}/similar?limit=${limit}`)
-  if (!response.ok) throw new Error('Failed to fetch similar games')
-  return response.json()
+export async function getSimilarGames(slug: string, limit = 10): Promise<SimilarGamesResponse> {
+  return relatedGamesRequest(`${API_BASE_URL}/api/games/${slug}/similar?limit=${limit}`, 'similar games')
 }
 
 export async function getSeriesGames(slug: string, limit = 8): Promise<SeriesResponse> {
-  const response = await fetch(`${API_BASE_URL}/api/games/${slug}/series?limit=${limit}`)
-  if (!response.ok) throw new Error('Failed to fetch series games')
-  return response.json()
+  return relatedGamesRequest(`${API_BASE_URL}/api/games/${slug}/series?limit=${limit}`, 'series games')
+}
+
+async function relatedGamesRequest<T>(url: string, label: string): Promise<T> {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), catalogRequestTimeoutMs())
+  try {
+    const response = await fetch(url, { signal: controller.signal })
+    if (!response.ok) throw new Error(`Failed to fetch ${label}`)
+    return await response.json() as T
+  } finally {
+    clearTimeout(timeout)
+  }
 }
 
 export async function getFacets(): Promise<Facets> {

@@ -375,11 +375,11 @@
   display: flex;
   align-items: center;
   gap: 0.55rem;
-  font-size: 1.05rem;
+  font-size: 1.2rem;
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  color: #eef2f9;
+  color: var(--score-color, #eef2f9);
   margin: 0 0 1rem;
 }
 .dp-section-title::before {
@@ -711,6 +711,11 @@
   font-size: 0.72rem;
 }
 
+.dp-price-age {
+  color: #6b7280;
+  font-size: 0.68rem;
+}
+
 .dp-price-chart {
   display: grid;
   gap: 7px;
@@ -859,23 +864,40 @@
 
 /* ─── System requirements ────────────────────────────────────────────────── */
 
-.dp-sysreq-block {
+.dp-sysreq-panel {
   background: rgba(255, 255, 255, 0.025);
   border: 1px solid rgba(255, 255, 255, 0.07);
   border-radius: 10px;
   padding: 1rem;
-  margin-bottom: 1rem;
+}
+.dp-sysreq-platforms {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 0.75rem;
 }
 .dp-sysreq-platform {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 0.45rem;
-  font-size: 0.95rem;
+  padding: 6px 14px;
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: transparent;
+  font-size: 0.92rem;
   font-weight: 800;
-  color: #d6dbe8;
   letter-spacing: 0.01em;
-  margin: 0 0 0.7rem;
+  color: #9ca3af;
+  cursor: pointer;
+  transition: all 0.15s;
 }
+.dp-sysreq-platform:hover { color: #d1d5db; border-color: rgba(255, 255, 255, 0.22); }
+.dp-sysreq-platform.is-active {
+  color: var(--pf-color, #d6dbe8);
+  border-color: var(--pf-color, rgba(255, 255, 255, 0.28));
+  background: rgba(255, 255, 255, 0.05);
+}
+.dp-sysreq-platform.is-static { cursor: default; }
 .dp-sysreq-platform svg {
   width: 17px;
   height: 17px;
@@ -905,14 +927,44 @@
   border-color: var(--score-color, #3b82f6);
   color: var(--score-color, #93c5fd);
 }
-.dp-sysreq-text {
-  font-size: 0.75rem;
-  line-height: 1.65;
-  color: #9ca3af;
-  white-space: pre-wrap;
-  word-break: break-word;
+.dp-sysreq-table {
   margin: 0;
-  font-family: inherit;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+.dp-sysreq-row {
+  display: grid;
+  grid-template-columns: 150px 1fr;
+  gap: 14px;
+  padding: 11px 2px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  align-items: baseline;
+}
+.dp-sysreq-row:last-child { border-bottom: none; }
+.dp-sysreq-label {
+  color: #e8ecf5;
+  font-weight: 800;
+  font-size: 0.92rem;
+  letter-spacing: 0.01em;
+}
+.dp-sysreq-value {
+  margin: 0;
+  color: #c4c9d6;
+  font-size: 0.9rem;
+  line-height: 1.55;
+  word-break: break-word;
+}
+.dp-sysreq-note {
+  margin: 0.7rem 0 0;
+  font-size: 0.82rem;
+  line-height: 1.55;
+  color: #9ca3af;
+}
+
+@media (max-width: 640px) {
+  .dp-sysreq-row {
+    grid-template-columns: 1fr;
+    gap: 3px;
+  }
 }
 
 /* ─── DLCs / similar games ───────────────────────────────────────────────── */
@@ -1118,6 +1170,24 @@
   font-size: 0.78rem;
   font-weight: 750;
 }
+
+/* Placeholder tiles hold the grid's height so the real cards do not shift it. */
+.dp-similar-card.is-skeleton {
+  pointer-events: none;
+}
+.dp-similar-card.is-skeleton:hover {
+  transform: none;
+  border-color: rgba(255, 255, 255, 0.065);
+  background: #1a1a1a;
+}
+.dp-similar-card.is-skeleton .dp-similar-body strong,
+.dp-similar-card.is-skeleton .dp-similar-body span {
+  display: block;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.06);
+}
+.dp-similar-card.is-skeleton .dp-similar-body strong { height: 1.05rem; }
+.dp-similar-card.is-skeleton .dp-similar-body span { height: 0.78rem; width: 40%; }
 
 /* ─── RIGHT column — gallery + where to buy ──────────────────────────────── */
 

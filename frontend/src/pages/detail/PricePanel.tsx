@@ -1,8 +1,24 @@
 import type { Game, PriceSnapshot } from '../../types/game'
 import { trackProductEvent } from '../../services/analytics'
+import { newestFetchedAt } from '../../utils/prices'
 import { steamAppIdFromGame } from '../../utils/steam'
 import { safeExternalUrl } from '../../utils/url'
 import { formatDate, formatMoney } from './format'
+
+const MS_PER_HOUR = 60 * 60 * 1000
+const MS_PER_DAY = 24 * MS_PER_HOUR
+
+// Snapshots up to a week old are shown rather than hidden, so the panel has to
+// say how current they are.
+function freshnessLabel(prices: PriceSnapshot[]): string | null {
+  const newest = newestFetchedAt(prices)
+  if (newest === null) return null
+  const age = Date.now() - newest
+  if (age < MS_PER_HOUR) return 'Updated just now'
+  if (age < MS_PER_DAY) return `Updated ${Math.floor(age / MS_PER_HOUR)}h ago`
+  const days = Math.floor(age / MS_PER_DAY)
+  return `Updated ${days} day${days === 1 ? '' : 's'} ago`
+}
 
 function sortedPrices(prices: PriceSnapshot[]): PriceSnapshot[] {
   return [...prices].sort((a, b) => {
@@ -114,6 +130,7 @@ function buildPricePanelModel(prices: PriceSnapshot[], game: Game) {
     chartItems,
     chartMax,
     current: bestOffer?.priceLabel ?? 'N/A',
+    freshness: freshnessLabel(prices),
     hasDiscount: Boolean(best?.discount_percent && best.discount_percent > 0),
     historicalLow,
     offers,
@@ -130,6 +147,7 @@ function PriceOverview({ model }: { model: PricePanelModel }) {
     chartItems,
     chartMax,
     current,
+    freshness,
     hasDiscount,
     historicalLow,
     offers,
@@ -146,6 +164,7 @@ function PriceOverview({ model }: { model: PricePanelModel }) {
             {hasDiscount ? ` · ${best?.discount_percent}% off` : ''}
             {best?.region ? ` · ${best.region}` : ''}
           </small>
+          {freshness ? <small className="dp-price-age">{freshness}</small> : null}
         </div>
         <div className="dp-price-chart" aria-label="Price comparison">
           {chartItems.map((item) => (

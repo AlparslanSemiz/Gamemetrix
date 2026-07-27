@@ -6,9 +6,9 @@ import { scoreColor } from '../utils/scoreColors'
 import { fallbackCoverUrl, isPlaceholderImageUrl } from '../utils/coverImage'
 import './SeriesRow.css'
 
-// Self-fetching "More from this series" strip. Renders nothing while loading
-// or when the game has no franchise siblings, so it can be dropped into any
-// layout without the parent tracking its state.
+// Self-fetching "More from this series" strip. Renders nothing while loading or
+// when the game has no franchise siblings — most games have none, so a skeleton
+// here would flash a heading that then vanishes.
 export function SeriesRow({ slug }: { slug: string }) {
   const [result, setResult] = useState<{ slug: string; games: SeriesGameItem[] } | null>(null)
 

@@ -10,15 +10,20 @@ Layering: taxonomy (vocabulary) → signals (one game) → profiles (two games)
 """
 
 from .ai_rerank import rerank_with_ai
+from .cache import cached_series_slugs, cached_similar_slugs, clear_similarity_cache
 from .gates import passes_similarity_gate
-from .queries import find_series_games, find_similar_games
+from .queries import find_series_games, find_similar_games, games_by_slugs
 from .ranking import rank_similar_games
 from .scoring import similarity_score
 from .signals import series_key_for_title
 
 __all__ = [
+    "cached_series_slugs",
+    "cached_similar_slugs",
+    "clear_similarity_cache",
     "find_series_games",
     "find_similar_games",
+    "games_by_slugs",
     "passes_similarity_gate",
     "rank_similar_games",
     "rerank_with_ai",

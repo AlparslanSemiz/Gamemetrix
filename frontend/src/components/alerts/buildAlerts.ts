@@ -1,5 +1,5 @@
 import type { Game, PriceSnapshot } from '../../types/game'
-import { currentPriceSnapshots } from '../../utils/prices'
+import { ACTIONABLE_PRICE_MAX_AGE_MS, currentPriceSnapshots } from '../../utils/prices'
 import type { AlertKind, AlertPreferences, GameAlert } from './types'
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000
@@ -21,7 +21,7 @@ function formatMoney(value: number | null | undefined, currency: string): string
 }
 
 function priceAlert(game: Game, preferences: AlertPreferences): GameAlert | null {
-  const prices = currentPriceSnapshots(game.price_snapshots ?? [])
+  const prices = currentPriceSnapshots(game.price_snapshots ?? [], ACTIONABLE_PRICE_MAX_AGE_MS)
   const freePrice = prices.find((price) => price.is_free || price.sale_price === 0)
   if (freePrice) {
     return {

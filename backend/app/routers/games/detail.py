@@ -5,12 +5,19 @@ import logging
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+from starlette.concurrency import run_in_threadpool
 
 from ...config import get_settings
 from ...database import SessionLocal, get_db
 from ...models import Game
 from ...rate_limit import limiter
-from ...schemas import GameListResponse, GameRead, SeoGenreRef, SeriesResponse, TrailerResponse
+from ...schemas import (
+    GameRead,
+    SeoGenreRef,
+    SeriesResponse,
+    SimilarGamesResponse,
+    TrailerResponse,
+)
 from ...security import AuthenticatedUser, optional_admin_user
 from ...services.metadata_backfill import (
     game_needs_metadata_backfill,
@@ -19,8 +26,9 @@ from ...services.metadata_backfill import (
 )
 from ...services.seo import MIN_GENRE_LANDING_GAMES, breadcrumb_genre
 from ...services.similarity import (
-    find_series_games,
-    find_similar_games,
+    cached_series_slugs,
+    cached_similar_slugs,
+    games_by_slugs,
     rerank_with_ai,
     series_key_for_title,
 )
@@ -36,7 +44,7 @@ _YOUTUBE_WATCH_URL = "https://www.youtube.com/watch?v="
 
 @router.get("/api/games/{slug}", response_model=GameRead)
 @limiter.limit(get_settings().PUBLIC_READ_RATE_LIMIT)
-async def get_game(
+def get_game(
     request: Request,
     slug: SlugPath,
     background_tasks: BackgroundTasks,
@@ -74,33 +82,35 @@ async def _refresh_game_detail_metadata(slug: str) -> None:
             log.debug("Detail metadata backfill failed for %s", slug, exc_info=True)
 
 
-@router.get("/api/games/{slug}/similar", response_model=GameListResponse)
+@router.get("/api/games/{slug}/similar", response_model=SimilarGamesResponse)
 @limiter.limit(get_settings().PUBLIC_READ_RATE_LIMIT)
 async def get_similar_games(
     request: Request,
     slug: SlugPath,
     limit: int = Query(default=10, ge=1, le=24),
     db: Session = Depends(get_db),
-) -> GameListResponse:
-    game = get_game_or_404(db, slug)
+) -> SimilarGamesResponse:
+    game = await run_in_threadpool(get_game_or_404, db, slug)
     cfg = get_settings()
     pool_size = max(limit, cfg.SIMILARITY_AI_POOL) if cfg.SIMILARITY_USE_AI else limit
-    candidates = find_similar_games(db, game, display_limit=pool_size)
+    ranked_slugs = await cached_similar_slugs(game.slug, pool_size)
+    candidates = await run_in_threadpool(games_by_slugs, db, ranked_slugs)
     similar = await rerank_with_ai(game, candidates, limit)
-    return GameListResponse(games=similar, total=len(similar))
+    return SimilarGamesResponse(games=similar, total=len(similar))
 
 
 @router.get("/api/games/{slug}/series", response_model=SeriesResponse)
 @limiter.limit(get_settings().PUBLIC_READ_RATE_LIMIT)
-def get_series_games(
+async def get_series_games(
     request: Request,
     slug: SlugPath,
     limit: int = Query(default=8, ge=1, le=20),
     db: Session = Depends(get_db),
 ) -> SeriesResponse:
     """Other games in the same franchise (e.g. Persona 5 Royal → other Persona games), oldest first."""
-    game = get_game_or_404(db, slug)
-    series = find_series_games(db, game, limit=limit)
+    game = await run_in_threadpool(get_game_or_404, db, slug)
+    series_slugs = await cached_series_slugs(game.slug, limit)
+    series = await run_in_threadpool(games_by_slugs, db, series_slugs)
     return SeriesResponse(
         series_key=series_key_for_title(game.title),
         games=series,
