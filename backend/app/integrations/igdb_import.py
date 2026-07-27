@@ -41,6 +41,11 @@ NINTENDO_PLATFORM_IDS = [
     33,   # Game Boy
 ]
 _HTTP_TIMEOUT = 20
+_TITLE_MAX_LENGTH = 160
+_SLUG_MAX_LENGTH = 180
+_COMPANY_MAX_LENGTH = 200
+_EXTERNAL_SLUG_MAX_LENGTH = 200
+_URL_MAX_LENGTH = 500
 
 
 def _slugify(value: str) -> str:
@@ -72,9 +77,9 @@ def _company_names(raw_game: dict) -> tuple[str | None, str | None]:
         if not name:
             continue
         if item.get("developer") and not developer:
-            developer = name
+            developer = str(name)[:_COMPANY_MAX_LENGTH]
         if item.get("publisher") and not publisher:
-            publisher = name
+            publisher = str(name)[:_COMPANY_MAX_LENGTH]
     return developer, publisher
 
 
@@ -97,11 +102,17 @@ def _game_from_igdb(
     catalog_label: str = "IGDB",
     default_platforms: list[str] | None = None,
 ) -> Game:
-    title = raw_game.get("name") or "Untitled Game"
+    raw_title = str(raw_game.get("name") or "Untitled Game").strip() or "Untitled Game"
+    title = raw_title[:_TITLE_MAX_LENGTH]
+    slug_suffix = str(raw_game.get("id") or "game")
+    slug_base_limit = max(1, _SLUG_MAX_LENGTH - len(slug_suffix) - 1)
+    slug = f"{_slugify(raw_title)[:slug_base_limit]}-{slug_suffix}"[:_SLUG_MAX_LENGTH]
     released = _igdb_date(raw_game.get("first_release_date"))
-    cover_url = _igdb_image_url((raw_game.get("cover") or {}).get("url"), "t_cover_big_2x") or ""
+    cover_url = (
+        _igdb_image_url((raw_game.get("cover") or {}).get("url"), "t_cover_big_2x") or ""
+    )[:_URL_MAX_LENGTH]
     screenshots = [
-        url
+        url[:_URL_MAX_LENGTH]
         for item in raw_game.get("screenshots") or []
         if (url := _igdb_image_url(item.get("url") if isinstance(item, dict) else None, "t_screenshot_big"))
     ]
@@ -130,7 +141,7 @@ def _game_from_igdb(
     metrix_score = calculate_metrix_score(source_scores)
     game = Game(
         title=title,
-        slug=f"{_slugify(title)}-{raw_game.get('id') or _slugify(title)}",
+        slug=slug,
         # Never manufacture an "about" paragraph. Empty summaries are explicitly
         # picked up by the metadata/quality backfills.
         summary=raw_game.get("summary") or "",
@@ -229,8 +240,14 @@ def _upsert_igdb_external_id(
     if existing:
         old_external_id = existing.external_id
         existing.external_id = igdb_id
-        existing.external_slug = raw_game.get("slug")
-        existing.external_url = raw_game.get("url")
+        existing.external_slug = (
+            str(raw_game["slug"])[:_EXTERNAL_SLUG_MAX_LENGTH]
+            if raw_game.get("slug")
+            else None
+        )
+        existing.external_url = (
+            str(raw_game["url"])[:_URL_MAX_LENGTH] if raw_game.get("url") else None
+        )
         existing.updated_at = now
         if lookup is not None:
             if lookup.game_ids_by_igdb_id.get(old_external_id) == game.id:
@@ -241,8 +258,14 @@ def _upsert_igdb_external_id(
         game_id=game.id,
         source="IGDB",
         external_id=igdb_id,
-        external_slug=raw_game.get("slug"),
-        external_url=raw_game.get("url"),
+        external_slug=(
+            str(raw_game["slug"])[:_EXTERNAL_SLUG_MAX_LENGTH]
+            if raw_game.get("slug")
+            else None
+        ),
+        external_url=(
+            str(raw_game["url"])[:_URL_MAX_LENGTH] if raw_game.get("url") else None
+        ),
         confidence=0.9,
         is_primary=True,
         created_at=now,

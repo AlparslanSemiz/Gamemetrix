@@ -100,11 +100,9 @@ async def enrich_ratings(
     _admin=Depends(require_admin_user),
 ) -> dict[str, int]:
     enriched = 0
-    for game in rating_refresh_candidates(db):
+    for game in rating_refresh_candidates(db, limit=limit):
         await refresh_game_sources(db, game)
         enriched += 1
-        if enriched >= limit:
-            break
     return {"enriched": enriched, "skipped": 0}
 
 

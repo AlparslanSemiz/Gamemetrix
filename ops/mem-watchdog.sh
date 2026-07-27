@@ -18,7 +18,7 @@ mkdir -p "$STATE_DIR"
 declare -A LIMITS_MB=(
   [gamemetrix-backend]=400
   [gamemetrix-db]=160
-  [gamemetrix-frontend]=48
+  [gamemetrix-frontend]=192
   [gamemetrix-nginx]=48
 )
 # Restart a container once it's stayed above this fraction of its limit for

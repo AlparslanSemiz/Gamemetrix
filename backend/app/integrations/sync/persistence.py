@@ -122,12 +122,40 @@ def _source_snapshot(game: Game, score: ExternalScore, now: datetime) -> SourceS
     )
 
 
+def _same_rating_snapshot(current: RatingSnapshot, candidate: RatingSnapshot) -> bool:
+    """Ignore refresh timestamps when deciding whether audit state changed."""
+    return (
+        current.score == candidate.score
+        and current.score_normalized == candidate.score_normalized
+        and current.rating_count == candidate.rating_count
+        and current.review_count == candidate.review_count
+        and current.critic_count == candidate.critic_count
+        and current.user_count == candidate.user_count
+        and current.is_critic == candidate.is_critic
+        and current.is_user == candidate.is_user
+        and current.is_applicable == candidate.is_applicable
+        and current.confidence == candidate.confidence
+        and current.raw_payload == candidate.raw_payload
+    )
+
+
 def persist_source_records(db: Session, game: Game, scores: list[ExternalScore]) -> None:
     now = datetime.now(UTC)
     applicable = game.applicable_primary_sources
     for score in scores:
-        db.add(_rating_snapshot(game, score, applicable, now))
-        db.add(_source_snapshot(game, score, now))
+        candidate = _rating_snapshot(game, score, applicable, now)
+        current = db.scalar(
+            select(RatingSnapshot)
+            .where(
+                RatingSnapshot.game_id == game.id,
+                RatingSnapshot.source == score.source,
+            )
+            .order_by(RatingSnapshot.fetched_at.desc(), RatingSnapshot.id.desc())
+            .limit(1)
+        )
+        if current is None or not _same_rating_snapshot(current, candidate):
+            db.add(candidate)
+            db.add(_source_snapshot(game, score, now))
         _upsert_external_id_from_score(db, game, score, now)
 
 

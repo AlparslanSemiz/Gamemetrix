@@ -26,6 +26,21 @@ export interface AdminDashboard {
     non_game_rows: number
     rating_snapshots: number
     source_snapshots: number
+    additions: {
+      days: number
+      last_24h: number
+      last_7d: number
+      last_30d: number
+      untracked_games: number
+      daily: Array<{ date: string; count: number }>
+      recent: Array<{
+        id: number
+        title: string
+        slug: string
+        added_at: string
+        sources: string[]
+      }>
+    }
   }
   traffic: {
     days: number

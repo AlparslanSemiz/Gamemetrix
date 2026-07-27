@@ -6,9 +6,18 @@ from sqlalchemy import desc, func, select
 from sqlalchemy.orm import Session
 
 from ..config import get_settings
-from ..models import AnalyticsEvent, Game, RatingSnapshot, SourceSnapshot, User, VisitEvent
+from ..models import (
+    AnalyticsEvent,
+    ExternalId,
+    Game,
+    RatingSnapshot,
+    SourceSnapshot,
+    User,
+    VisitEvent,
+)
 
 _ACTIVE_ACCOUNT_WINDOW = timedelta(days=30)
+_RECENT_CATALOG_ADDITION_LIMIT = 25
 _TOP_PAGE_LIMIT = 10
 _RECENT_VISIT_LIMIT = 20
 _RECENT_IP_LIMIT = 100
@@ -19,7 +28,7 @@ def build_admin_dashboard(db: Session, days: int) -> dict[str, object]:
     since = now - timedelta(days=days)
     traffic = _traffic_metrics(db, days=days, now=now, since=since)
     return {
-        "catalog": _catalog_metrics(db),
+        "catalog": _catalog_metrics(db, days=days, now=now),
         "accounts": _account_metrics(db, now),
         "acquisition": _acquisition_metrics(
             db,
@@ -30,7 +39,12 @@ def build_admin_dashboard(db: Session, days: int) -> dict[str, object]:
     }
 
 
-def _catalog_metrics(db: Session) -> dict[str, object]:
+def _catalog_metrics(
+    db: Session,
+    *,
+    days: int,
+    now: datetime,
+) -> dict[str, object]:
     indexable_games = _scalar_count(
         db,
         select(func.count(Game.id)).where(Game.seo_indexable.is_(True)),
@@ -57,7 +71,136 @@ def _catalog_metrics(db: Session) -> dict[str, object]:
         ),
         "rating_snapshots": _scalar_count(db, select(func.count(RatingSnapshot.id))),
         "source_snapshots": _scalar_count(db, select(func.count(SourceSnapshot.id))),
+        "additions": _catalog_additions(db, days=days, now=now),
     }
+
+
+def _catalog_additions(
+    db: Session,
+    *,
+    days: int,
+    now: datetime,
+) -> dict[str, object]:
+    tracked_games = (
+        Game.content_type == "game",
+        Game.catalog_added_at.is_not(None),
+    )
+    return {
+        "days": days,
+        "last_24h": _scalar_count(
+            db,
+            select(func.count(Game.id)).where(
+                *tracked_games,
+                Game.catalog_added_at >= now - timedelta(hours=24),
+            ),
+        ),
+        "last_7d": _scalar_count(
+            db,
+            select(func.count(Game.id)).where(
+                *tracked_games,
+                Game.catalog_added_at >= now - timedelta(days=7),
+            ),
+        ),
+        "last_30d": _scalar_count(
+            db,
+            select(func.count(Game.id)).where(
+                *tracked_games,
+                Game.catalog_added_at >= now - timedelta(days=30),
+            ),
+        ),
+        "untracked_games": _scalar_count(
+            db,
+            select(func.count(Game.id)).where(
+                Game.content_type == "game",
+                Game.catalog_added_at.is_(None),
+            ),
+        ),
+        "daily": _daily_catalog_additions(db, days=days, now=now),
+        "recent": _recent_catalog_additions(db),
+    }
+
+
+def _daily_catalog_additions(
+    db: Session,
+    *,
+    days: int,
+    now: datetime,
+) -> list[dict[str, object]]:
+    since = now - timedelta(days=days)
+    added_day = func.date(Game.catalog_added_at).label("added_day")
+    counts = {
+        day.isoformat(): int(count)
+        for day, count in db.execute(
+            select(added_day, func.count(Game.id))
+            .where(
+                Game.content_type == "game",
+                Game.catalog_added_at.is_not(None),
+                Game.catalog_added_at >= since,
+            )
+            .group_by(added_day)
+        ).all()
+    }
+    return _fill_daily_catalog_addition_gaps(counts, days=days, now=now)
+
+
+def _fill_daily_catalog_addition_gaps(
+    counts: dict[str, int],
+    *,
+    days: int,
+    now: datetime,
+) -> list[dict[str, object]]:
+    return [
+        {
+            "date": (now - timedelta(days=offset)).date().isoformat(),
+            "count": counts.get(
+                (now - timedelta(days=offset)).date().isoformat(),
+                0,
+            ),
+        }
+        for offset in range(days - 1, -1, -1)
+    ]
+
+
+def _recent_catalog_additions(db: Session) -> list[dict[str, object]]:
+    games = list(
+        db.execute(
+            select(
+                Game.id,
+                Game.title,
+                Game.slug,
+                Game.catalog_added_at,
+            )
+            .where(
+                Game.content_type == "game",
+                Game.catalog_added_at.is_not(None),
+            )
+            .order_by(Game.catalog_added_at.desc(), Game.id.desc())
+            .limit(_RECENT_CATALOG_ADDITION_LIMIT)
+        ).all()
+    )
+    if not games:
+        return []
+
+    game_ids = [int(row.id) for row in games]
+    sources_by_game: dict[int, list[str]] = {game_id: [] for game_id in game_ids}
+    for game_id, source in db.execute(
+        select(ExternalId.game_id, ExternalId.source)
+        .where(ExternalId.game_id.in_(game_ids))
+        .order_by(ExternalId.game_id, ExternalId.source)
+    ).all():
+        if source not in sources_by_game[game_id]:
+            sources_by_game[game_id].append(source)
+
+    return [
+        {
+            "id": row.id,
+            "title": row.title,
+            "slug": row.slug,
+            "added_at": row.catalog_added_at.isoformat(),
+            "sources": sources_by_game[row.id],
+        }
+        for row in games
+    ]
 
 
 def _account_metrics(db: Session, now: datetime) -> dict[str, int]:

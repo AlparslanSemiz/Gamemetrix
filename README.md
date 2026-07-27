@@ -109,6 +109,21 @@ Run one recorded, resumable data-fill cycle without starting the web server:
 python scripts\run_data_fill_once.py --target-total 50000
 ```
 
+To preview catalog drift between the public production catalog and local
+PostgreSQL, then synchronize it:
+
+```powershell
+cd backend
+python scripts\sync_public_catalog.py
+python scripts\sync_public_catalog.py --apply
+```
+
+Production is the source of truth for this operation. Use
+`--apply --prune-local-only` only after taking a local PostgreSQL dump; it
+removes games absent from production and their cascading local catalog rows.
+The public endpoint supplies game fields only, so this does not clone production
+accounts, analytics, provider budgets, external IDs, or snapshot audit history.
+
 ## Run Frontend
 
 ```powershell

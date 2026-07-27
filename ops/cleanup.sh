@@ -3,7 +3,7 @@
 #
 # Safe-by-default policy:
 #   - Things that are purely reconstructable (docker build cache, dangling
-#     images/containers, page cache, journal logs) are deleted automatically.
+#     images/containers, journal logs) are deleted automatically.
 #
 # Install:
 #   chmod +x ops/cleanup.sh
@@ -70,11 +70,10 @@ if command -v journalctl >/dev/null 2>&1; then
   journalctl --vacuum-size=100M >/dev/null 2>&1 || true
 fi
 
-# ── 4. Page cache: safe to drop (kernel reclaims it on demand anyway), but
-#    genuinely optional — this does NOT free memory held by application
-#    processes and rarely moves the needle on a box this tight. Included
-#    because it was asked for; comment out if you'd rather leave it alone. ──
-if [ -w /proc/sys/vm/drop_caches ]; then
+# ── 4. Page cache: keep it by default. Dropping it does not reduce application
+#    RSS and makes PostgreSQL reread hot data from disk. It remains available as
+#    an explicit emergency-only option: DROP_PAGE_CACHE=true ./ops/cleanup.sh. ─
+if [ "${DROP_PAGE_CACHE:-false}" = "true" ] && [ -w /proc/sys/vm/drop_caches ]; then
   sync
   echo 1 > /proc/sys/vm/drop_caches 2>/dev/null || log "drop_caches needs root — skipped"
 fi

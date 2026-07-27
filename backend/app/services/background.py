@@ -20,7 +20,7 @@ import logging
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import asc, desc, select, update
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, load_only, noload
 
 from ..config import get_settings
 from ..database import SessionLocal
@@ -40,13 +40,27 @@ log = logging.getLogger(__name__)
 
 _RETENTION_STARTUP_DELAY_SECONDS = 120
 _RETENTION_INTERVAL_SECONDS = 6 * 60 * 60
+_CATALOG_SCAN_CHUNK = 500
 
 
-def rating_refresh_candidates(db: Session) -> list[Game]:
-    games = list(db.scalars(select(Game).order_by(desc(Game.metrix_score))).all())
+def rating_refresh_candidates(db: Session, *, limit: int | None = None) -> list[Game]:
+    """Return stale games in refresh priority order using a bounded DB stream."""
     now = datetime.now(UTC)
-    stale = [g for g in games if game_needs_rating_refresh(g, now)]
-    return sorted(stale, key=_refresh_priority_key)
+    stale: list[Game] = []
+    games = db.scalars(
+        select(Game)
+        .order_by(
+            Game.ratings_refreshed_at.asc().nulls_first(),
+            Game.metrix_score.desc(),
+        )
+        .execution_options(yield_per=_CATALOG_SCAN_CHUNK)
+    )
+    for game in games:
+        if game_needs_rating_refresh(game, now):
+            stale.append(game)
+            if limit is not None and len(stale) >= limit:
+                break
+    return stale
 
 
 def _refresh_priority_key(game: Game) -> tuple[int, float, float]:
@@ -62,6 +76,48 @@ def _refreshed_timestamp(game: Game) -> float:
     return ts.timestamp()
 
 
+def _rating_refresh_plan(force: bool) -> tuple[list[int], int]:
+    """Return ordered candidate ids without retaining the full catalog in memory."""
+    with SessionLocal() as db:
+        if force:
+            ids = list(
+                db.scalars(
+                    select(Game.id)
+                    .where(Game.content_type == "game")
+                    .order_by(asc(Game.ratings_refreshed_at))
+                ).all()
+            )
+            return ids, len(ids)
+
+        now = datetime.now(UTC)
+        candidates: list[tuple[tuple[int, float, float], int]] = []
+        total = 0
+        games = db.scalars(
+            select(Game)
+            .where(Game.content_type == "game")
+            .options(
+                load_only(
+                    Game.id,
+                    Game.metrix_score,
+                    Game.platforms,
+                    Game.source_scores,
+                    Game.ratings_refreshed_at,
+                    Game.data_complete,
+                ),
+                noload(Game.price_snapshots),
+            )
+            .execution_options(yield_per=_CATALOG_SCAN_CHUNK)
+        )
+        for game in games:
+            total += 1
+            if game_needs_rating_refresh(game, now):
+                candidates.append((_refresh_priority_key(game), game.id))
+            db.expunge(game)
+
+    candidates.sort(key=lambda row: row[0])
+    return [game_id for _priority, game_id in candidates], total
+
+
 # Shared with app/routers/imports.py — see app/heavy_jobs.py. Ensures an
 # import and a refresh-all can never run concurrently on this 1GB host.
 _REFRESH_ALL_LOCK = HEAVY_JOB_LOCK
@@ -73,7 +129,7 @@ async def refresh_all_games(
     inter_game_delay: float = 0.3,
 ) -> dict[str, int]:
     """
-    Refresh every game in the DB concurrently (semaphore-bounded).
+    Refresh every game in the DB with a fixed-size worker pool.
 
     Only one run at a time (guarded by _REFRESH_ALL_LOCK).
     Non-force: skips games that game_needs_rating_refresh() considers fresh.
@@ -85,30 +141,21 @@ async def refresh_all_games(
         return {"enriched": 0, "skipped": 0, "status": "already_running"}  # type: ignore[return-value]
 
     async with _REFRESH_ALL_LOCK:
-        with SessionLocal() as db:
-            all_games = list(
-                db.scalars(
-                    select(Game)
-                    .where(Game.content_type == "game")
-                    .order_by(asc(Game.ratings_refreshed_at))
-                ).all()
-            )
-
-        sem = asyncio.Semaphore(concurrency)
-        enriched = 0
-        skipped = 0
+        game_ids, total_games = _rating_refresh_plan(force)
+        game_id_iterator = iter(game_ids)
         now = datetime.now(UTC)
 
-        async def _refresh_one(game_id: int) -> bool:
-            async with sem:
+        async def _worker() -> int:
+            enriched = 0
+            for game_id in game_id_iterator:
                 if inter_game_delay > 0:
                     await asyncio.sleep(inter_game_delay)
                 with SessionLocal() as db:
                     game = db.get(Game, game_id)
                     if game is None:
-                        return False
+                        continue
                     if not force and not game_needs_rating_refresh(game, now):
-                        return False
+                        continue
                     try:
                         await refresh_game_sources(
                             db,
@@ -122,17 +169,19 @@ async def refresh_all_games(
                             include_rawg_fallback=False,
                             refresh_metadata=False,
                         )
-                        return True
+                        enriched += 1
                     except Exception:
                         log.debug("refresh_all_games: failed for game_id=%d", game_id, exc_info=True)
-                        return False
+            return enriched
 
-        results = await asyncio.gather(*[_refresh_one(g.id) for g in all_games])
-        for did_refresh in results:
-            if did_refresh:
-                enriched += 1
-            else:
-                skipped += 1
+        worker_count = min(max(1, concurrency), len(game_ids))
+        results = (
+            await asyncio.gather(*(_worker() for _ in range(worker_count)))
+            if worker_count
+            else []
+        )
+        enriched = sum(results)
+        skipped = total_games - enriched
 
         if enriched:
             with SessionLocal() as db:
@@ -148,9 +197,7 @@ async def refresh_rating_batch(limit: int) -> dict[str, int]:
     enriched = 0
     skipped = 0
     with SessionLocal() as db:
-        for game in rating_refresh_candidates(db):
-            if enriched >= limit:
-                break
+        for game in rating_refresh_candidates(db, limit=limit):
             if not game_needs_rating_refresh(game):
                 skipped += 1
                 continue

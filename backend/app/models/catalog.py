@@ -3,7 +3,18 @@
 from datetime import date, datetime
 
 from sqlalchemy import (
-    Boolean, Date, DateTime, Float, ForeignKey, Integer, JSON, String, Text,
+    Boolean,
+    Date,
+    DateTime,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    JSON,
+    String,
+    Text,
+    func,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -14,10 +25,25 @@ from ..integrations.source_registry import PC_PLATFORM_KEYS, applicable_for_game
 
 class Game(Base):
     __tablename__ = "games"
+    __table_args__ = (
+        Index(
+            "ix_games_content_type_catalog_added_at",
+            "content_type",
+            "catalog_added_at",
+            postgresql_where=text("catalog_added_at IS NOT NULL"),
+        ),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     title: Mapped[str] = mapped_column(String(160), nullable=False, index=True)
     slug: Mapped[str] = mapped_column(String(180), unique=True, nullable=False, index=True)
+    # Null is retained for legacy rows whose original insertion time cannot be
+    # reconstructed. PostgreSQL supplies the timestamp for every new row.
+    catalog_added_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        server_default=func.now(),
+    )
     summary: Mapped[str] = mapped_column(Text, nullable=False)
     summary_short: Mapped[str | None] = mapped_column(Text, nullable=True)
     # refreshed_at moves only when the text actually changed; checked_at moves on

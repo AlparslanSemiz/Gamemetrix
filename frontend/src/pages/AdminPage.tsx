@@ -3,6 +3,7 @@ import {
   ActivityPanels,
   AdminMetrics,
   ApiSourcesPanel,
+  CatalogAdditionsPanel,
   DataFillPanel,
   PeriodicJobsPanel,
   ScoreAndCatalogPanels,
@@ -79,6 +80,7 @@ export function AdminPage() {
           onStartPrimaryScores={admin.handleStartPrimaryScores}
         />
         <PeriodicJobsPanel periodic={admin.periodic} />
+        <CatalogAdditionsPanel dashboard={admin.dashboard} />
         <ApiSourcesPanel apiSources={admin.apiSources} />
         <ScoreAndCatalogPanels
           dashboard={admin.dashboard}
