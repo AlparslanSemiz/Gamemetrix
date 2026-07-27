@@ -19,6 +19,7 @@ from .sanitize import (
     system_requirements_need_repair,
     titles_match_game,
     tupled,
+    website_needs_repair,
 )
 
 _MAX_NAME_LENGTH = 200
@@ -114,12 +115,8 @@ def _apply_taxonomy(game: Game, result: NormalizedGame) -> bool:
 
 def _apply_website(game: Game, result: NormalizedGame) -> bool:
     raw_website = result.raw.get("website")
-    website = safe_url(
-        result.external_url if result.source != "Steam"
-        else raw_website if isinstance(raw_website, str)
-        else None
-    )
-    if not website or game.website_url:
+    website = safe_url(raw_website if isinstance(raw_website, str) else None)
+    if not website or not website_needs_repair(game.website_url):
         return False
     game.website_url = website
     return True

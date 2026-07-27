@@ -92,6 +92,7 @@ def _merge_awards(keeper: Game, duplicate: Game) -> None:
 def _merge_collections(keeper: Game, duplicate: Game) -> None:
     keeper.genres = _merge_unique_strings(keeper.genres, duplicate.genres)
     keeper.platforms = _merge_unique_strings(keeper.platforms, duplicate.platforms)
+    keeper.game_modes = _merge_unique_strings(keeper.game_modes, duplicate.game_modes)
     keeper.screenshots = _merge_unique_strings(keeper.screenshots, duplicate.screenshots)
     keeper.system_requirements = _merge_json_objects(keeper.system_requirements, duplicate.system_requirements)
     keeper.dlcs = _merge_json_objects(keeper.dlcs, duplicate.dlcs)

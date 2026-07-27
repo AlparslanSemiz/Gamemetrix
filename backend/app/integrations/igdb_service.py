@@ -16,6 +16,7 @@ from .igdb import _candidate_year, _get_access_token, escape_igdb_search_text  #
 from .rate_limiter import get_rate_limiter
 from .title_matching import title_match_quality
 from .types import NormalizedGame, SourceHealth, bounded_float, bounded_int, normalize_game_modes
+from .igdb_websites import extract_official_website
 
 log = logging.getLogger(__name__)
 
@@ -102,7 +103,8 @@ class IGDBService:
             "involved_companies.company.name,involved_companies.developer,"
             "involved_companies.publisher,franchise.name,franchises.name,"
             "collection.name,summary,external_games.uid,"
-            "external_games.category,url; "
+            "external_games.category,websites.url,websites.type,"
+            "websites.trusted,url; "
             f'search "{escape_igdb_search_text(title)}"; '
             "where version_parent = null; "
             "limit 10;"
@@ -159,7 +161,8 @@ class IGDBService:
             "total_rating_count,platforms.name,genres.name,game_modes.name,cover.url,"
             "involved_companies.company.name,involved_companies.developer,"
             "involved_companies.publisher,franchise.name,franchises.name,"
-            "collection.name,summary,url; "
+            "collection.name,summary,websites.url,websites.type,"
+            "websites.trusted,url; "
             f"where id = {igdb_id}; "
             "limit 1;"
         )
@@ -238,6 +241,8 @@ class IGDBService:
                 score_count = bounded_int(raw.get(count_key))
                 break
 
+        normalized_raw = dict(raw)
+        normalized_raw["website"] = extract_official_website(raw)
         return NormalizedGame(
             source="IGDB",
             external_id=str(raw["id"]),
@@ -256,7 +261,7 @@ class IGDBService:
             score=score,
             score_count=score_count,
             is_critic_score=False,
-            raw=raw,
+            raw=normalized_raw,
         )
 
 

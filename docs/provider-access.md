@@ -33,12 +33,10 @@ snapshots are tried before RAWG or a paid/approval-gated source. A provider's
 daily limit can stop one job while leaving the persisted cursor and freshness
 timestamps ready for the next period.
 
-The combined `DATA_FILL_TARGET_TOTAL` is not a stop condition for the two
-cursor-backed complete catalogs. Steam advances by at most 500 newly imported
-games per daily run and IGDB by at most 5,000; both resume until their provider
-cursor reports completion. Non-cursor catalog sources and RAWG still stop when
-the combined target is met. This grows provider identity coverage without
-turning RAWG's scarce monthly quota into a broad catalog crawler.
+`DATA_FILL_TARGET_TOTAL` is a hard catalog-growth stop for every source,
+including the cursor-backed Steam and IGDB imports. Cursor state is preserved,
+so raising the target later resumes from the last committed position without
+rescanning the completed range.
 
 `STARTUP_RATING_REFRESH_LIMIT=0` and
 `STARTUP_METADATA_BACKFILL_LIMIT=0` are intentional. On boot, the ordered

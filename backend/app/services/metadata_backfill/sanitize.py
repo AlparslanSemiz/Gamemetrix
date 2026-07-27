@@ -19,6 +19,16 @@ _EARLIEST_MEANINGFUL_YEAR = 1970
 
 GENERIC_GENRES = {(), ("Uncategorized",), ("Steam",), ("Deal", "PC")}
 GENERIC_PLATFORMS = {(), ("Unknown",)}
+_PROVIDER_PROFILE_HOSTS = frozenset({
+    "gamebrain.co",
+    "www.gamebrain.co",
+    "igdb.com",
+    "www.igdb.com",
+    "rawg.io",
+    "www.rawg.io",
+    "wikidata.org",
+    "www.wikidata.org",
+})
 
 _BAD_SYSTEM_REQUIREMENT_MARKERS = (
     "windows xp",
@@ -67,6 +77,15 @@ def safe_url(value: str | None) -> str | None:
     ):
         return None
     return url
+
+
+def website_needs_repair(value: str | None) -> bool:
+    """True when a website is absent, invalid, or just a provider profile."""
+    website = safe_url(value)
+    if website is None:
+        return True
+    hostname = (urlsplit(website).hostname or "").lower()
+    return hostname in _PROVIDER_PROFILE_HOSTS
 
 
 def is_missing_cover(value: str | None) -> bool:

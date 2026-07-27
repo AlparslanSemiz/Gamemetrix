@@ -210,6 +210,15 @@ class SourceSnapshot(Base):
     """Raw API response audit log — debug/replay only, never used for scoring."""
 
     __tablename__ = "source_snapshots"
+    __table_args__ = (
+        Index(
+            "ix_source_snapshots_lookup",
+            "source",
+            "endpoint",
+            "external_id",
+            "fetched_at",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     source: Mapped[str] = mapped_column(String(60), nullable=False, index=True)

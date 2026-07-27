@@ -20,6 +20,7 @@ from .stages import (
     fill_catalog,
     fill_endless,
     fill_hltb,
+    fill_igdb_optional_metadata,
     fill_igdb_playtime,
     fill_metacritic,
     fill_metadata,
@@ -47,6 +48,7 @@ _EMPTY_RESULT: dict[str, object] = {
     "metadata": {},
     "hltb": {},
     "igdb_playtime": {},
+    "igdb_optional_metadata": {},
     "endless": {},
     "summaries": {},
     "prices": {},
@@ -100,15 +102,19 @@ async def _run_all_stages(
     save_run_progress(run_id, result)
     result["metacritic"] = await fill_metacritic()
     save_run_progress(run_id, result)
+    # HLTB has a separate budget. Then use IGDB's high-throughput batch endpoint
+    # before per-game score and metadata calls consume the official IGDB budget.
+    result["hltb"] = await fill_hltb()
+    save_run_progress(run_id, result)
+    result["igdb_playtime"] = await fill_igdb_playtime()
+    save_run_progress(run_id, result)
+    result["igdb_optional_metadata"] = await fill_igdb_optional_metadata()
+    save_run_progress(run_id, result)
     result["primary_scores"] = await fill_primary_scores(force=force)
     save_run_progress(run_id, result)
     result["ratings"] = await fill_ratings(force=force)
     save_run_progress(run_id, result)
     result["metadata"] = await fill_metadata()
-    save_run_progress(run_id, result)
-    result["hltb"] = await fill_hltb()
-    save_run_progress(run_id, result)
-    result["igdb_playtime"] = await fill_igdb_playtime()
     save_run_progress(run_id, result)
     result["endless"] = await fill_endless()
     save_run_progress(run_id, result)
@@ -167,6 +173,12 @@ def _data_fill_summary(result: dict[str, object]) -> dict[str, int]:
         "metadata_enriched": _int(_stage(result, "metadata").get("enriched")),
         "hltb_imported": _int(_stage(result, "hltb").get("imported")),
         "igdb_playtime_filled": _int(_stage(result, "igdb_playtime").get("filled")),
+        "websites_filled": _int(
+            _stage(result, "igdb_optional_metadata").get("website_filled")
+        ),
+        "game_modes_filled": _int(
+            _stage(result, "igdb_optional_metadata").get("modes_filled")
+        ),
         "prices_stored": _int(_stage(result, "prices").get("stored")),
         "summaries_shortened": _int(_stage(result, "summaries").get("shortened")),
         "endless_flagged": _int(_stage(result, "endless").get("endless")),

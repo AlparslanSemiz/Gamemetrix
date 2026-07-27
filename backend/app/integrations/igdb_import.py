@@ -19,7 +19,9 @@ from ..services.deduplication import (
 from ..services.rawg_import import platform_family
 from .rate_limiter import get_rate_limiter
 from .igdb import _get_access_token
+from .igdb_websites import extract_official_website
 from .sync import calculate_metrix_score, compute_rank_fields
+from .types import normalize_game_modes
 
 
 IGDB_GAMES_URL = "https://api.igdb.com/v4/games"
@@ -126,6 +128,11 @@ def _game_from_igdb(
         for item in raw_game.get("platforms") or []
         if isinstance(item, dict) and item.get("name")
     })
+    game_modes = normalize_game_modes([
+        str(item["name"])
+        for item in raw_game.get("game_modes") or []
+        if isinstance(item, dict) and item.get("name")
+    ])
     developer, publisher = _company_names(raw_game)
     score, review_count, critic_score, user_score = _score_fields(raw_game)
     source_scores = []
@@ -159,6 +166,8 @@ def _game_from_igdb(
         source_scores=source_scores,
         developer=developer,
         publisher=publisher,
+        website_url=extract_official_website(raw_game),
+        game_modes=game_modes,
         screenshots=screenshots,
     )
     game.content_type = infer_content_type(game)
@@ -334,9 +343,9 @@ _IGDB_CREDENTIALS_REJECTED = (
 _IGDB_IMPORT_FIELDS = (
     "fields id,name,slug,url,game_type,first_release_date,rating,rating_count,"
     "aggregated_rating,aggregated_rating_count,total_rating,total_rating_count,"
-    "platforms.name,genres.name,cover.url,screenshots.url,summary,"
+    "platforms.name,genres.name,game_modes.name,cover.url,screenshots.url,summary,"
     "involved_companies.company.name,involved_companies.developer,"
-    "involved_companies.publisher; "
+    "involved_companies.publisher,websites.url,websites.type,websites.trusted; "
 )
 # Global popular-catalog quality gate: main games only, with enough
 # rated reviews to be worth ranking. Keeps the general import from flooding the

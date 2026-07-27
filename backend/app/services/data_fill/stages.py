@@ -28,6 +28,7 @@ from ...integrations.sync import game_needs_rating_refresh, refresh_game_sources
 from ...models import Game
 from ..catalog_quality import catalog_quality_batch, catalog_repair_batch
 from ..endless import backfill_endless_batch
+from ..igdb_optional_metadata_backfill import igdb_optional_metadata_backfill_batch
 from ..igdb_playtime_backfill import igdb_playtime_backfill_batch
 from ..metacritic_backfill import cheapshark_metacritic_backfill_batch
 from ..metadata_backfill import metadata_backfill_batch
@@ -57,13 +58,6 @@ def _game_count(db: Session) -> int:
     return db.scalar(select(func.count(Game.id)).where(Game.content_type == "game")) or 0
 
 
-# Steam and IGDB are cursor-backed complete-catalog scans. They must keep
-# advancing after the combined catalog passes DATA_FILL_TARGET_TOTAL; otherwise
-# whichever provider happened to reach the target first permanently starves the
-# other. Conservative per-run caps keep ingestion and follow-up enrichment
-# bounded while their persistent provider budgets remain the hard ceiling.
-RESUMABLE_CATALOG_SOURCES = frozenset({"Steam", "IGDB"})
-
 # source -> (per-run import cap, importer). RAWG is handled separately because it
 # takes an absolute catalog target rather than a remaining-headroom count.
 _SECONDARY_CATALOG_IMPORTS: tuple[tuple[str, str, int, _SecondaryImporter], ...] = (
@@ -82,8 +76,6 @@ def catalog_import_target(
     current_total: int,
     target_total: int,
 ) -> int:
-    if source in RESUMABLE_CATALOG_SOURCES:
-        return max(0, cap)
     return max(0, min(cap, target_total - current_total))
 
 
@@ -299,6 +291,18 @@ async def fill_igdb_playtime() -> dict[str, object]:
     result = await igdb_playtime_backfill_batch(
         limit=cfg.DATA_FILL_HLTB_TARGET,
         inter_game_delay=cfg.DATA_FILL_INTER_GAME_DELAY,
+    )
+    return {"status": "ok", **result}
+
+
+async def fill_igdb_optional_metadata() -> dict[str, object]:
+    """Batch-fill official websites and game modes without making them blockers."""
+    cfg = get_settings()
+    if not cfg.igdb_configured() or not remaining_any(("IGDB",)):
+        return {"status": "skipped", "website_filled": 0, "modes_filled": 0}
+    result = await igdb_optional_metadata_backfill_batch(
+        limit=cfg.DATA_FILL_HLTB_TARGET,
+        inter_batch_delay=cfg.DATA_FILL_INTER_GAME_DELAY,
     )
     return {"status": "ok", **result}
 

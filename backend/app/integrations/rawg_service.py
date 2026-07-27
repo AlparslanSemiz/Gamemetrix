@@ -245,6 +245,7 @@ class RAWGService:
                 "rawg_rating": rawg_rating,
                 "rawg_score_normalized": rawg_score,
                 "playtime": raw.get("playtime"),
+                "website": raw.get("website"),
                 "tags": [t.get("name") for t in (raw.get("tags") or []) if isinstance(t, dict)],
                 "stores": [
                     s["store"]["name"]

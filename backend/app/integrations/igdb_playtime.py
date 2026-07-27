@@ -1,9 +1,8 @@
-"""IGDB Time-To-Beat lookup — an official playtime fallback for HLTB.
+"""IGDB Time-To-Beat lookup — an official playtime companion to HLTB.
 
 HLTB is a scrape with no official API; IGDB exposes completion times through its
-`game_time_to_beats` endpoint keyed by IGDB game id. Used only for games HLTB
-could not fill, so the scrape stays the primary source and this never overwrites
-an existing playtime.
+`game_time_to_beats` endpoint keyed by IGDB game id. Queries are batched because
+IGDB accepts up to 500 ids at once.
 """
 
 import logging
@@ -19,12 +18,52 @@ log = logging.getLogger(__name__)
 _IGDB_TTB_URL = "https://api.igdb.com/v4/game_time_to_beats"
 _HTTP_TIMEOUT = 12
 _SECONDS_PER_MINUTE = 60
+MAX_IGDB_PLAYTIME_BATCH = 500
 
 
-async def get_igdb_playtime_minutes(igdb_id: int) -> int | None:
-    """Main-story completion time in minutes for an IGDB game id, or None."""
+def _valid_igdb_ids(igdb_ids: list[int]) -> list[int]:
+    return sorted({value for value in igdb_ids if isinstance(value, int) and value > 0})[
+        :MAX_IGDB_PLAYTIME_BATCH
+    ]
+
+
+def build_igdb_playtime_query(igdb_ids: list[int]) -> str:
+    """Build one bounded IGDB query for multiple game ids."""
+    valid_ids = _valid_igdb_ids(igdb_ids)
+    if not valid_ids:
+        return ""
+    joined_ids = ",".join(str(value) for value in valid_ids)
+    return (
+        "fields game_id,normally,hastily,completely; "
+        f"where game_id = ({joined_ids}); limit {len(valid_ids)};"
+    )
+
+
+def parse_igdb_playtimes_minutes(rows: object) -> dict[int, int]:
+    """Map IGDB game ids to their best available completion time in minutes."""
+    if not isinstance(rows, list):
+        return {}
+    parsed: dict[int, int] = {}
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        try:
+            game_id = int(row.get("game_id"))
+            seconds = int(
+                row.get("normally") or row.get("hastily") or row.get("completely")
+            )
+        except (TypeError, ValueError):
+            continue
+        if game_id > 0 and seconds > 0:
+            parsed[game_id] = seconds // _SECONDS_PER_MINUTE
+    return parsed
+
+
+async def get_igdb_playtimes_minutes(igdb_ids: list[int]) -> dict[int, int] | None:
+    """Return per-game completion minutes, or None when the request itself failed."""
     cfg = get_settings()
-    if not cfg.igdb_configured() or igdb_id <= 0:
+    body = build_igdb_playtime_query(igdb_ids)
+    if not cfg.igdb_configured() or not body:
         return None
 
     try:
@@ -34,7 +73,6 @@ async def get_igdb_playtime_minutes(igdb_id: int) -> int | None:
         return None
 
     headers = {"Client-ID": cfg.IGDB_CLIENT_ID, "Authorization": f"Bearer {token}"}
-    body = f"fields normally,hastily,completely; where game_id = {igdb_id}; limit 1;"
 
     try:
         async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT, headers=DEFAULT_HEADERS) as client:
@@ -47,15 +85,10 @@ async def get_igdb_playtime_minutes(igdb_id: int) -> int | None:
     except Exception:
         log.debug("IGDB time-to-beat request failed", exc_info=True)
         return None
+    return parse_igdb_playtimes_minutes(rows)
 
-    if not isinstance(rows, list) or not rows or not isinstance(rows[0], dict):
-        return None
-    row = rows[0]
-    seconds = row.get("normally") or row.get("hastily") or row.get("completely")
-    try:
-        seconds_int = int(seconds)
-    except (TypeError, ValueError):
-        return None
-    if seconds_int <= 0:
-        return None
-    return seconds_int // _SECONDS_PER_MINUTE
+
+async def get_igdb_playtime_minutes(igdb_id: int) -> int | None:
+    """Compatibility wrapper for a single IGDB game id."""
+    results = await get_igdb_playtimes_minutes([igdb_id])
+    return results.get(igdb_id) if results is not None else None

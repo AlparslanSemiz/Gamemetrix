@@ -228,19 +228,19 @@ def test_primary_score_catalog_scans_stream_plain_columns() -> None:
     ]
 
 
-def test_cursor_catalogs_continue_after_the_combined_target_is_met() -> None:
+def test_all_catalog_sources_stop_after_the_combined_target_is_met() -> None:
     assert catalog_import_target(
         source="Steam",
         cap=500,
         current_total=50_071,
         target_total=50_000,
-    ) == 500
+    ) == 0
     assert catalog_import_target(
         source="IGDB",
         cap=5_000,
         current_total=50_071,
         target_total=50_000,
-    ) == 5_000
+    ) == 0
     assert catalog_import_target(
         source="RAWG",
         cap=500,

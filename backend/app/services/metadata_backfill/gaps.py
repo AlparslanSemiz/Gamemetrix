@@ -31,14 +31,10 @@ _GAP_WEIGHTS = {
     "summary": 28,
     "developer": 16,
     "publisher": 16,
-    "game_modes": 14,
     "genres": 12,
     "platforms": 12,
     "screenshots": 10,
     "system_requirements": 8,
-    "website": 6,
-    "dlcs": 3,
-    "similar_games": 3,
 }
 _DEFAULT_GAP_WEIGHT = 1
 _CANDIDATE_POOL_MULTIPLIER = 10
@@ -56,22 +52,14 @@ def field_gaps(game: Game) -> set[str]:
         gaps.add("developer")
     if not game.publisher:
         gaps.add("publisher")
-    if not game.game_modes:
-        gaps.add("game_modes")
     if tupled(game.genres) in GENERIC_GENRES:
         gaps.add("genres")
     if tupled(game.platforms) in GENERIC_PLATFORMS:
         gaps.add("platforms")
-    if not game.website_url:
-        gaps.add("website")
     if not game.screenshots:
         gaps.add("screenshots")
     if game.is_pc_applicable and system_requirements_need_repair(game.system_requirements):
         gaps.add("system_requirements")
-    if not game.dlcs:
-        gaps.add("dlcs")
-    if not game.similar_games:
-        gaps.add("similar_games")
     return gaps
 
 

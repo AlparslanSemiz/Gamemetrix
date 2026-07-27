@@ -27,13 +27,13 @@ from .sanitize import is_missing_cover, steam_cover_should_update, titles_match_
 
 RefreshResult = tuple[bool, bool]
 
-_STEAM_GAPS = {"cover", "website", "screenshots", "system_requirements", "developer", "publisher"}
+_STEAM_GAPS = {"cover", "screenshots", "system_requirements", "developer", "publisher"}
 _RAWG_GAPS = {
     "cover", "summary", "developer", "publisher", "genres",
-    "platforms", "screenshots", "system_requirements", "dlcs", "similar_games",
+    "platforms", "screenshots", "system_requirements",
 }
-_IGDB_GAPS = {"cover", "summary", "developer", "publisher", "genres", "platforms", "game_modes"}
-_WIKIDATA_GAPS = {"developer", "publisher", "genres", "platforms", "website"}
+_IGDB_GAPS = {"cover", "summary", "developer", "publisher", "genres", "platforms"}
+_WIKIDATA_GAPS = {"developer", "publisher", "genres", "platforms"}
 _GAMEBRAIN_GAPS = {
     "cover", "summary", "developer", "publisher", "genres", "platforms", "game_modes", "screenshots",
 }
