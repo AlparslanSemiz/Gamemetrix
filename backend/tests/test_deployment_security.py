@@ -58,6 +58,8 @@ def test_production_deploy_preserves_protected_environment_boundary() -> None:
     assert "600:root:root" in deploy
     assert 'sudo -u "$git_user" git pull --ff-only origin main' in deploy
     assert '"${compose[@]}" config --quiet' in deploy
-    assert '"${compose[@]}" up -d --wait --wait-timeout 240' in deploy
+    assert '"${compose[@]}" up -d --wait --wait-timeout 240 db backend' in deploy
+    assert '"${compose[@]}" up -d --wait --wait-timeout 240 frontend' in deploy
+    assert '"${compose[@]}" up -d --wait --wait-timeout 240 nginx' in deploy
     assert "Deployment completed successfully." in deploy
     assert "exec sudo -n bash" in wrapper

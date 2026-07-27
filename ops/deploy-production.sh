@@ -44,7 +44,12 @@ echo ">>> Compose configuration check..."
 
 echo ">>> Docker build & health-checked rollout..."
 "${compose[@]}" build backend frontend
-"${compose[@]}" up -d --wait --wait-timeout 240
+# Compose can retain a stale dependency container ID when backend and frontend
+# are both recreated in one `up --wait` operation while nginx is still running.
+# Start each dependency layer deterministically before checking the next one.
+"${compose[@]}" up -d --wait --wait-timeout 240 db backend
+"${compose[@]}" up -d --wait --wait-timeout 240 frontend
+"${compose[@]}" up -d --wait --wait-timeout 240 nginx
 
 curl --fail --silent --show-error --max-time 15 \
   -H "Host: api.gamemetrix.me" \
