@@ -50,6 +50,38 @@ test('price panel lives in the right column beside the gallery', async ({ page }
   await expect(page.locator('.dp-left .dp-price-panel')).toHaveCount(0)
 })
 
+test('DLCs live below where to buy in the right column', async ({ page }) => {
+  await page.goto(DETAIL_URL)
+
+  const pricePanel = page.locator('.dp-right .dp-price-panel')
+  const dlcSection = page.locator('.dp-right .dp-dlc-section')
+  await expect(dlcSection).toHaveCount(1)
+  await expect(page.locator('.dp-bottom-related .dp-dlc-section')).toHaveCount(0)
+
+  const priceBox = await pricePanel.boundingBox()
+  const dlcBox = await dlcSection.boundingBox()
+  expect(priceBox).not.toBeNull()
+  expect(dlcBox).not.toBeNull()
+  expect(dlcBox!.y).toBeGreaterThan(priceBox!.y + priceBox!.height)
+})
+
+test('gallery preview shows ten tiles across five rows', async ({ page }) => {
+  await page.goto(DETAIL_URL)
+
+  const tiles = page.locator('.dp-gallery-rest .dp-gallery-img')
+  await expect(tiles).toHaveCount(10)
+
+  const boxes = await tiles.evaluateAll((elements) => elements.map((element) => {
+    const { x, y } = element.getBoundingClientRect()
+    return { x: Math.round(x), y: Math.round(y) }
+  }))
+  expect(new Set(boxes.map(({ y }) => y)).size).toBe(5)
+  for (let index = 0; index < boxes.length; index += 2) {
+    expect(boxes[index].y).toBe(boxes[index + 1].y)
+    expect(boxes[index].x).toBeLessThan(boxes[index + 1].x)
+  }
+})
+
 test('gallery requests scaled thumbnails, never full-size originals', async ({ page }) => {
   await page.goto(DETAIL_URL)
 

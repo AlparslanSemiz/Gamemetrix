@@ -102,9 +102,8 @@ function GameDetailContent({
   similarGames: SeriesGameItem[]
   similarLoading: boolean
 }) {
-  const hasRelated = (
-    game.dlcs.length > 0
-    || game.similar_games.length > 0
+  const hasSimilarGames = (
+    game.similar_games.length > 0
     || similarGames.length > 0
     || similarLoading
   )
@@ -133,12 +132,12 @@ function GameDetailContent({
               <PricePanel prices={model.priceSnapshots} game={game} />
             </div>
           ) : null}
+          <DlcSection game={game} />
         </div>
       </div>
       <SeriesRow slug={game.slug} />
-      {hasRelated ? (
+      {hasSimilarGames ? (
         <div className="dp-bottom-related">
-          <DlcSection game={game} />
           <SimilarGamesSection game={game} catalogGames={similarGames} loading={similarLoading} />
         </div>
       ) : null}

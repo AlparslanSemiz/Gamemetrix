@@ -14,7 +14,7 @@ import {
   thumbnailUrl,
 } from '../../utils/coverImage'
 
-const GALLERY_INLINE_LIMIT = 14
+const GALLERY_INLINE_LIMIT = 10
 const GALLERY_EAGER_LIMIT = 4
 
 function thumbErrorHandler(fullUrl: string) {
