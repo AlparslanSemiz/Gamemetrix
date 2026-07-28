@@ -2,6 +2,27 @@ import { expect, test } from '@playwright/test'
 
 const DETAIL_URL = '/game/complete-test-game'
 
+test('browser back from a game detail returns to the catalog', async ({ page }) => {
+  const errors: string[] = []
+  page.on('console', (msg) => { if (msg.type() === 'error') errors.push(msg.text()) })
+  page.on('pageerror', (error) => errors.push(error.message))
+
+  await page.goto('/')
+  await page.getByRole('link', { name: 'Complete Test Game', exact: true }).click()
+  await expect(page.locator('.dp-score-block')).toBeVisible()
+
+  await page.route('**/_.data', (route) => route.fulfill({
+    status: 503,
+    contentType: 'text/plain',
+    body: 'Catalog loader unavailable',
+  }))
+  await page.goBack()
+
+  await expect(page.locator('.app-shell')).toBeVisible()
+  await expect(page.getByText('Something went wrong')).toHaveCount(0)
+  expect(errors, errors.join('\n')).toHaveLength(0)
+})
+
 test('detail page hydrates without server/client mismatches', async ({ page }) => {
   const errors: string[] = []
   page.on('console', (msg) => { if (msg.type() === 'error') errors.push(msg.text()) })

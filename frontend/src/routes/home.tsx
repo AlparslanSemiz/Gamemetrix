@@ -1,5 +1,6 @@
-import type { MetaFunction } from 'react-router'
+import type { ClientLoaderFunctionArgs, MetaFunction } from 'react-router'
 import { AppContent } from '../App'
+import { readCatalogSnapshot } from '../catalog/snapshot'
 import { fetchBackend } from '../server-api.server'
 import type { GameListResponse } from '../types/game'
 
@@ -12,6 +13,23 @@ export async function loader(): Promise<GameListResponse> {
   return fetchBackend<GameListResponse>(
     '/api/games?sort=rank_score&direction=desc&limit=24&offset=0',
   )
+}
+
+export async function clientLoader({
+  request,
+  serverLoader,
+}: ClientLoaderFunctionArgs): Promise<GameListResponse> {
+  const url = new URL(request.url)
+  if (!url.search) {
+    const snapshot = readCatalogSnapshot()
+    if (snapshot?.activePage === 'catalog' && snapshot.games.length > 0) {
+      return {
+        games: snapshot.games,
+        total: snapshot.catalogTotal,
+      }
+    }
+  }
+  return serverLoader<GameListResponse>()
 }
 
 export const meta: MetaFunction = ({ location }) => [
