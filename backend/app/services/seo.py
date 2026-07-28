@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from heapq import heappush, heapreplace
 from html import escape
 from math import ceil, isfinite
 from urllib.parse import quote
@@ -53,6 +54,7 @@ SITEMAP_CHUNK_SIZE = 10_000
 # A genre only earns a landing page once it has enough indexable games to be
 # worth crawling — a three-game page is a thin-content liability, not an asset.
 MIN_GENRE_LANDING_GAMES = 8
+_SEO_STREAM_BATCH = 250
 
 
 def _valid_https_url(value: str | None) -> bool:
@@ -139,20 +141,24 @@ def refresh_catalog_seo_states(db: Session, *, now: datetime | None = None) -> d
     # instead pulled every PriceSnapshot row for the whole catalog into memory and was
     # repeatedly OOM-killing the 400m backend container at startup.
     priced_game_ids = set(db.scalars(select(PriceSnapshot.game_id).distinct()))
-    games = list(db.scalars(select(Game).options(load_only(*_SEO_STATE_COLUMNS))))
-    quality_reasons = {
-        game.id: seo_exclusion_reason(game, has_price_data=game.id in priced_game_ids)
-        for game in games
-    }
-    eligible = [game for game in games if quality_reasons[game.id] is None]
-    eligible.sort(
-        key=lambda game: (game.rank_score, game.metrix_score, game.live_primary_source_count, game.release_year),
-        reverse=True,
+    index_limit = get_settings().SEO_INDEX_LIMIT
+    eligible_count, published_ids = _select_published_ids(
+        db,
+        priced_game_ids,
+        index_limit,
     )
-    published_ids = {game.id for game in eligible[:get_settings().SEO_INDEX_LIMIT]}
     changed = 0
+    pending: list[Game] = []
+    games = db.scalars(
+        select(Game)
+        .options(load_only(*_SEO_STATE_COLUMNS))
+        .execution_options(yield_per=_SEO_STREAM_BATCH)
+    )
     for game in games:
-        reason = quality_reasons[game.id]
+        reason = seo_exclusion_reason(
+            game,
+            has_price_data=game.id in priced_game_ids,
+        )
         indexable = game.id in published_ids
         if reason is None and not indexable:
             reason = "initial_index_limit"
@@ -163,7 +169,63 @@ def refresh_catalog_seo_states(db: Session, *, now: datetime | None = None) -> d
             changed += 1
         elif game.seo_updated_at is None:
             game.seo_updated_at = timestamp
-    return {"eligible": len(eligible), "indexable": len(published_ids), "changed": changed}
+        pending.append(game)
+        if len(pending) >= _SEO_STREAM_BATCH:
+            _flush_and_expunge(db, pending)
+    if pending:
+        _flush_and_expunge(db, pending)
+    return {
+        "eligible": eligible_count,
+        "indexable": len(published_ids),
+        "changed": changed,
+    }
+
+
+def _select_published_ids(
+    db: Session,
+    priced_game_ids: set[int],
+    limit: int,
+) -> tuple[int, set[int]]:
+    """Select the top eligible cohort without retaining the catalog in memory."""
+    eligible_count = 0
+    top_games: list[tuple[tuple[float, float, int, int, int], int]] = []
+    games = db.scalars(
+        select(Game)
+        .where(Game.content_type == "game")
+        .options(load_only(*_SEO_STATE_COLUMNS))
+        .execution_options(yield_per=_SEO_STREAM_BATCH)
+    )
+    for game in games:
+        if seo_exclusion_reason(
+            game,
+            has_price_data=game.id in priced_game_ids,
+        ) is None:
+            eligible_count += 1
+            if limit > 0:
+                item = (_seo_rank_key(game), game.id)
+                if len(top_games) < limit:
+                    heappush(top_games, item)
+                elif item > top_games[0]:
+                    heapreplace(top_games, item)
+        db.expunge(game)
+    return eligible_count, {game_id for _key, game_id in top_games}
+
+
+def _seo_rank_key(game: Game) -> tuple[float, float, int, int, int]:
+    return (
+        game.rank_score,
+        game.metrix_score,
+        game.live_primary_source_count,
+        game.release_year,
+        -game.id,
+    )
+
+
+def _flush_and_expunge(db: Session, games: list[Game]) -> None:
+    db.flush()
+    for game in games:
+        db.expunge(game)
+    games.clear()
 
 
 def game_canonical_url(game: Game) -> str:

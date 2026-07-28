@@ -79,6 +79,23 @@ def test_catalog_repairs_default_to_a_bounded_memory_batch(
     assert Settings().CATALOG_REPAIR_BATCH_SIZE <= 10
 
 
+def test_provider_budgets_support_bulk_catalog_backfills(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("IGDB_DAILY_LIMIT", raising=False)
+    monkeypatch.delenv("STEAM_DAILY_LIMIT", raising=False)
+    monkeypatch.delenv(
+        "DATA_FILL_SYSTEM_REQUIREMENTS_BATCH_SIZE",
+        raising=False,
+    )
+
+    settings = Settings()
+
+    assert settings.IGDB_DAILY_LIMIT == 20_000
+    assert settings.STEAM_DAILY_LIMIT == 10_000
+    assert settings.DATA_FILL_SYSTEM_REQUIREMENTS_BATCH_SIZE == 3_000
+
+
 def test_configuration_rejects_non_postgres_database(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DATABASE_URL", "sqlite:///legacy.db")
     with pytest.raises(RuntimeError, match=r"postgresql\+psycopg"):

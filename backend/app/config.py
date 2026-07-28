@@ -213,9 +213,9 @@ class Settings:
         # IGDB (Twitch, ~4 req/s, no daily quota) and Steam (public endpoint, no
         # fixed daily cap) sit far below their real ceilings, so their budgets are
         # raised well above RAWG's to speed primary-score coverage at no cost.
-        self.IGDB_DAILY_LIMIT: int = _env_int("IGDB_DAILY_LIMIT", 3000)
+        self.IGDB_DAILY_LIMIT: int = _env_int("IGDB_DAILY_LIMIT", 20_000)
         self.RAWG_DAILY_LIMIT: int = _env_int("RAWG_DAILY_LIMIT", 600)
-        self.STEAM_DAILY_LIMIT: int = _env_int("STEAM_DAILY_LIMIT", 1500)
+        self.STEAM_DAILY_LIMIT: int = _env_int("STEAM_DAILY_LIMIT", 10_000)
         self.STEAMSPY_DAILY_LIMIT: int = _env_int("STEAMSPY_DAILY_LIMIT", 300)
         self.CHEAPSHARK_DAILY_LIMIT: int = _env_int("CHEAPSHARK_DAILY_LIMIT", 200)
         self.FREETOGAME_DAILY_LIMIT: int = _env_int("FREETOGAME_DAILY_LIMIT", 200)
@@ -345,7 +345,7 @@ class Settings:
         self.DATA_FILL_STARTUP_DELAY_SECONDS: int = _env_int("DATA_FILL_STARTUP_DELAY_SECONDS", 120)
         self.DATA_FILL_PRIMARY_SCORE_BATCH_SIZE: int = _env_int("DATA_FILL_PRIMARY_SCORE_BATCH_SIZE", 10000)
         self.DATA_FILL_SYSTEM_REQUIREMENTS_BATCH_SIZE: int = _env_int(
-            "DATA_FILL_SYSTEM_REQUIREMENTS_BATCH_SIZE", 1000
+            "DATA_FILL_SYSTEM_REQUIREMENTS_BATCH_SIZE", 3000
         )
         self.DATA_FILL_METADATA_BATCH_SIZE: int = _env_int("DATA_FILL_METADATA_BATCH_SIZE", 48)
         self.DATA_FILL_RATING_BATCH_SIZE: int = _env_int("DATA_FILL_RATING_BATCH_SIZE", 48)

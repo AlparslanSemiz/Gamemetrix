@@ -6,6 +6,7 @@ from app.models import Game
 from app.services.seo import (
     SITEMAP_CHUNK_SIZE,
     SitemapEntry,
+    _select_published_ids,
     breadcrumb_genre,
     game_url_sitemap,
     seo_exclusion_reason,
@@ -13,6 +14,18 @@ from app.services.seo import (
     sitemap_index_document,
     static_url_sitemap,
 )
+
+
+class _SeoSelectionDb:
+    def __init__(self, games: list[Game]):
+        self.games = games
+        self.expunged: list[int] = []
+
+    def scalars(self, _statement):
+        return iter(self.games)
+
+    def expunge(self, game: Game) -> None:
+        self.expunged.append(game.id)
 
 
 def game_fixture(**overrides) -> Game:
@@ -62,6 +75,21 @@ def game_fixture(**overrides) -> Game:
 
 def test_quality_gate_accepts_complete_game() -> None:
     assert seo_exclusion_reason(game_fixture(), has_price_data=False) is None
+
+
+def test_seo_selection_retains_only_the_bounded_top_cohort() -> None:
+    games = [
+        game_fixture(id=1, rank_score=70, metrix_score=70),
+        game_fixture(id=2, rank_score=90, metrix_score=90),
+        game_fixture(id=3, rank_score=80, metrix_score=80),
+    ]
+    db = _SeoSelectionDb(games)
+
+    eligible, published_ids = _select_published_ids(db, set(), 2)
+
+    assert eligible == 3
+    assert published_ids == {2, 3}
+    assert db.expunged == [1, 2, 3]
 
 
 def test_quality_gate_rejects_thin_and_single_source_games() -> None:

@@ -147,13 +147,16 @@ async def fill_catalog(target_total: int) -> dict[str, object]:
     return result
 
 
-def _rating_refresh_candidates(force: bool) -> list[int]:
+def _rating_refresh_candidates(force: bool, limit: int) -> list[int]:
+    if limit <= 0:
+        return []
     with SessionLocal() as db:
         if force:
             return list(db.scalars(
                 select(Game.id)
                 .where(Game.content_type == "game")
                 .order_by(desc(Game.rank_score), desc(Game.metrix_score))
+                .limit(limit)
             ).all())
 
         # Only the ids survive this scan, so the rows are streamed and detached as
@@ -180,13 +183,18 @@ def _rating_refresh_candidates(force: bool) -> list[int]:
             if game_needs_rating_refresh(game, now):
                 game_ids.append(game.id)
             db.expunge(game)
+            if len(game_ids) >= limit:
+                break
         return game_ids
 
 
 async def fill_ratings(*, force: bool) -> dict[str, int]:
     cfg = get_settings()
     refreshed = skipped = failed = 0
-    for game_id in _rating_refresh_candidates(force):
+    for game_id in _rating_refresh_candidates(
+        force,
+        cfg.DATA_FILL_RATING_BATCH_SIZE,
+    ):
         if not remaining_any(RATING_BUDGET_SOURCES):
             break
         if cfg.DATA_FILL_INTER_GAME_DELAY > 0:
