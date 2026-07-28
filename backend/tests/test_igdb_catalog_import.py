@@ -33,12 +33,20 @@ def test_igdb_catalog_row_imports_official_website_and_game_modes() -> None:
             {"url": "https://example-game.test", "type": 1, "trusted": True},
         ],
         "game_modes": [{"name": "Single player"}, {"name": "Co-operative"}],
+        "external_games": [
+            {
+                "category": 1,
+                "uid": "620",
+                "url": "https://store.steampowered.com/app/620",
+            }
+        ],
     }
 
     game = _game_from_igdb(raw)
 
     assert game.website_url == "https://example-game.test"
     assert game.game_modes == ["singleplayer", "coop"]
+    assert game.steam_app_id == 620
 
 
 def test_full_catalog_query_requests_official_website_and_game_modes() -> None:
@@ -47,3 +55,5 @@ def test_full_catalog_query_requests_official_website_and_game_modes() -> None:
     assert "websites.url" in query
     assert "websites.type" in query
     assert "game_modes.name" in query
+    assert "external_games.uid" in query
+    assert "external_games.category" in query

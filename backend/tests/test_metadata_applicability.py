@@ -1,6 +1,7 @@
 from app.integrations.types import NormalizedGame
 from app.services.metadata_backfill.apply import apply_normalized_game
 from app.services.metadata_backfill.gaps import field_gaps
+from app.services.metadata_backfill.sanitize import system_requirements_need_repair
 from tests.test_seo import game_fixture
 
 
@@ -37,6 +38,29 @@ def test_system_requirements_are_required_only_for_pc_games() -> None:
 
     assert "system_requirements" in field_gaps(pc_game)
     assert "system_requirements" not in field_gaps(switch_game)
+
+
+def test_legacy_system_requirements_are_not_mistaken_for_placeholders() -> None:
+    requirements = [{
+        "platform": "PC",
+        "minimum": (
+            "OS: Windows XP\nProcessor: 1.2GHz\n"
+            "Memory: 256MB RAM\nStorage: 250 MB available space"
+        ),
+        "recommended": "",
+    }]
+
+    assert system_requirements_need_repair(requirements) is False
+
+
+def test_non_pc_requirement_rows_do_not_fill_the_pc_gap() -> None:
+    requirements = [{
+        "platform": "Linux",
+        "minimum": "OS: Ubuntu 22.04",
+        "recommended": "",
+    }]
+
+    assert system_requirements_need_repair(requirements) is True
 
 
 def test_metadata_applier_uses_official_website_not_provider_profile() -> None:

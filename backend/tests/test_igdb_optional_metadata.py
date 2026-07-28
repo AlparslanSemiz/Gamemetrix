@@ -10,6 +10,8 @@ def test_optional_metadata_query_batches_ids() -> None:
     assert "where id = (2,9)" in query
     assert "websites.type" in query
     assert "game_modes.name" in query
+    assert "external_games.uid" in query
+    assert "external_games.category" in query
 
 
 def test_optional_metadata_parser_keeps_only_official_website() -> None:
@@ -20,11 +22,16 @@ def test_optional_metadata_parser_keeps_only_official_website() -> None:
             {"url": "https://example-game.test", "type": 1},
         ],
         "game_modes": [{"name": "Single player"}, {"name": "Co-operative"}],
+        "external_games": [
+            {"category": 5, "uid": "gog-id", "url": "https://www.gog.com/game/example"},
+            {"category": 1, "uid": "620", "url": "https://store.steampowered.com/app/620"},
+        ],
     }]
 
     assert parse_igdb_optional_metadata(rows) == {
         2: {
             "website": "https://example-game.test",
             "game_modes": ["singleplayer", "coop"],
+            "steam_app_id": 620,
         }
     }

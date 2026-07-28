@@ -29,6 +29,7 @@ from .stages import (
     fill_primary_scores,
     fill_ratings,
     fill_summaries,
+    fill_system_requirements,
     repair_catalog_quality,
 )
 from .status import count_missing_external_ids
@@ -51,6 +52,7 @@ _EMPTY_RESULT: dict[str, object] = {
     "igdb_scores": {},
     "igdb_playtime": {},
     "igdb_optional_metadata": {},
+    "system_requirements": {},
     "endless": {},
     "summaries": {},
     "prices": {},
@@ -114,6 +116,8 @@ async def _run_all_stages(
     result["igdb_playtime"] = await fill_igdb_playtime()
     save_run_progress(run_id, result)
     result["igdb_optional_metadata"] = await fill_igdb_optional_metadata()
+    save_run_progress(run_id, result)
+    result["system_requirements"] = await fill_system_requirements()
     save_run_progress(run_id, result)
     result["primary_scores"] = await fill_primary_scores(force=force)
     save_run_progress(run_id, result)
@@ -184,6 +188,12 @@ def _data_fill_summary(result: dict[str, object]) -> dict[str, int]:
         ),
         "game_modes_filled": _int(
             _stage(result, "igdb_optional_metadata").get("modes_filled")
+        ),
+        "steam_ids_filled": _int(
+            _stage(result, "igdb_optional_metadata").get("steam_ids_filled")
+        ),
+        "system_requirements_filled": _int(
+            _stage(result, "system_requirements").get("filled")
         ),
         "prices_stored": _int(_stage(result, "prices").get("stored")),
         "summaries_shortened": _int(_stage(result, "summaries").get("shortened")),

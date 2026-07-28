@@ -30,12 +30,7 @@ _PROVIDER_PROFILE_HOSTS = frozenset({
     "www.wikidata.org",
 })
 
-_BAD_SYSTEM_REQUIREMENT_MARKERS = (
-    "windows xp",
-    "1.2ghz",
-    "256mb",
-    "250 mb",
-)
+_PC_REQUIREMENT_PLATFORMS = frozenset({"pc", "steam", "windows"})
 
 
 def as_aware(value: datetime | None) -> datetime | None:
@@ -106,16 +101,21 @@ def steam_cover_should_update(current: str | None, app_id: int, fresh: str | Non
 
 
 def system_requirements_need_repair(requirements: list[dict] | None) -> bool:
-    if not requirements:
+    if not isinstance(requirements, list) or not requirements:
         return True
-    pc_req = next(
-        (req for req in requirements if str(req.get("platform", "")).lower() in {"pc", "windows"}),
-        requirements[0],
-    )
-    text = " ".join(str(pc_req.get(key) or "") for key in ("minimum", "recommended")).lower()
-    if not text.strip():
-        return True
-    return any(marker in text for marker in _BAD_SYSTEM_REQUIREMENT_MARKERS)
+    for requirement in requirements:
+        if not isinstance(requirement, dict):
+            continue
+        platform = str(requirement.get("platform") or "").strip().lower()
+        if platform not in _PC_REQUIREMENT_PLATFORMS:
+            continue
+        text = " ".join(
+            str(requirement.get(key) or "").strip()
+            for key in ("minimum", "recommended")
+        )
+        if text.strip():
+            return False
+    return True
 
 
 def merge_unique(current: list[str] | None, incoming: list[str], limit: int) -> list[str]:

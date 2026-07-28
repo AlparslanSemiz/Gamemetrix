@@ -16,9 +16,11 @@ from ..services.deduplication import (
     find_existing_duplicate,
     merge_game_data,
 )
+from ..services.metadata_backfill.persistence import upsert_external_id
 from ..services.rawg_import import platform_family
 from .rate_limiter import get_rate_limiter
 from .igdb import _get_access_token
+from .igdb_optional_metadata import extract_steam_app_id
 from .igdb_websites import extract_official_website
 from .sync import calculate_metrix_score, compute_rank_fields
 from .types import normalize_game_modes
@@ -166,6 +168,7 @@ def _game_from_igdb(
         source_scores=source_scores,
         developer=developer,
         publisher=publisher,
+        steam_app_id=extract_steam_app_id(raw_game),
         website_url=extract_official_website(raw_game),
         game_modes=game_modes,
         screenshots=screenshots,
@@ -345,7 +348,9 @@ _IGDB_IMPORT_FIELDS = (
     "aggregated_rating,aggregated_rating_count,total_rating,total_rating_count,"
     "platforms.name,genres.name,game_modes.name,cover.url,screenshots.url,summary,"
     "involved_companies.company.name,involved_companies.developer,"
-    "involved_companies.publisher,websites.url,websites.type,websites.trusted; "
+    "involved_companies.publisher,websites.url,websites.type,websites.trusted,"
+    "external_games.category,external_games.external_game_source,"
+    "external_games.uid,external_games.url; "
 )
 # Global popular-catalog quality gate: main games only, with enough
 # rated reviews to be worth ranking. Keeps the general import from flooding the
@@ -404,8 +409,22 @@ def _ingest_igdb_game(
     existing = _existing_igdb_game(db, raw_game, game, lookup)
     if existing:
         merge_game_data(existing, game)
+        if (
+            game.steam_app_id is not None
+            and existing.steam_app_id != game.steam_app_id
+        ):
+            existing.steam_app_id = game.steam_app_id
         db.add(existing)
         _upsert_igdb_external_id(db, existing, raw_game, lookup=lookup)
+        if existing.steam_app_id is not None:
+            upsert_external_id(
+                db,
+                existing.id,
+                "Steam",
+                str(existing.steam_app_id),
+                url=f"https://store.steampowered.com/app/{existing.steam_app_id}",
+                confidence=0.98,
+            )
         if lookup is not None:
             lookup.game_ids_by_slug.setdefault(game.slug, existing.id)
             lookup.game_ids_by_lower_title.setdefault(game.title.lower(), existing.id)
@@ -413,6 +432,15 @@ def _ingest_igdb_game(
     db.add(game)
     db.flush()
     _upsert_igdb_external_id(db, game, raw_game, lookup=lookup)
+    if game.steam_app_id is not None:
+        upsert_external_id(
+            db,
+            game.id,
+            "Steam",
+            str(game.steam_app_id),
+            url=f"https://store.steampowered.com/app/{game.steam_app_id}",
+            confidence=0.98,
+        )
     if lookup is not None:
         lookup.game_ids_by_slug[game.slug] = game.id
         lookup.game_ids_by_lower_title.setdefault(game.title.lower(), game.id)

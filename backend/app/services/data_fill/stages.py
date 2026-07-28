@@ -36,6 +36,9 @@ from ..metadata_backfill import metadata_backfill_batch
 from ..price_backfill import price_backfill_batch
 from ..primary_score_backfill import primary_score_backfill_batch, primary_score_coverage_status
 from ..summarizer import refresh_summary_batch
+from ..steam_system_requirements_backfill import (
+    steam_system_requirements_backfill_batch,
+)
 
 log = logging.getLogger(__name__)
 
@@ -319,13 +322,36 @@ async def fill_igdb_scores(*, force: bool) -> dict[str, object]:
 
 
 async def fill_igdb_optional_metadata() -> dict[str, object]:
-    """Batch-fill official websites and game modes without making them blockers."""
+    """Batch-fill websites, modes, and the IGDB-to-Steam identity crosswalk."""
     cfg = get_settings()
     if not cfg.igdb_configured() or not remaining_any(("IGDB",)):
-        return {"status": "skipped", "website_filled": 0, "modes_filled": 0}
+        return {
+            "status": "skipped",
+            "website_filled": 0,
+            "modes_filled": 0,
+            "steam_ids_filled": 0,
+        }
     result = await igdb_optional_metadata_backfill_batch(
         limit=cfg.DATA_FILL_HLTB_TARGET,
         inter_batch_delay=cfg.DATA_FILL_INTER_GAME_DELAY,
+    )
+    return {"status": "ok", **result}
+
+
+async def fill_system_requirements() -> dict[str, object]:
+    """Fill PC requirements from Steam after IGDB has supplied App IDs."""
+    cfg = get_settings()
+    if not remaining_any(("Steam",)):
+        return {
+            "status": "budget_exhausted",
+            "considered": 0,
+            "filled": 0,
+            "unavailable": 0,
+            "failed": 0,
+        }
+    result = await steam_system_requirements_backfill_batch(
+        limit=cfg.DATA_FILL_SYSTEM_REQUIREMENTS_BATCH_SIZE,
+        inter_game_delay=cfg.DATA_FILL_INTER_GAME_DELAY,
     )
     return {"status": "ok", **result}
 

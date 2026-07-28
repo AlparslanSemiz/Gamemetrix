@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 
 import httpx
 
@@ -17,6 +18,8 @@ log = logging.getLogger(__name__)
 
 _IGDB_GAMES_URL = "https://api.igdb.com/v4/games"
 _HTTP_TIMEOUT = 12
+_STEAM_CATEGORY = 1
+_STEAM_APP_URL_RE = re.compile(r"store\.steampowered\.com/app/(\d+)", re.IGNORECASE)
 
 
 def build_igdb_optional_metadata_query(igdb_ids: list[int]) -> str:
@@ -27,9 +30,27 @@ def build_igdb_optional_metadata_query(igdb_ids: list[int]) -> str:
         return ""
     joined_ids = ",".join(str(value) for value in valid_ids)
     return (
-        "fields id,game_modes.name,websites.url,websites.type,websites.trusted; "
+        "fields id,game_modes.name,websites.url,websites.type,websites.trusted,"
+        "external_games.category,external_games.external_game_source,"
+        "external_games.uid,external_games.url; "
         f"where id = ({joined_ids}); limit {len(valid_ids)};"
     )
+
+
+def extract_steam_app_id(raw: dict) -> int | None:
+    for external in raw.get("external_games") or []:
+        if not isinstance(external, dict):
+            continue
+        url = str(external.get("url") or "")
+        url_match = _STEAM_APP_URL_RE.search(url)
+        is_steam = external.get("category") == _STEAM_CATEGORY or url_match is not None
+        if not is_steam:
+            continue
+        uid = str(external.get("uid") or "").strip()
+        candidate = uid if uid.isdigit() else (url_match.group(1) if url_match else "")
+        if candidate.isdigit() and int(candidate) > 0:
+            return int(candidate)
+    return None
 
 
 def parse_igdb_optional_metadata(rows: object) -> dict[int, dict[str, object]]:
@@ -53,6 +74,7 @@ def parse_igdb_optional_metadata(rows: object) -> dict[int, dict[str, object]]:
         parsed[igdb_id] = {
             "website": extract_official_website(row),
             "game_modes": modes,
+            "steam_app_id": extract_steam_app_id(row),
         }
     return parsed
 

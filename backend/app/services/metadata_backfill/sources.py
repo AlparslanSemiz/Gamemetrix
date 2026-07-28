@@ -32,7 +32,10 @@ _RAWG_GAPS = {
     "cover", "summary", "developer", "publisher", "genres",
     "platforms", "screenshots", "system_requirements",
 }
-_IGDB_GAPS = {"cover", "summary", "developer", "publisher", "genres", "platforms"}
+_IGDB_GAPS = {
+    "cover", "summary", "developer", "publisher", "genres", "platforms",
+    "system_requirements",
+}
 _WIKIDATA_GAPS = {"developer", "publisher", "genres", "platforms"}
 _GAMEBRAIN_GAPS = {
     "cover", "summary", "developer", "publisher", "genres", "platforms", "game_modes", "screenshots",
@@ -43,7 +46,7 @@ _IGDB_TRUSTED_CONFIDENCE = 0.94
 _IGDB_WEAK_CONFIDENCE = 0.7
 _EARLIEST_MEANINGFUL_YEAR = 1970
 
-_REFRESH_ORDER = ("Steam", "IGDB", "Wikidata", "GameBrain", "RAWG")
+_REFRESH_ORDER = ("IGDB", "Steam", "Wikidata", "GameBrain", "RAWG")
 
 
 def source_needed(db: Session, game: Game, source: str) -> bool:
@@ -164,6 +167,22 @@ async def refresh_igdb_metadata(db: Session, game: Game, skipped: set[str]) -> R
         slug=result.external_slug, url=result.external_url,
         confidence=_IGDB_TRUSTED_CONFIDENCE if trusted or titles_match_game(game, result) else _IGDB_WEAK_CONFIDENCE,
     )
+    raw_steam_id = result.raw.get("steam_app_id")
+    if (
+        isinstance(raw_steam_id, int)
+        and raw_steam_id > 0
+        and game.steam_app_id != raw_steam_id
+    ):
+        game.steam_app_id = raw_steam_id
+        changed = True
+        upsert_external_id(
+            db,
+            game.id,
+            "Steam",
+            str(raw_steam_id),
+            url=steam_service.store_url(raw_steam_id),
+            confidence=_IGDB_TRUSTED_CONFIDENCE,
+        )
     store_source_snapshot(db, game, result, "metadata-backfill/search")
     return True, changed
 

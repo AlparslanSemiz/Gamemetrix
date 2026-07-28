@@ -13,6 +13,7 @@ import httpx
 
 from ..config import get_settings
 from .igdb import _candidate_year, _get_access_token, escape_igdb_search_text  # reuse existing token cache
+from .igdb_optional_metadata import extract_steam_app_id
 from .rate_limiter import get_rate_limiter
 from .title_matching import title_match_quality
 from .types import NormalizedGame, SourceHealth, bounded_float, bounded_int, normalize_game_modes
@@ -161,7 +162,9 @@ class IGDBService:
             "total_rating_count,platforms.name,genres.name,game_modes.name,cover.url,"
             "involved_companies.company.name,involved_companies.developer,"
             "involved_companies.publisher,franchise.name,franchises.name,"
-            "collection.name,summary,websites.url,websites.type,"
+            "collection.name,summary,external_games.uid,"
+            "external_games.category,external_games.url,"
+            "websites.url,websites.type,"
             "websites.trusted,url; "
             f"where id = {igdb_id}; "
             "limit 1;"
@@ -243,6 +246,7 @@ class IGDBService:
 
         normalized_raw = dict(raw)
         normalized_raw["website"] = extract_official_website(raw)
+        normalized_raw["steam_app_id"] = extract_steam_app_id(raw)
         return NormalizedGame(
             source="IGDB",
             external_id=str(raw["id"]),

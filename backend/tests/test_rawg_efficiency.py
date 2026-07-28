@@ -12,7 +12,7 @@ def _complete_metadata_game():
         game_modes=["Single player"],
         website_url="https://example.test/game",
         screenshots=["https://images.example/screenshot.jpg"],
-        system_requirements=[{"minimum": "Any"}],
+        system_requirements=[{"platform": "PC", "minimum": "Any"}],
         dlcs=[{"name": "Expansion"}],
         similar_games=[{"name": "Related Game"}],
     )
