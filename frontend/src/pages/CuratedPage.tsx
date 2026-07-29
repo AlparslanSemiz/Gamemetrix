@@ -2,14 +2,14 @@ import { Clock3, ExternalLink, Gamepad2, LogIn, Shield, Tag } from 'lucide-react
 import { Link } from 'react-router'
 import { useAccount } from '../state/useAccount'
 import { trackProductEvent } from '../services/analytics'
-import type { Game, PriceSnapshot } from '../types/game'
+import type { CatalogGame, PriceSnapshot } from '../types/game'
 import { ACTIONABLE_PRICE_MAX_AGE_MS, currentPriceSnapshots } from '../utils/prices'
 import { isProtonTier, PROTON_TIER_LABELS } from '../utils/proton'
 import { safeExternalUrl } from '../utils/url'
 import './CuratedPage.css'
 
 export interface CuratedPageData {
-  games: Game[]
+  games: CatalogGame[]
   total: number
   title: string
   description: string

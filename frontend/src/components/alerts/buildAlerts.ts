@@ -1,4 +1,4 @@
-import type { Game, PriceSnapshot } from '../../types/game'
+import type { CatalogGame, PriceSnapshot } from '../../types/game'
 import { ACTIONABLE_PRICE_MAX_AGE_MS, currentPriceSnapshots } from '../../utils/prices'
 import type { AlertKind, AlertPreferences, GameAlert } from './types'
 
@@ -20,7 +20,7 @@ function formatMoney(value: number | null | undefined, currency: string): string
   }
 }
 
-function priceAlert(game: Game, preferences: AlertPreferences): GameAlert | null {
+function priceAlert(game: CatalogGame, preferences: AlertPreferences): GameAlert | null {
   const prices = currentPriceSnapshots(game.price_snapshots ?? [], ACTIONABLE_PRICE_MAX_AGE_MS)
   const freePrice = prices.find((price) => price.is_free || price.sale_price === 0)
   if (freePrice) {
@@ -46,7 +46,7 @@ function priceAlert(game: Game, preferences: AlertPreferences): GameAlert | null
   }
 }
 
-function releaseAlert(game: Game, now: Date, cutoff: Date): GameAlert | null {
+function releaseAlert(game: CatalogGame, now: Date, cutoff: Date): GameAlert | null {
   if (!game.release_date) return null
   const releaseDate = new Date(`${game.release_date}T12:00:00`)
   if (releaseDate < now || releaseDate > cutoff) return null
@@ -63,7 +63,7 @@ function releaseAlert(game: Game, now: Date, cutoff: Date): GameAlert | null {
   }
 }
 
-function scoreAlert(game: Game, preferences: AlertPreferences): GameAlert | null {
+function scoreAlert(game: CatalogGame, preferences: AlertPreferences): GameAlert | null {
   if (game.metrix_score < preferences.minScore) return null
   const score = Math.round(game.metrix_score)
   return {
@@ -75,7 +75,7 @@ function scoreAlert(game: Game, preferences: AlertPreferences): GameAlert | null
   }
 }
 
-export function buildAlerts(games: Game[], preferences: AlertPreferences): GameAlert[] {
+export function buildAlerts(games: CatalogGame[], preferences: AlertPreferences): GameAlert[] {
   const now = new Date()
   const cutoff = new Date(now.getTime() + preferences.upcomingDays * MS_PER_DAY)
 

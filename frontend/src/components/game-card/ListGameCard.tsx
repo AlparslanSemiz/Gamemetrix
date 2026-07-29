@@ -14,13 +14,20 @@ function ListCardCover({
   model,
   onCoverError,
   onOpenTrailer,
+  priority,
 }: Pick<
   GameCardViewProps,
-  'game' | 'model' | 'onCoverError' | 'onOpenTrailer'
+  'game' | 'model' | 'onCoverError' | 'onOpenTrailer' | 'priority'
 >) {
   return (
     <div className="cover" onClick={() => onOpenTrailer(game)} title="Watch trailer">
-      <img src={model.coverSrc} alt={`${game.title} cover`} loading="lazy" onError={onCoverError} />
+      <img
+        src={model.coverSrc}
+        alt={`${game.title} cover`}
+        loading={priority ? 'eager' : 'lazy'}
+        fetchPriority={priority ? 'high' : 'auto'}
+        onError={onCoverError}
+      />
       <div className="cover-play-hint"><Play size={16} aria-hidden="true" /></div>
       <div className="mobile-cover-score"><ScoreRing score={game.metrix_score} size="sm" /></div>
     </div>
@@ -70,7 +77,7 @@ function ListCardBody(props: Pick<
           ))}
         </div>
       </div>
-      <div className="summary-block"><p className="summary">{game.summary_short ?? game.summary}</p></div>
+      <div className="summary-block"><p className="summary">{game.summary_short ?? ''}</p></div>
       <DeveloperPublisherLinks game={game} onFilterDeveloper={onFilterDeveloper} onFilterPublisher={onFilterPublisher} />
       <div className="meta-lines">
         {model.playtimeLabel || model.protonTier ? (
@@ -109,6 +116,7 @@ export function ListGameCard({
   onFilterPublisher,
   onOpenDetail,
   onOpenTrailer,
+  priority,
   onShare,
   onToggleCollection,
   ...collectionState
@@ -119,7 +127,13 @@ export function ListGameCard({
       style={model.cardStyle}
       data-game-slug={game.slug}
     >
-      <ListCardCover game={game} model={model} onCoverError={onCoverError} onOpenTrailer={onOpenTrailer} />
+      <ListCardCover
+        game={game}
+        model={model}
+        onCoverError={onCoverError}
+        onOpenTrailer={onOpenTrailer}
+        priority={priority}
+      />
       <ListCardBody
         game={game}
         model={model}

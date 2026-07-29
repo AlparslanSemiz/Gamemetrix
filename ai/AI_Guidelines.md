@@ -2,15 +2,21 @@
 
 Rules every AI session on this project must follow without exception. Read this before writing a single line of code.
 
+**This file is the rulebook — what you must and must not do.**
+The system map — architecture, data flow, where every module lives — is `AI.md` at the repo root.
+Read `AI.md` first, then this file. Never add a rule to `AI.md`; never add an architecture
+description here.
+
 ---
 
 ## 0. Before Starting Any Task
 
-1. Read `memory/MEMORY.md` and follow all linked memory files relevant to the task.
+1. Read `AI.md` — the architecture, data flow and module map.
 2. Read this file entirely.
-3. If the task touches scoring, read `backend/app/integrations/sync/scoring.py` and `source_registry.py` before touching anything.
-4. If the task touches the frontend, read `frontend/src/types/game.ts` before adding or renaming fields.
-5. Do NOT infer the current state of the codebase from memory alone — memory can be stale. Always verify by reading the actual file.
+3. Read `memory/MEMORY.md` and follow all linked memory files relevant to the task.
+4. If the task touches scoring, read `backend/app/integrations/sync/scoring.py` and `source_registry.py` before touching anything.
+5. If the task touches the frontend, read `frontend/src/types/game.ts` before adding or renaming fields.
+6. Do NOT infer the current state of the codebase from memory or documentation alone — both can be stale. Always verify by reading the actual file, and fix the doc when you find it wrong.
 
 ---
 
@@ -23,54 +29,29 @@ Rules every AI session on this project must follow without exception. Read this 
 | **I-3** | Raw API responses are NEVER written directly to the database. Every source must produce a `NormalizedGame` or `ExternalScore` first. |
 | **I-4** | Source names (`"Metacritic"`, `"Steam"`, etc.) are NEVER hardcoded in multiple places. `source_registry.py` is the single source of truth for source metadata. |
 | **I-5** | `SOURCE_WEIGHTS` in `integrations/sync/constants.py` is derived from `source_registry.REGISTRY[*].weight`. Never re-declare weights as literals there — change the registry. |
-| **I-6** | The sidebar stays short — no per-year entries. "Best of the Year" is one sidebar item; year selection happens via in-page chips. |
+| **I-6** | The sidebar stays short — no per-year entries. Year selection happens via in-page chips, never as sidebar rows. |
 | **I-7** | `applicable_for_game()` in `source_registry.py` is the authoritative function for which sources apply to a game. The `Game.applicable_primary_sources` property delegates to it — never re-implement this logic inline. |
 | **I-8** | Every writer of `Game.summary` must call `metadata.invalidate_summary_audit(game)`. A `summary_quality` verdict describes one specific text; a stale `unusable` keeps the row queued for provider re-enrichment forever. |
 | **I-9** | `summary_refreshed_at` moves only when the description text actually changed. `summary_checked_at` moves on every audit pass. Other jobs treat the former as "content changed" — never bump it just because a row was inspected. |
 
 ---
 
-## 2. Architecture — Backend Layer Map
+## 2. Architecture — Rules
 
-```
-main.py
-  └─ App bootstrap only: CORS, lifespan, router mounting, /health.
-     No business logic. No direct integration imports.
+**The layer map lives in `AI.md` §4.** Read it there; it is not duplicated here.
+This section holds only the architectural *rules* you must obey.
 
-routers/
-  ├─ games.py    — public game endpoints (search, list, detail, refresh, trailer, facets)
-  ├─ imports.py  — bulk import endpoints (rawg, steamspy, cheapshark, free-to-game)
-  ├─ ratings.py  — rating/metadata maintenance (weights, enrich, fix-years, enrich-summaries)
-  ├─ account/    — auth, oauth, state, preferences, alerts, schemas (one module per surface)
-  └─ admin/      — health, dashboard, jobs, diagnostics, matching, prices
+### Layer responsibilities
 
-services/
-  ├─ metadata.py           — summary cleaning, enrichment, release-year fixing
-  ├─ rawg_import.py        — RAWG search result → Game creation and metadata application
-  ├─ game_filter.py        — list filtering, in-memory sorting
-  ├─ game_query.py         — catalog SELECT/COUNT construction (CatalogFilters, sorts, JSON predicates)
-  ├─ trailer_cache.py      — TTL + in-flight coalescing for YouTube trailer lookups
-  ├─ background.py         — periodic refresh loops
-  ├─ similarity/           — "games like X": taxonomy → signals → profiles → scoring/gates → ranking → queries
-  ├─ deduplication/        — titles → matching → merge → in_memory → store
-  └─ metadata_backfill/    — sanitize → gaps → persistence → apply → sources → batch
+- `main.py` — app bootstrap only: settings validation, middleware, router mounting, `/health`,
+  and the lifespan. No business logic, no direct integration imports.
+- `routers/` — orchestrate service calls and return HTTP responses. No business logic inline.
+- `services/` — business transformations only. No HTTP calls to providers; use integration functions.
+- `integrations/<source>.py` — HTTP client + response parsing only.
+- `models/` — table definitions only. Computed properties delegate to `game_signals.py`.
+- `config.py` — every `os.getenv` call. No other file may read the environment.
 
-integrations/
-  ├─ sync/              — constants, values, serialization, scoring, cache, fetching,
-  │                       ranking, persistence, refresh
-  ├─ rawg/              — matching, client, persistence, catalog_import, detail
-  ├─ source_registry.py — canonical source definitions (weight, is_primary, requires_pc, …)
-  ├─ types.py           — shared dataclasses: ExternalScore, NormalizedGame, SourceHealth
-  └─ <source>.py / <source>_service.py — one pair per data source (thin HTTP client + normalizer)
-
-models.py           — ORM models only. Computed properties delegate to game_signals.py.
-game_signals.py     — pure rating-signal classification (confidence_level, popularity_label, …)
-content_type.py     — game / dlc / soundtrack / software classification
-schemas.py          — Pydantic API schemas only.
-config.py           — All os.getenv calls live here. No other file may call os.getenv.
-config_validation.py— Settings validation only; reads no environment itself.
-database.py         — SQLAlchemy engine and session factory only.
-```
+### Module splitting
 
 When a module passes ~400 lines or holds two unrelated concerns, split it into a package
 with one module per responsibility and re-export the public API from `__init__.py`, so
@@ -176,8 +157,8 @@ The score is a **reliability-adjusted weighted average**, not Bayesian prior shr
 - New endpoints go in the appropriate `routers/` file. Register via `app.include_router()` in `main.py`.
 - All query params must be validated in the route signature via Pydantic/FastAPI types — no `request.query_params` manual parsing.
 - New DB columns must have a `default` or `server_default` so existing rows are not broken.
-- If you add a column to `models.py` that should be API-exposed, also add it to `schemas.py`.
-- Also add it to `_run_migrations()` in `main.py` with `_add_column_if_missing`.
+- If you add a column to `models/` that should be API-exposed, also add it to `schemas.py`, then to `frontend/src/types/game.ts`.
+- **Schema changes are Alembic revisions** in `backend/alembic/versions/`. There is no `_run_migrations()` / `_add_column_if_missing()` in `main.py` — that mechanism was replaced by Alembic.
 - No `nullable=False` columns without a default unless you also back-fill existing rows.
 
 ---
@@ -252,10 +233,12 @@ Before reporting a task as done:
 - [ ] No `any` types introduced in TypeScript.
 - [ ] No hardcoded source name strings outside `source_registry.py`.
 - [ ] `value_score` is not wired into `metrix_score` if price logic was touched.
-- [ ] New DB columns have defaults and are added to `_run_migrations()` in `main.py`.
+- [ ] New DB columns have defaults and ship with an Alembic revision.
 - [ ] New service functions do exactly one thing (no mixed concerns).
 - [ ] No `os.getenv` calls outside `config.py`.
 - [ ] No magic number literals in function bodies — all are named constants.
 - [ ] No bare `except Exception: pass` — errors are logged.
 - [ ] All new functions have full type annotations.
 - [ ] If UI changed: both `list` and `compact` view modes still work.
+- [ ] Verification actually ran: `pytest -q` for backend changes, `npm run typecheck` + `npm run lint` for frontend changes. Report what failed.
+- [ ] **Docs updated in the same change.** If the change made anything in `AI.md` false, fix that section (`AI.md` §14 maps change → section) and append a line to `AI.md` §15. If it established a new rule, add it *here* instead. Never put a rule in `AI.md` or an architecture description in this file.

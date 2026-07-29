@@ -106,9 +106,16 @@ def build_catalog_count_query(
     max_score: float | None,
     deal: str,
 ) -> Select[tuple[int]]:
-    """Direct COUNT — no subquery, uses indexes on content_type/rank_score."""
+    """Direct COUNT(*) so PostgreSQL can use an index-only scan."""
     return _apply_base_filters(
-        select(func.count(Game.id)), content_type, q, year_min, year_max, min_score, max_score, deal
+        select(func.count()).select_from(Game),
+        content_type,
+        q,
+        year_min,
+        year_max,
+        min_score,
+        max_score,
+        deal,
     )
 
 

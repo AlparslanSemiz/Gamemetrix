@@ -4,11 +4,14 @@ import { GameDetailPage } from '../pages/GameDetailPage'
 import { BackendResponseError, fetchBackend } from '../server-api.server'
 import type { Game } from '../types/game'
 
-export async function loader({ params }: LoaderFunctionArgs): Promise<Game> {
+export async function loader({ params, request }: LoaderFunctionArgs): Promise<Game> {
   const slug = params.slug ?? ''
   if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) throw new Response('Not Found', { status: 404 })
   try {
-    return await fetchBackend<Game>(`/api/games/${encodeURIComponent(slug)}?refresh=false`)
+    return await fetchBackend<Game>(
+      `/api/games/${encodeURIComponent(slug)}?refresh=false`,
+      { signal: request.signal },
+    )
   } catch (error) {
     if (error instanceof BackendResponseError && error.status === 404) {
       throw new Response('Not Found', { status: 404 })

@@ -1,11 +1,11 @@
 import type { MetaFunction } from 'react-router'
 import { CuratedPage, type CuratedPageData } from '../pages/CuratedPage'
 import { fetchBackend } from '../server-api.server'
-import type { GameListResponse } from '../types/game'
+import type { CatalogGameListResponse } from '../types/game'
 import { latestContentUpdate } from '../utils/seo'
 
 export async function loader(): Promise<CuratedPageData> {
-  const result = await fetchBackend<GameListResponse>('/api/seo/curated/deals?limit=100')
+  const result = await fetchBackend<CatalogGameListResponse>('/api/seo/curated/deals?limit=100')
   return {
     ...result,
     label: 'PC game deals',

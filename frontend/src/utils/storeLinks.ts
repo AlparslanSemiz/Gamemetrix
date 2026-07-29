@@ -1,4 +1,4 @@
-import type { Game } from '../types/game'
+import type { CatalogGame } from '../types/game'
 import { steamAppIdFromGame } from './steam'
 
 // Maps a PlatformIcons group key to the game's store page.
@@ -27,7 +27,7 @@ const SNAPSHOT_STORE_TO_GROUP: Record<string, string> = {
   'nintendo eshop': 'switch',
 }
 
-function snapshotUrlForGroup(group: string, game: Game): string | null {
+function snapshotUrlForGroup(group: string, game: CatalogGame): string | null {
   for (const snapshot of game.price_snapshots ?? []) {
     if (!snapshot.url) continue
     const snapshotGroup = SNAPSHOT_STORE_TO_GROUP[snapshot.store.toLowerCase().trim()]
@@ -36,7 +36,7 @@ function snapshotUrlForGroup(group: string, game: Game): string | null {
   return null
 }
 
-export function storeUrlForGroup(group: string, game: Game): string | null {
+export function storeUrlForGroup(group: string, game: CatalogGame): string | null {
   const fromSnapshot = snapshotUrlForGroup(group, game)
   if (fromSnapshot) return fromSnapshot
 

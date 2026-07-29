@@ -1,6 +1,6 @@
 import type { CSSProperties, SyntheticEvent } from 'react'
 import type { CollectionKey } from '../../state/collections'
-import type { Game, ProtonTier, SourceScore } from '../../types/game'
+import type { CatalogGame, ProtonTier, SourceScore } from '../../types/game'
 
 export interface GameCardCollectionState {
   isFavorite: boolean
@@ -14,17 +14,18 @@ export interface GameCardCollectionState {
 }
 
 export interface GameCardHandlers {
-  onOpenTrailer: (game: Game) => void
+  onOpenTrailer: (game: CatalogGame) => void
   onFilterDeveloper: (developer: string) => void
   onFilterGenre: (genre: string) => void
   onFilterPublisher: (publisher: string) => void
   onToggleCollection: (collection: CollectionKey, slug: string) => void
-  onOpenDetail: (game: Game) => void
+  onOpenDetail: (game: CatalogGame) => void
 }
 
 export interface GameCardProps extends GameCardCollectionState, GameCardHandlers {
-  game: Game
+  game: CatalogGame
   compact?: boolean
+  priority?: boolean
 }
 
 export interface GameCardModel {

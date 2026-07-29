@@ -1,6 +1,6 @@
-import type { Game } from '../types/game'
+import type { CatalogGame } from '../types/game'
 
-export function latestContentUpdate(games: Game[]): string {
+export function latestContentUpdate(games: CatalogGame[]): string {
   const timestamps = games.flatMap((game) => [
     game.seo_updated_at,
     game.ratings_refreshed_at,

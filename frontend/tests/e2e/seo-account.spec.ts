@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test'
 import type { Page } from '@playwright/test'
+import { gzipSync } from 'node:zlib'
 
 async function gotoHydrated(page: Page, path: string) {
   const sessionLoaded = page.waitForResponse((response) => response.url().endsWith('/api/account/session'))
@@ -33,8 +34,9 @@ test('home SSR and infinite catalog use the same full-catalog total', async ({ r
     .replace(/<[^>]+>/g, ' ')
     .replace(/\s+/g, ' ')
 
-  expect(visibleText).toContain('1 / 48 loaded')
-  expect(visibleText).not.toContain('1 / 400 loaded')
+  expect(visibleText).toContain('24 / 48 loaded')
+  expect(visibleText).not.toContain('24 / 400 loaded')
+  expect(gzipSync(html).byteLength).toBeLessThanOrEqual(50 * 1024)
 })
 
 test('analytics starts only after an explicit privacy choice', async ({ page }) => {
@@ -65,6 +67,7 @@ test('a stalled catalog page times out and retries without skipping it', async (
   })
 
   await gotoHydrated(page, '/')
+  await page.locator('.scroll-sentinel').scrollIntoViewIfNeeded()
   await expect(page.getByText('Loading more…')).toBeVisible()
   const loadingStartedAt = Date.now()
   await expect(page.getByRole('button', { name: 'Retry loading games' })).toBeVisible()
@@ -78,7 +81,7 @@ test('saved-list pages load their games directly without paging through the cata
   const catalogRequests: string[] = []
   page.on('request', (request) => {
     const url = new URL(request.url())
-    if (url.pathname === '/api/games') catalogRequests.push(url.search)
+    if (url.pathname === '/api/catalog/games') catalogRequests.push(url.search)
   })
   await page.addInitScript(() => {
     localStorage.setItem('gamemetrix.collections', JSON.stringify({

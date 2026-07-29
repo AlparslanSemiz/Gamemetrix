@@ -1647,3 +1647,6 @@
     flex-basis: 96px;
   }
 }
+.dp-related-lazy {
+  min-height: 1px;
+}

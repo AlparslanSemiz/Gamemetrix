@@ -2,13 +2,15 @@ from datetime import UTC, datetime, timedelta
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Response
-from sqlalchemy import desc, exists, func, or_, select
+from sqlalchemy import cast, desc, exists, func, or_, select
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Session, selectinload
 
 from ..database import get_db
 from ..config import get_settings
 from ..models import Game, PriceSnapshot
-from ..schemas import GameListResponse
+from ..schemas import CatalogGameListResponse, CatalogGameRead
+from ..services.catalog_projection import catalog_load_options
 from ..services.seo import (
     CANONICAL_ORIGIN,
     MIN_GENRE_LANDING_GAMES,
@@ -170,27 +172,22 @@ def seo_genres(db: Session = Depends(get_db)) -> dict:
     }
 
 
-@router.get("/api/seo/curated/{collection}", response_model=GameListResponse)
+@router.get("/api/seo/curated/{collection}", response_model=CatalogGameListResponse)
 def curated_games(
     collection: CuratedCollection,
     year: int | None = Query(default=None, ge=1970, le=2100),
     genre: str | None = Query(default=None, max_length=64, pattern=r"^[a-z0-9]+(?:-[a-z0-9]+)*$"),
     limit: int = Query(default=24, ge=1, le=100),
     db: Session = Depends(get_db),
-) -> GameListResponse:
-    query = (
-        select(Game)
-        .where(Game.seo_indexable.is_(True))
-        .options(selectinload(Game.price_snapshots))
-        .order_by(desc(Game.rank_score), desc(Game.metrix_score), Game.title)
-    )
+) -> CatalogGameListResponse:
     fresh_before = datetime.now(UTC) - _FRESH_PRICE_WINDOW
+    conditions = [Game.seo_indexable.is_(True)]
     if collection == "year":
         if year is None:
             raise HTTPException(status_code=422, detail="year is required")
-        query = query.where(Game.release_year == year)
+        conditions.append(Game.release_year == year)
     elif collection == "free":
-        query = query.where(
+        conditions.append(
             exists(
                 select(PriceSnapshot.id).where(
                     PriceSnapshot.game_id == Game.id,
@@ -200,7 +197,7 @@ def curated_games(
             )
         )
     elif collection == "deals":
-        query = query.where(
+        conditions.append(
             exists(
                 select(PriceSnapshot.id).where(
                     PriceSnapshot.game_id == Game.id,
@@ -220,23 +217,31 @@ def curated_games(
         display_name = facets.get(genre)
         if display_name is None:
             raise HTTPException(status_code=404, detail="Unknown genre")
-
-    candidates = list(db.scalars(query.limit(400)).unique().all())
-    if collection == "genre" and genre is not None:
-        candidates = [
-            game for game in candidates
-            if any(genre_slug(str(name)) == genre for name in (game.genres or []))
-        ]
+        conditions.append(cast(Game.genres, JSONB).contains([display_name]))
     elif collection == "linux":
-        candidates = [
-            game for game in candidates
-            if (game.proton_tier or "").lower() in {"native", "platinum", "gold", "silver", "bronze"}
-            or any(platform.lower() == "linux" for platform in game.platforms)
-        ]
+        conditions.append(or_(
+            Game.proton_tier.in_({"native", "platinum", "gold", "silver", "bronze"}),
+            cast(Game.platforms, JSONB).contains(["Linux"]),
+        ))
     elif collection == "steam-deck":
-        candidates = [
-            game for game in candidates
-            if (game.proton_tier or "").lower() in {"platinum", "gold", "silver", "native"}
-        ]
-    page = candidates[:limit]
-    return GameListResponse(games=page, total=len(candidates))
+        conditions.append(
+            Game.proton_tier.in_({"platinum", "gold", "silver", "native"})
+        )
+
+    total = min(
+        db.scalar(select(func.count()).select_from(Game).where(*conditions)) or 0,
+        400,
+    )
+    page = list(
+        db.scalars(
+            select(Game)
+            .where(*conditions)
+            .options(*catalog_load_options(include_prices=True))
+            .order_by(desc(Game.rank_score), desc(Game.metrix_score), Game.title)
+            .limit(min(limit, total))
+        ).all()
+    )
+    return CatalogGameListResponse(
+        games=[CatalogGameRead.model_validate(game) for game in page],
+        total=total,
+    )

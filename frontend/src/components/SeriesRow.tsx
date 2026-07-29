@@ -9,22 +9,23 @@ import './SeriesRow.css'
 // Self-fetching "More from this series" strip. Renders nothing while loading or
 // when the game has no franchise siblings — most games have none, so a skeleton
 // here would flash a heading that then vanishes.
-export function SeriesRow({ slug }: { slug: string }) {
+export function SeriesRow({ enabled, slug }: { enabled: boolean; slug: string }) {
   const [result, setResult] = useState<{ slug: string; games: SeriesGameItem[] } | null>(null)
 
   useEffect(() => {
-    let active = true
-    getSeriesGames(slug)
+    if (!enabled) return
+    const controller = new AbortController()
+    getSeriesGames(slug, 8, controller.signal)
       .then((response) => {
-        if (active) setResult({ slug, games: response.games })
+        if (!controller.signal.aborted) setResult({ slug, games: response.games })
       })
       .catch(() => {
-        if (active) setResult({ slug, games: [] })
+        if (!controller.signal.aborted) setResult({ slug, games: [] })
       })
     return () => {
-      active = false
+      controller.abort()
     }
-  }, [slug])
+  }, [enabled, slug])
 
   const games = result?.slug === slug ? result.games : []
   if (games.length === 0) return null

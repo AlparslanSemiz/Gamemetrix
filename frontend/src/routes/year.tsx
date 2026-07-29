@@ -1,14 +1,14 @@
 import type { LoaderFunctionArgs, MetaFunction } from 'react-router'
 import { CuratedPage, type CuratedPageData } from '../pages/CuratedPage'
 import { fetchBackend } from '../server-api.server'
-import type { GameListResponse } from '../types/game'
+import type { CatalogGameListResponse } from '../types/game'
 import { latestContentUpdate } from '../utils/seo'
 
 export async function loader({ params }: LoaderFunctionArgs): Promise<CuratedPageData> {
   const year = Number(params.year)
   const currentYear = new Date().getUTCFullYear()
   if (!Number.isInteger(year) || year < 1970 || year > currentYear) throw new Response('Not Found', { status: 404 })
-  const result = await fetchBackend<GameListResponse>(`/api/seo/curated/year?year=${year}&limit=100`)
+  const result = await fetchBackend<CatalogGameListResponse>(`/api/seo/curated/year?year=${year}&limit=100`)
   return {
     ...result,
     label: `Games of ${year}`,

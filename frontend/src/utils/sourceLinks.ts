@@ -1,4 +1,4 @@
-import type { Game } from '../types/game'
+import type { CatalogGame } from '../types/game'
 import { RATING_SOURCE_NAMES } from './ratingSources'
 import { steamAppIdFromGame } from './steam'
 
@@ -6,7 +6,7 @@ export type SourceLinkContext = 'catalog-card' | 'game-detail'
 
 export function sourceScoreUrl(
   source: string,
-  game: Game,
+  game: CatalogGame,
   context: SourceLinkContext,
 ): string | null {
   const query = encodeURIComponent(game.title)

@@ -1,4 +1,4 @@
-import type { Game } from '../../types/game'
+import type { CatalogGame } from '../../types/game'
 
 export const READ_KEY = 'gamemetrix.alerts.read.v1'
 export const DISMISSED_KEY = 'gamemetrix.alerts.dismissed.v1'
@@ -21,7 +21,7 @@ export interface GameAlert {
   kind: AlertKind
   title: string
   detail: string
-  game: Game
+  game: CatalogGame
 }
 
 export const DEFAULT_PREFERENCES: AlertPreferences = {

@@ -13,6 +13,7 @@ import {
 
 interface CatalogActionsProps {
   accountIsActive: boolean
+  saveCatalogSnapshot: () => void
   scrollToTop: () => void
   setActivePage: Dispatch<SetStateAction<ActivePage>>
   setActivePreset: Dispatch<SetStateAction<string | null>>
@@ -40,6 +41,7 @@ function presetFilters(preset: CuratedPreset): GameFilters {
 
 export function useCatalogActions({
   accountIsActive,
+  saveCatalogSnapshot,
   scrollToTop,
   setActivePage,
   setActivePreset,
@@ -72,13 +74,26 @@ export function useCatalogActions({
   ])
 
   const openPreset = useCallback((preset: CuratedPreset) => {
-    if (preset.id === 'best-deals') return navigate('/deals')
-    if (preset.id === 'free-games') return navigate('/best/free-pc-games')
+    if (preset.id === 'best-deals') {
+      saveCatalogSnapshot()
+      return navigate('/deals')
+    }
+    if (preset.id === 'free-games') {
+      saveCatalogSnapshot()
+      return navigate('/best/free-pc-games')
+    }
     setActivePage('catalog')
     setActivePreset(preset.id)
     setFilters(presetFilters(preset))
     setPendingApply((count) => count + 1)
-  }, [navigate, setActivePage, setActivePreset, setFilters, setPendingApply])
+  }, [
+    navigate,
+    saveCatalogSnapshot,
+    setActivePage,
+    setActivePreset,
+    setFilters,
+    setPendingApply,
+  ])
 
   const openMainPage = useCallback((id: MainPage) => {
     setActivePage(id)
@@ -95,8 +110,11 @@ export function useCatalogActions({
 
   const openUtilityPage = useCallback((id: UtilityPage) => {
     setMobileMoreOpen(false)
-    if (location.pathname !== `/${id}`) navigate(`/${id}`)
-  }, [location.pathname, navigate, setMobileMoreOpen])
+    if (location.pathname !== `/${id}`) {
+      saveCatalogSnapshot()
+      navigate(`/${id}`)
+    }
+  }, [location.pathname, navigate, saveCatalogSnapshot, setMobileMoreOpen])
 
   const clearFilter = useCallback((key: ClearableFilterKey) => {
     setFilters((current) => ({ ...current, [key]: '' }))
@@ -108,8 +126,11 @@ export function useCatalogActions({
   }, [setActivePreset, setFilters])
 
   const openAccount = useCallback(
-    () => navigate(accountIsActive ? '/account' : '/login'),
-    [accountIsActive, navigate],
+    () => {
+      saveCatalogSnapshot()
+      navigate(accountIsActive ? '/account' : '/login')
+    },
+    [accountIsActive, navigate, saveCatalogSnapshot],
   )
 
   return {

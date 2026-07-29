@@ -3,7 +3,7 @@ import type { Dispatch, RefObject, SetStateAction } from 'react'
 import type { ActivePage } from '../../catalog/config'
 import type { CollectionKey, Collections } from '../../state/collections'
 import type { CollectionSets } from '../../state/useCollectionActions'
-import type { Facets, Game, GameFilters } from '../../types/game'
+import type { CatalogGame, Facets, GameFilters } from '../../types/game'
 import type { ClearableFilterKey } from '../ActiveFilterChips'
 import type { ViewMode } from '../CatalogToolbar'
 
@@ -17,7 +17,7 @@ export interface CatalogWorkspaceProps {
   facets: Facets
   filters: GameFilters
   filtersOpen: boolean
-  games: Game[]
+  games: CatalogGame[]
   isLoading: boolean
   isLoadingMore: boolean
   libraryTotal: number
@@ -30,7 +30,7 @@ export interface CatalogWorkspaceProps {
   providerCount: number
   readyProviders: number
   viewMode: ViewMode
-  visibleGames: Game[]
+  visibleGames: CatalogGame[]
   onApplyFilters: () => void
   onBrowseCatalog: () => void
   onChangeFilters: Dispatch<SetStateAction<GameFilters>>
@@ -42,8 +42,8 @@ export interface CatalogWorkspaceProps {
   onFilterGenre: (genre: string) => void
   onFilterPublisher: (publisher: string) => void
   onFocusSearch: () => void
-  onOpenDetail: (game: Game) => void
-  onOpenTrailer: (game: Game) => void
+  onOpenDetail: (game: CatalogGame) => void
+  onOpenTrailer: (game: CatalogGame) => void
   onRetryLoadMore: () => void
   onToggleCollection: (collection: CollectionKey, slug: string) => void
 }

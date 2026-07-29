@@ -8,13 +8,13 @@
 
 import type { Dispatch, RefObject, SetStateAction } from 'react'
 
-import { getGames } from '../services/games'
-import type { Game, GameFilters } from '../types/game'
+import { getCatalogGames } from '../services/games'
+import type { CatalogGame, GameFilters } from '../types/game'
 import { PAGE_SIZE } from './config'
 
 export interface PrefetchedPage {
   offset: number
-  request: Promise<{ games: Game[]; total: number }>
+  request: Promise<{ games: CatalogGame[]; total: number }>
 }
 
 /** Identity of a filter set; a change means the list must reset to page 0. */
@@ -44,7 +44,7 @@ export interface StartCatalogPageLoadProps {
   restoreInProgressRef: RefObject<boolean>
   setCatalogTotal: Dispatch<SetStateAction<number>>
   setError: Dispatch<SetStateAction<string | null>>
-  setGames: Dispatch<SetStateAction<Game[]>>
+  setGames: Dispatch<SetStateAction<CatalogGame[]>>
   setHasMore: Dispatch<SetStateAction<boolean>>
   setIsLoading: Dispatch<SetStateAction<boolean>>
   setIsLoadingMore: Dispatch<SetStateAction<boolean>>
@@ -83,7 +83,7 @@ export function startCatalogPageLoad(props: StartCatalogPageLoadProps): (() => v
   props.setLoadMoreError(null)
   props.setError(null)
 
-  const applyPage = (pageGames: Game[], total: number) => {
+  const applyPage = (pageGames: CatalogGame[], total: number) => {
     settled = true
     applyLoadedPage({
       activeFilters,
@@ -136,14 +136,14 @@ async function requestCatalogPage(
   offset: number,
   isFirstPage: boolean,
   prefetchRef: RefObject<PrefetchedPage | null>,
-  onSuccess: (games: Game[], total: number) => void,
+  onSuccess: (games: CatalogGame[], total: number) => void,
   onError: () => void,
 ) {
   const cached = prefetchRef.current
   try {
     const response = !isFirstPage && cached?.offset === offset
       ? await cached.request
-      : await getGames(filters, PAGE_SIZE, offset)
+      : await getCatalogGames(filters, PAGE_SIZE, offset)
     if (cached?.offset === offset) prefetchRef.current = null
     onSuccess(response.games, response.total)
   } catch {
@@ -157,10 +157,10 @@ interface ApplyLoadedPageProps {
   isActive: () => boolean
   isFirstPage: boolean
   offset: number
-  pageGames: Game[]
+  pageGames: CatalogGame[]
   prefetchRef: RefObject<PrefetchedPage | null>
   setCatalogTotal: Dispatch<SetStateAction<number>>
-  setGames: Dispatch<SetStateAction<Game[]>>
+  setGames: Dispatch<SetStateAction<CatalogGame[]>>
   setHasMore: Dispatch<SetStateAction<boolean>>
   setIsLoading: Dispatch<SetStateAction<boolean>>
   setIsLoadingMore: Dispatch<SetStateAction<boolean>>
@@ -206,7 +206,7 @@ function prefetchNextPage(
   prefetchRef: RefObject<PrefetchedPage | null>,
 ) {
   if (offset >= total) return
-  const request = getGames(filters, PAGE_SIZE, offset)
+  const request = getCatalogGames(filters, PAGE_SIZE, offset)
   prefetchRef.current = { offset, request }
   void request.catch(() => {
     if (isActive() && prefetchRef.current?.request === request) {

@@ -1,9 +1,9 @@
 import { Medal, Trophy } from 'lucide-react'
-import type { Game } from '../../types/game'
+import type { CatalogGame } from '../../types/game'
 
 interface GameAwardBadgeProps {
   compact?: boolean
-  game: Game
+  game: CatalogGame
 }
 
 export function GameAwardBadge({
@@ -38,7 +38,7 @@ function AwardDetails({
   game,
   iconSize,
 }: {
-  game: Game
+  game: CatalogGame
   iconSize: number
 }) {
   if (game.awards?.length > 0) {

@@ -1,35 +1,83 @@
-import type { ClientLoaderFunctionArgs, MetaFunction } from 'react-router'
+import type {
+  ClientLoaderFunctionArgs,
+  LoaderFunctionArgs,
+  MetaFunction,
+  ShouldRevalidateFunctionArgs,
+} from 'react-router'
 import { AppContent } from '../App'
-import { readCatalogSnapshot } from '../catalog/snapshot'
+import { readCatalogSnapshot, type CatalogSnapshot } from '../catalog/snapshot'
 import { fetchBackend } from '../server-api.server'
-import type { GameListResponse } from '../types/game'
+import type { CatalogGameListResponse } from '../types/game'
 
 const SOCIAL_IMAGE = 'https://gamemetrix.me/icons.svg'
 
-export async function loader(): Promise<GameListResponse> {
-  // The hydrated catalog continues with /api/games, so SSR must use the same
+interface HomeLoaderData extends CatalogGameListResponse {
+  snapshot: CatalogSnapshot | null
+}
+
+function catalogRequestPath(request: Request): string {
+  const url = new URL(request.url)
+  const params = new URLSearchParams({
+    sort: 'rank_score',
+    direction: 'desc',
+    limit: '24',
+    offset: '0',
+  })
+  for (const key of ['genre', 'developer', 'publisher']) {
+    const value = url.searchParams.get(key)?.trim()
+    if (value) params.set(key, value)
+  }
+  const year = Number(url.searchParams.get('year'))
+  if (Number.isInteger(year) && year > 1970) {
+    params.set('year_min', String(year))
+    params.set('year_max', String(year))
+  }
+  return `/api/catalog/games?${params.toString()}`
+}
+
+export async function loader({ request }: LoaderFunctionArgs): Promise<HomeLoaderData> {
+  // The hydrated catalog continues with /api/catalog/games, so SSR must use the same
   // query and total. Mixing the 400-row SEO-curated pool with the full catalog
   // made the badge jump from "24 / 400" to "48 / 10,929" after hydration.
-  return fetchBackend<GameListResponse>(
-    '/api/games?sort=rank_score&direction=desc&limit=24&offset=0',
-  )
+  const result = await fetchBackend<CatalogGameListResponse>(catalogRequestPath(request))
+  return { ...result, snapshot: null }
 }
 
 export async function clientLoader({
   request,
   serverLoader,
-}: ClientLoaderFunctionArgs): Promise<GameListResponse> {
+}: ClientLoaderFunctionArgs): Promise<HomeLoaderData> {
   const url = new URL(request.url)
-  if (!url.search) {
+  const hasCatalogFilters = [...url.searchParams.keys()].some((key) => key !== 'view')
+  if (!hasCatalogFilters) {
     const snapshot = readCatalogSnapshot()
-    if (snapshot?.activePage === 'catalog' && snapshot.games.length > 0) {
+    if (snapshot?.games.length) {
       return {
         games: snapshot.games,
         total: snapshot.catalogTotal,
+        snapshot,
       }
     }
   }
-  return serverLoader<GameListResponse>()
+  return serverLoader<HomeLoaderData>()
+}
+
+export function shouldRevalidate({
+  currentUrl,
+  defaultShouldRevalidate,
+  nextUrl,
+}: ShouldRevalidateFunctionArgs): boolean {
+  if (currentUrl.pathname !== '/' || nextUrl.pathname !== '/') {
+    return defaultShouldRevalidate
+  }
+  const withoutView = (url: URL) => {
+    const params = new URLSearchParams(url.search)
+    params.delete('view')
+    params.sort()
+    return params.toString()
+  }
+  if (withoutView(currentUrl) === withoutView(nextUrl)) return false
+  return defaultShouldRevalidate
 }
 
 export const meta: MetaFunction = ({ location }) => [
@@ -52,7 +100,7 @@ export function headers() {
   return { 'Cache-Control': 'public, max-age=60, s-maxage=900, stale-while-revalidate=3600' }
 }
 
-function homeStructuredData(data: GameListResponse): string {
+function homeStructuredData(data: CatalogGameListResponse): string {
   return JSON.stringify({
     '@context': 'https://schema.org',
     '@graph': [
@@ -94,11 +142,19 @@ function homeStructuredData(data: GameListResponse): string {
   }).replace(/</g, '\\u003c')
 }
 
-export default function Home({ loaderData }: { loaderData: GameListResponse }) {
+export default function Home({ loaderData }: { loaderData: HomeLoaderData }) {
+  const firstCover = loaderData.games[0]?.cover_url || loaderData.games[0]?.image_url
   return (
     <>
+      {firstCover ? (
+        <link rel="preload" as="image" href={firstCover} fetchPriority="high" />
+      ) : null}
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: homeStructuredData(loaderData) }} />
-      <AppContent initialGames={loaderData.games} initialTotal={loaderData.total} />
+      <AppContent
+        initialGames={loaderData.games}
+        initialTotal={loaderData.total}
+        initialSnapshot={loaderData.snapshot}
+      />
     </>
   )
 }

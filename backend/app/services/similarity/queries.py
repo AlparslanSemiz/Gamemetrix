@@ -124,7 +124,6 @@ def _signal_queries(source: Game) -> list[Select[tuple[Game]]]:
             pattern = f"%{term}%"
             clauses.extend([
                 Game.title.ilike(pattern),
-                Game.summary.ilike(pattern),
                 Game.summary_short.ilike(pattern),
             ])
         queries.append(_base_query(SIMILAR_SIGNAL_POOL).where(or_(*clauses)))

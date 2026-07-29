@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState, type RefObject } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import { SeriesRow } from '../components/SeriesRow'
 import { TrailerModal } from '../components/TrailerModal'
@@ -24,7 +25,8 @@ export function GameDetailPage({ initialGame }: { initialGame?: Game }) {
   const { slug } = useParams<{ slug: string }>()
   const navigate = useNavigate()
   const { error, game } = useGameDetailGame(slug, initialGame)
-  const similar = useSimilarGames(slug, initialGame)
+  const related = useNearViewport(slug)
+  const similar = useSimilarGames(slug, initialGame, related.enabled)
   const trailer = useGameTrailer(game)
 
   const goBackToCatalog = () => {
@@ -73,6 +75,8 @@ export function GameDetailPage({ initialGame }: { initialGame?: Game }) {
         game={game}
         model={model}
         onOpenTrailer={trailer.openTrailer}
+        relatedEnabled={related.enabled}
+        relatedRef={related.ref}
         similarGames={similar.games}
         similarLoading={similar.loading}
       />
@@ -93,12 +97,16 @@ function GameDetailContent({
   game,
   model,
   onOpenTrailer,
+  relatedEnabled,
+  relatedRef,
   similarGames,
   similarLoading,
 }: {
   game: Game
   model: ReturnType<typeof buildGameDetailModel>
   onOpenTrailer: () => void
+  relatedEnabled: boolean
+  relatedRef: RefObject<HTMLDivElement | null>
   similarGames: SeriesGameItem[]
   similarLoading: boolean
 }) {
@@ -135,14 +143,40 @@ function GameDetailContent({
           <DlcSection game={game} />
         </div>
       </div>
-      <SeriesRow slug={game.slug} />
-      {hasSimilarGames ? (
-        <div className="dp-bottom-related">
-          <SimilarGamesSection game={game} catalogGames={similarGames} loading={similarLoading} />
-        </div>
-      ) : null}
+      <div className="dp-related-lazy" ref={relatedRef}>
+        <SeriesRow enabled={relatedEnabled} slug={game.slug} />
+        {hasSimilarGames ? (
+          <div className="dp-bottom-related">
+            <SimilarGamesSection game={game} catalogGames={similarGames} loading={similarLoading} />
+          </div>
+        ) : null}
+      </div>
     </div>
   )
+}
+
+function useNearViewport(key: string | undefined) {
+  const ref = useRef<HTMLDivElement>(null)
+  const [visibility, setVisibility] = useState({ key, enabled: false })
+  const enabled = visibility.key === key && visibility.enabled
+
+  useEffect(() => {
+    if (enabled) return
+    const element = ref.current
+    if (!element) return
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry?.isIntersecting) return
+        setVisibility({ key, enabled: true })
+        observer.disconnect()
+      },
+      { rootMargin: '600px 0px' },
+    )
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [enabled, key])
+
+  return { enabled, ref }
 }
 
 function AboutSection({ paragraphs }: { paragraphs: string[] }) {

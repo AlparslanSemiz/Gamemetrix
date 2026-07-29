@@ -66,11 +66,12 @@ export function GameResults({
         />
       ) : null}
       <div className={listClass}>
-        {visibleGames.map((game) => (
+        {visibleGames.map((game, index) => (
           <GameCard
             key={`${game.id}-${game.slug}`}
             game={game}
             compact={viewMode === 'grid'}
+            priority={index === 0}
             isFavorite={collectionSets.favorites.has(game.slug)}
             isLiked={collectionSets.liked.has(game.slug)}
             isPlaying={collectionSets.playing.has(game.slug)}

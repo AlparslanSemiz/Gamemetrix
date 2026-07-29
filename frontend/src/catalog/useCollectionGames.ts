@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
-import { getGamesBySlugs } from '../services/games'
+import { getCatalogGamesBySlugs } from '../services/games'
 import type { Collections } from '../state/collections'
-import type { Game } from '../types/game'
+import type { CatalogGame } from '../types/game'
 import { collectionPageMap, type ActivePage, type MainPage } from './config'
 
 const COLLECTION_BATCH_SIZE = 100
@@ -16,11 +16,12 @@ interface LoadError {
 export function useCollectionGames(
   activePage: ActivePage,
   collections: Collections,
-  catalogGames: Game[],
+  catalogGames: CatalogGame[],
 ) {
   const collectionKey = collectionPageMap[activePage as MainPage]
-  const [resolvedGames, setResolvedGames] = useState<Record<string, Game | null>>({})
+  const [resolvedGames, setResolvedGames] = useState<Record<string, CatalogGame | null>>({})
   const [loadError, setLoadError] = useState<LoadError | null>(null)
+  const lastRefreshSignatureRef = useRef<string | null>(null)
 
   const catalogBySlug = useMemo(
     () => new Map(catalogGames.map((game) => [game.slug, game])),
@@ -33,28 +34,34 @@ export function useCollectionGames(
     .join(SIGNATURE_SEPARATOR)
 
   useEffect(() => {
-    if (!collectionKey || !missingSignature) return
+    if (
+      !collectionKey
+      || !collectionSignature
+      || lastRefreshSignatureRef.current === collectionSignature
+    ) return
+    lastRefreshSignatureRef.current = collectionSignature
 
     let active = true
-    const missing = missingSignature.split(SIGNATURE_SEPARATOR)
+    const requestedSlugs = collectionSignature.split(SIGNATURE_SEPARATOR)
 
     void (async () => {
       try {
-        const loaded: Game[] = []
-        for (let index = 0; index < missing.length; index += COLLECTION_BATCH_SIZE) {
-          loaded.push(...await getGamesBySlugs(
-            missing.slice(index, index + COLLECTION_BATCH_SIZE),
+        const loaded: CatalogGame[] = []
+        for (let index = 0; index < requestedSlugs.length; index += COLLECTION_BATCH_SIZE) {
+          loaded.push(...await getCatalogGamesBySlugs(
+            requestedSlugs.slice(index, index + COLLECTION_BATCH_SIZE),
           ))
         }
         if (!active) return
 
-        const next: Record<string, Game | null> = Object.fromEntries(
-          missing.map((slug) => [slug, null]),
+        const next: Record<string, CatalogGame | null> = Object.fromEntries(
+          requestedSlugs.map((slug) => [slug, null]),
         )
         for (const game of loaded) next[game.slug] = game
         setResolvedGames((current) => ({ ...current, ...next }))
       } catch {
         if (active) {
+          lastRefreshSignatureRef.current = null
           setLoadError({
             collectionSignature,
             message: 'Saved games could not be loaded. Check your connection and try again.',
@@ -66,7 +73,7 @@ export function useCollectionGames(
     return () => {
       active = false
     }
-  }, [collectionKey, collectionSignature, missingSignature])
+  }, [collectionKey, collectionSignature])
 
   const games = slugs.flatMap((slug) => {
     const game = catalogBySlug.get(slug) ?? resolvedGames[slug]

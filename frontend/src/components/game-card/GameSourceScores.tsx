@@ -1,10 +1,10 @@
 import type { CSSProperties } from 'react'
-import type { Game, SourceScore } from '../../types/game'
+import type { CatalogGame, SourceScore } from '../../types/game'
 import { sourceScoreColor } from '../../utils/scoreColors'
 import { sourceScoreUrl } from '../../utils/sourceLinks'
 
 interface GameSourceScoresProps {
-  game: Game
+  game: CatalogGame
   sources: SourceScore[]
 }
 
@@ -25,7 +25,7 @@ function GameSourceScore({
   game,
   source,
 }: {
-  game: Game
+  game: CatalogGame
   source: SourceScore
 }) {
   const url = sourceScoreUrl(source.source, game, 'catalog-card')

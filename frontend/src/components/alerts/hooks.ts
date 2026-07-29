@@ -7,8 +7,8 @@ import {
   type AccountPreferences,
   type AccountState,
 } from '../../services/account'
-import { getGameBySlug } from '../../services/games'
-import type { Game } from '../../types/game'
+import { getCatalogGamesBySlugs } from '../../services/games'
+import type { CatalogGame } from '../../types/game'
 import { persistSet } from './storage'
 import {
   DISMISSED_KEY,
@@ -20,7 +20,6 @@ import {
 
 const PREFERENCE_SYNC_DELAY_MS = 500
 const WATCHLIST_SLUG_LIMIT = 100
-const WATCHLIST_BATCH_SIZE = 8
 const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 
 export function useAlertPreferenceSync(
@@ -55,7 +54,7 @@ export function useWatchlistAlertGames(
   refreshKey: number,
   setError: (message: string | null) => void,
 ) {
-  const [games, setGames] = useState<Game[]>([])
+  const [games, setGames] = useState<CatalogGame[]>([])
   const [isLoading, setIsLoading] = useState(false)
 
   useEffect(() => {
@@ -74,22 +73,19 @@ export function useWatchlistAlertGames(
       setIsLoading(true)
       setError(null)
 
-      const loaded: Game[] = []
-      for (let index = 0; index < uniqueSlugs.length; index += WATCHLIST_BATCH_SIZE) {
-        const batch = await Promise.allSettled(
-          uniqueSlugs
-            .slice(index, index + WATCHLIST_BATCH_SIZE)
-            .map((slug) => getGameBySlug(slug, false)),
-        )
-        loaded.push(
-          ...batch.flatMap((result) => (result.status === 'fulfilled' ? [result.value] : [])),
-        )
-        if (cancelled) return
-      }
-      if (!cancelled) {
-        setGames(loaded)
-        setError(loaded.length ? null : 'Wishlist alerts could not be loaded.')
-        setIsLoading(false)
+      try {
+        const loaded = await getCatalogGamesBySlugs(uniqueSlugs, true)
+        if (!cancelled) {
+          setGames(loaded)
+          setError(loaded.length ? null : 'Wishlist alerts could not be loaded.')
+          setIsLoading(false)
+        }
+      } catch {
+        if (!cancelled) {
+          setGames([])
+          setError('Wishlist alerts could not be loaded.')
+          setIsLoading(false)
+        }
       }
     }
 

@@ -1,4 +1,4 @@
-import type { Game, GameFilters } from '../types/game'
+import type { CatalogGame, GameFilters } from '../types/game'
 import { DEFAULT_FILTERS, PAGE_SIZE, type ActivePage } from './config'
 
 const CATALOG_SNAPSHOT_KEY = 'gamemetrix.catalog.snapshot.v1'
@@ -11,7 +11,7 @@ export interface CatalogSnapshot {
   activePage: ActivePage
   activePreset: string | null
   filters: GameFilters
-  games: Game[]
+  games: CatalogGame[]
   catalogTotal: number
   libraryTotal: number
   viewMode: 'list' | 'grid'
@@ -102,46 +102,12 @@ export function readCatalogSnapshot(): CatalogSnapshot | null {
   }
 }
 
-// Detail-page visits persist screenshots/DLC/similar-game data that the list
-// endpoint then echoes back — those blobs are useless to the catalog cards but
-// can push a multi-page snapshot past the sessionStorage quota, silently
-// killing scroll restoration. Strip them before saving.
-const SNAPSHOT_SUMMARY_MAX_CHARS = 460
-const SNAPSHOT_MAX_AWARDS = 12
 const SNAPSHOT_FALLBACK_MAX_GAMES = PAGE_SIZE * 10
-
-function compactText(value: string, maxLength: number): string {
-  return value.length > maxLength ? `${value.slice(0, maxLength).trimEnd()}...` : value
-}
-
-function compactGameForSnapshot(game: Game): Game {
-  return {
-    ...game,
-    summary: compactText(game.summary, SNAPSHOT_SUMMARY_MAX_CHARS),
-    summary_short: game.summary_short
-      ? compactText(game.summary_short, SNAPSHOT_SUMMARY_MAX_CHARS)
-      : compactText(game.summary, SNAPSHOT_SUMMARY_MAX_CHARS),
-    source_scores: game.source_scores.map(({ source, score, scale, status, review_count }) => ({
-      source,
-      score,
-      scale,
-      status,
-      review_count,
-    })),
-    awards: game.awards.slice(0, SNAPSHOT_MAX_AWARDS),
-    screenshots: [],
-    system_requirements: [],
-    dlcs: [],
-    similar_games: [],
-    price_snapshots: [],
-  }
-}
 
 export function writeCatalogSnapshot(snapshot: CatalogSnapshot | null) {
   if (!snapshot) return
   const payload: CatalogSnapshot = {
     ...snapshot,
-    games: snapshot.games.map(compactGameForSnapshot),
     savedAt: Date.now(),
   }
   try {

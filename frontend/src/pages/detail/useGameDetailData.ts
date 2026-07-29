@@ -1,5 +1,5 @@
 /* eslint-disable react-hooks/set-state-in-effect */
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   getGameBySlug,
   getGameTrailer,
@@ -25,7 +25,7 @@ export function useGameDetailGame(
 
   useEffect(() => {
     if (!slug) return
-    let active = true
+    const controller = new AbortController()
     if (initialGame?.slug === slug) {
       setGame(initialGame)
       setError(null)
@@ -34,15 +34,15 @@ export function useGameDetailGame(
 
     setGame(null)
     setError(null)
-    void getGameBySlug(slug)
+    void getGameBySlug(slug, false, controller.signal)
       .then((loaded) => {
-        if (active) setGame(loaded)
+        if (!controller.signal.aborted) setGame(loaded)
       })
       .catch(() => {
-        if (active) setError('Game not found.')
+        if (!controller.signal.aborted) setError('Game not found.')
       })
     return () => {
-      active = false
+      controller.abort()
     }
   }, [initialGame, slug])
 
@@ -52,30 +52,31 @@ export function useGameDetailGame(
 export function useSimilarGames(
   slug: string | undefined,
   initialGame: Game | undefined,
+  enabled: boolean,
 ) {
   const [games, setGames] = useState<SeriesGameItem[]>([])
   const [loading, setLoading] = useState(false)
   const initialGameSlug = initialGame?.slug
 
   useEffect(() => {
-    if (!slug) return
-    let active = true
+    if (!slug || !enabled) return
+    const controller = new AbortController()
     setLoading(true)
     if (initialGameSlug !== slug) setGames([])
-    void getSimilarGames(slug, SIMILAR_DISPLAY_LIMIT)
+    void getSimilarGames(slug, SIMILAR_DISPLAY_LIMIT, controller.signal)
       .then((response) => {
-        if (active) setGames(response.games)
+        if (!controller.signal.aborted) setGames(response.games)
       })
       .catch(() => {
-        if (active) setGames([])
+        if (!controller.signal.aborted) setGames([])
       })
       .finally(() => {
-        if (active) setLoading(false)
+        if (!controller.signal.aborted) setLoading(false)
       })
     return () => {
-      active = false
+      controller.abort()
     }
-  }, [initialGameSlug, slug])
+  }, [enabled, initialGameSlug, slug])
 
   return { games, loading }
 }
@@ -84,21 +85,29 @@ export function useGameTrailer(game: Game | null) {
   const [open, setOpen] = useState(false)
   const [videoId, setVideoId] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const requestControllerRef = useRef<AbortController | null>(null)
+
+  useEffect(() => () => requestControllerRef.current?.abort(), [])
 
   const openTrailer = async () => {
     if (!game) return
+    requestControllerRef.current?.abort()
+    const controller = new AbortController()
+    requestControllerRef.current = controller
     setOpen(true)
     setLoading(true)
     try {
-      setVideoId((await getGameTrailer(game.slug)).video_id)
+      setVideoId((await getGameTrailer(game.slug, controller.signal)).video_id)
     } catch {
-      setVideoId(null)
+      if (!controller.signal.aborted) setVideoId(null)
     } finally {
-      setLoading(false)
+      if (!controller.signal.aborted) setLoading(false)
     }
   }
 
   const closeTrailer = () => {
+    requestControllerRef.current?.abort()
+    requestControllerRef.current = null
     setOpen(false)
     setVideoId(null)
   }

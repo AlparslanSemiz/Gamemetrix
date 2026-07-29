@@ -1,13 +1,13 @@
 import { useCallback, useState } from 'react'
 import { getGameTrailer } from '../services/games'
-import type { Game } from '../types/game'
+import type { CatalogGame } from '../types/game'
 
 export function useTrailer() {
-  const [game, setGame] = useState<Game | null>(null)
+  const [game, setGame] = useState<CatalogGame | null>(null)
   const [videoId, setVideoId] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
 
-  const open = useCallback(async (selectedGame: Game) => {
+  const open = useCallback(async (selectedGame: CatalogGame) => {
     setGame(selectedGame)
     setVideoId(null)
     setIsLoading(true)

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
+import type { CatalogSnapshot } from './snapshot'
 
 // Masthead auto-hide tuning: the header only reacts once the user has scrolled
 // a sustained distance in one direction, so small jitters never toggle it.
@@ -27,11 +28,12 @@ export interface CatalogScroll {
   scrollToTop: () => void
 }
 
-export function useCatalogScroll(): CatalogScroll {
-  const [mastheadVisible, setMastheadVisible] = useState(true)
+export function useCatalogScroll(initialSnapshot: CatalogSnapshot | null = null): CatalogScroll {
+  const initialMastheadVisible = initialSnapshot?.mastheadVisible ?? true
+  const [mastheadVisible, setMastheadVisible] = useState(initialMastheadVisible)
   const mastheadRef = useRef<HTMLElement>(null)
-  const mastheadVisibleRef = useRef(true)
-  const lastScrollYRef = useRef(0)
+  const mastheadVisibleRef = useRef(initialMastheadVisible)
+  const lastScrollYRef = useRef(initialSnapshot?.scrollY ?? 0)
   const scrollDirectionRef = useRef<{ sign: -1 | 0 | 1; distance: number }>({ sign: 0, distance: 0 })
   const scrollFrameRef = useRef<number | null>(null)
 
@@ -83,7 +85,7 @@ function useMastheadAutoHide({
   setMastheadVisible,
 }: MastheadAutoHideProps) {
   useEffect(() => {
-    lastScrollYRef.current = window.scrollY
+    if (lastScrollYRef.current === 0) lastScrollYRef.current = window.scrollY
 
     const setVisible = (next: boolean) => {
       if (mastheadVisibleRef.current === next) return

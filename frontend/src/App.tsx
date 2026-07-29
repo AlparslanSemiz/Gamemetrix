@@ -1,4 +1,11 @@
-import { useMemo, useState } from 'react'
+import {
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react'
 import { useLocation } from 'react-router'
 import './App.css'
 import { CatalogWorkspace } from './components/catalog-workspace'
@@ -23,7 +30,7 @@ import { useCatalogBootstrap } from './catalog/useCatalogBootstrap'
 import { useCollectionGames } from './catalog/useCollectionGames'
 import { useCatalogScroll } from './catalog/useCatalogScroll'
 import {
-  useCatalogRestoreCompletion,
+  useCatalogBackgroundRefresh,
   useCatalogSnapshot,
 } from './catalog/useCatalogSnapshot'
 import {
@@ -34,18 +41,38 @@ import {
 import { useTrailer } from './catalog/useTrailer'
 import { useAccount } from './state/useAccount'
 import { useCollectionActions } from './state/useCollectionActions'
-import type { Facets, Game, GameFilters, ProviderStatus } from './types/game'
+import type { CatalogGame, Facets, GameFilters, ProviderStatus } from './types/game'
+import type { CatalogSnapshot } from './catalog/snapshot'
 
 export type { UtilityPage }
 
+// One rich card keeps fresh SSR within the LCP budget; the complete 24-row
+// loader payload remains in structured data and paints immediately on hydration.
+// Snapshot-based client returns bypass this cap and render every saved card.
+const SSR_CATALOG_CARD_COUNT = 1
+const subscribeToHydration = () => () => undefined
+
 interface AppContentProps {
-  initialGames?: Game[]
+  initialGames?: CatalogGame[]
   initialTotal?: number
   initialPage?: UtilityPage
+  initialSnapshot?: CatalogSnapshot | null
 }
 
-export function AppContent({ initialGames = [], initialTotal = 0, initialPage }: AppContentProps) {
+export function AppContent({
+  initialGames = [],
+  initialTotal = 0,
+  initialPage,
+  initialSnapshot = null,
+}: AppContentProps) {
   const location = useLocation()
+  const lastLocationKeyRef = useRef(location.key)
+  const hydrated = useSyncExternalStore(
+    subscribeToHydration,
+    () => true,
+    () => false,
+  )
+  const catalogEnabled = initialPage === undefined
   const requestedView = new URLSearchParams(location.search).get('view') as MainPage | null
   const routeInitialPage: ActivePage = initialPage
     ?? (requestedView && ROUTABLE_MAIN_PAGES.has(requestedView) ? requestedView : 'catalog')
@@ -53,16 +80,24 @@ export function AppContent({ initialGames = [], initialTotal = 0, initialPage }:
   // detail-page link and must apply its filter instead of the curated home list.
   const urlFilters = readUrlFilters(location.search)
   const hasUrlFilters = Object.keys(urlFilters).length > 0
-  const [activePage, setActivePage] = useState<ActivePage>(routeInitialPage)
-  const [games, setGames] = useState<Game[]>(hasUrlFilters ? [] : initialGames)
+  const restoredSnapshot = catalogEnabled && !hasUrlFilters ? initialSnapshot : null
+  const seededGames = restoredSnapshot?.games ?? initialGames
+  const [activePage, setActivePage] = useState<ActivePage>(
+    restoredSnapshot?.activePage ?? routeInitialPage,
+  )
+  const deferredActivePage = useDeferredValue(activePage)
+  const [games, setGames] = useState<CatalogGame[]>(seededGames)
   const [facets, setFacets] = useState<Facets>({ genres: [], years: [], platforms: [], developers: [] })
-  const [filters, setFilters] = useState<GameFilters>(() => ({ ...DEFAULT_FILTERS, ...urlFilters }))
+  const [filters, setFilters] = useState<GameFilters>(() => (
+    restoredSnapshot?.filters ?? { ...DEFAULT_FILTERS, ...urlFilters }
+  ))
   const [pendingApply, setPendingApply] = useState(0)
   const pagination = useCatalogPaginationState({
     filters,
-    hasUrlFilters,
-    initialGames,
-    initialTotal,
+    initialGames: seededGames,
+    initialHasMore: restoredSnapshot?.hasMore,
+    initialOffset: restoredSnapshot?.offset,
+    initialTotal: restoredSnapshot?.catalogTotal ?? initialTotal,
     pendingApply,
   })
   const {
@@ -73,15 +108,32 @@ export function AppContent({ initialGames = [], initialTotal = 0, initialPage }:
   } = pagination
   const { account } = useAccount()
   const [providerStatuses, setProviderStatuses] = useState<ProviderStatus[]>([])
-  const [catalogTotal, setCatalogTotal] = useState(initialTotal)
-  const [libraryTotal, setLibraryTotal] = useState(initialTotal)
-  const [isLoading, setIsLoading] = useState(hasUrlFilters || initialGames.length === 0)
+  const [catalogTotal, setCatalogTotal] = useState(
+    restoredSnapshot?.catalogTotal ?? initialTotal,
+  )
+  const [libraryTotal, setLibraryTotal] = useState(
+    restoredSnapshot?.libraryTotal ?? initialTotal,
+  )
+  const [isLoading, setIsLoading] = useState(catalogEnabled && seededGames.length === 0)
   const [error, setError] = useState<string | null>(null)
-  const [viewMode, setViewMode] = useState<ViewMode>('list')
-  const [filtersOpen, setFiltersOpen] = useState(false)
-  const [activePreset, setActivePreset] = useState<string | null>(null)
+  const [viewMode, setViewMode] = useState<ViewMode>(restoredSnapshot?.viewMode ?? 'list')
+  const [filtersOpen, setFiltersOpen] = useState(restoredSnapshot?.filtersOpen ?? false)
+  const [activePreset, setActivePreset] = useState<string | null>(
+    restoredSnapshot?.activePreset ?? null,
+  )
+  useEffect(() => {
+    if (lastLocationKeyRef.current === location.key) return
+    lastLocationKeyRef.current = location.key
+    if (location.pathname !== '/') return
+    // The navigation actions already update state. This also covers browser
+    // back/forward, where only the URL changes because `shouldRevalidate`
+    // deliberately keeps the route loader dormant.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setActivePage(routeInitialPage)
+    setActivePreset(null)
+  }, [location.key, location.pathname, routeInitialPage])
   const [mobileMoreOpen, setMobileMoreOpen] = useState(false)
-  const catalogScroll = useCatalogScroll()
+  const catalogScroll = useCatalogScroll(restoredSnapshot)
   const {
     mastheadVisible,
     mastheadRef,
@@ -90,27 +142,14 @@ export function AppContent({ initialGames = [], initialTotal = 0, initialPage }:
   } = catalogScroll
   const {
     filtersRef,
-    restoredSnapshot,
     restoreInProgressRef,
     saveCatalogSnapshot,
     snapshotAnchorRef,
   } = useCatalogSnapshot({
-    hasUrlFilters,
+    enabled: catalogEnabled,
+    initialSnapshot: restoredSnapshot,
     pagination,
-    pendingApply,
-    routeInitialPage,
     scroll: catalogScroll,
-    setters: {
-      setActivePage,
-      setActivePreset,
-      setCatalogTotal,
-      setFilters,
-      setFiltersOpen,
-      setGames,
-      setIsLoading,
-      setLibraryTotal,
-      setViewMode,
-    },
     values: {
       activePage,
       activePreset,
@@ -124,6 +163,7 @@ export function AppContent({ initialGames = [], initialTotal = 0, initialPage }:
   })
 
   useCatalogBootstrap({
+    enabled: catalogEnabled,
     setError,
     setFacets,
     setLibraryTotal,
@@ -132,6 +172,7 @@ export function AppContent({ initialGames = [], initialTotal = 0, initialPage }:
 
   useCatalogLoadEffects({
     catalogTotal,
+    enabled: catalogEnabled,
     filters,
     filtersRef,
     pagination,
@@ -143,14 +184,23 @@ export function AppContent({ initialGames = [], initialTotal = 0, initialPage }:
     setIsLoading,
   })
 
-  useCatalogRestoreCompletion(restoredSnapshot, restoreInProgressRef)
+  useCatalogBackgroundRefresh({
+    enabled: catalogEnabled,
+    snapshot: restoredSnapshot,
+    setCatalogTotal,
+    setGames,
+  })
 
   const { collections, collectionSets, toggle: handleToggleCollection } = useCollectionActions(setError)
   const savedList = useCollectionGames(activePage, collections, games)
 
   useCatalogInfiniteScroll({
     catalogTotal,
-    enabled: savedList.collectionKey === undefined,
+    enabled: (
+      catalogEnabled
+      && savedList.collectionKey === undefined
+      && deferredActivePage === activePage
+    ),
     isLoading,
     pagination,
   })
@@ -161,6 +211,12 @@ export function AppContent({ initialGames = [], initialTotal = 0, initialPage }:
       : visibleCatalogGames(activePage, collections, games),
     [activePage, collections, games, savedList.collectionKey, savedList.games],
   )
+  const renderedGames = (
+    (!hydrated && !restoredSnapshot)
+    || deferredActivePage !== activePage
+  )
+    ? visibleGames.slice(0, SSR_CATALOG_CARD_COUNT)
+    : visibleGames
   const pageTitle = useMemo(
     () => catalogPageTitle(activePage, activePreset, filters),
     [activePage, activePreset, filters],
@@ -170,6 +226,7 @@ export function AppContent({ initialGames = [], initialTotal = 0, initialPage }:
   const trailer = useTrailer()
   const actions = useCatalogActions({
     accountIsActive: Boolean(account),
+    saveCatalogSnapshot,
     scrollToTop,
     setActivePage,
     setActivePreset,
@@ -227,7 +284,7 @@ export function AppContent({ initialGames = [], initialTotal = 0, initialPage }:
         providerCount={providerStatuses.length}
         readyProviders={readyProviders}
         viewMode={viewMode}
-        visibleGames={visibleGames}
+        visibleGames={renderedGames}
         onApplyFilters={() => setPendingApply((count) => count + 1)}
         onBrowseCatalog={actions.goHome}
         onChangeFilters={setFilters}

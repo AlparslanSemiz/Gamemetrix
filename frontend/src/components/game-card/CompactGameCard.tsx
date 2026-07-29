@@ -12,6 +12,7 @@ export function CompactGameCard({
   onCoverError,
   onOpenDetail,
   onOpenTrailer,
+  priority,
   onShare,
   onToggleCollection,
   ...collectionState
@@ -34,7 +35,8 @@ export function CompactGameCard({
         <img
           src={model.coverSrc}
           alt={`${game.title} cover`}
-          loading="lazy"
+          loading={priority ? 'eager' : 'lazy'}
+          fetchPriority={priority ? 'high' : 'auto'}
           onError={onCoverError}
         />
         <div className="compact-play-hint">

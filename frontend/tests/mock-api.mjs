@@ -36,7 +36,7 @@ const game = {
   slug: 'complete-test-game',
   summary: 'Complete Test Game is a carefully documented role-playing adventure with tactical combat, meaningful exploration, accessible difficulty options, and enough original context to help players compare its strengths before choosing where and how to play.',
   summary_short: 'A complete game fixture for crawler and interaction tests.',
-  cover_url: 'http://127.0.0.1:4173/favicon.svg',
+  cover_url: 'http://127.0.0.1:4173/favicon.svg?cover=1',
   image_url: null,
   website_url: 'https://example.com/complete-test-game',
   release_date: '2024-04-12',
@@ -112,6 +112,36 @@ const game = {
     url: 'https://store.steampowered.com/', fetched_at: now,
   }],
 }
+
+const catalogOmittedFields = new Set([
+  'summary',
+  'website_url',
+  'early_access_date',
+  'official_release_date',
+  'metacritic_score',
+  'critic_score',
+  'user_score',
+  'seo_indexable',
+  'seo_exclusion_reason',
+  'game_modes',
+  'hltb_id',
+  'hltb_refreshed_at',
+  'screenshots',
+  'system_requirements',
+  'dlcs',
+  'similar_games',
+  'franchise',
+])
+
+function catalogProjection(value, includePrices = false) {
+  return Object.fromEntries(
+    Object.entries(value).filter(([field]) =>
+      !catalogOmittedFields.has(field) && (includePrices || field !== 'price_snapshots'),
+    ),
+  )
+}
+
+const catalogGame = catalogProjection(game)
 
 function json(response, status, payload, headers = {}) {
   response.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', ...headers })
@@ -194,9 +224,9 @@ const server = http.createServer(async (request, response) => {
     })
   }
   if (url.pathname === '/api/seo/curated/home' || url.pathname.startsWith('/api/seo/curated/')) {
-    return json(response, 200, { games: [game], total: 400 })
+    return json(response, 200, { games: [catalogProjection(game, true)], total: 400 })
   }
-  if (url.pathname === '/api/games') {
+  if (url.pathname === '/api/catalog/games' || url.pathname === '/api/games') {
     const offset = Math.max(0, Number(url.searchParams.get('offset') ?? 0))
     const limit = Math.max(1, Number(url.searchParams.get('limit') ?? 24))
     if (delayedCatalogPage?.offset === offset) {
@@ -204,21 +234,30 @@ const server = http.createServer(async (request, response) => {
       delayedCatalogPage = null
       await new Promise((resolveDelay) => setTimeout(resolveDelay, delayMs))
     }
-    const pageSize = offset === 0 ? 1 : Math.min(limit, 48 - offset)
+    const pageSize = Math.min(limit, 48 - offset)
     const games = Array.from({ length: Math.max(0, pageSize) }, (_, index) => {
       const id = offset + index + 1
       return id === 1
-        ? game
-        : { ...game, id, title: `Catalog Test Game ${id}`, slug: `catalog-test-game-${id}` }
+        ? catalogGame
+        : { ...catalogGame, id, title: `Catalog Test Game ${id}`, slug: `catalog-test-game-${id}` }
     })
     return json(response, 200, { games, total: 48 })
   }
-  if (url.pathname === '/api/games/batch' && request.method === 'POST') {
+  if (
+    (url.pathname === '/api/catalog/games/batch' || url.pathname === '/api/games/batch')
+    && request.method === 'POST'
+  ) {
     const payload = await body(request)
+    const includePrices = url.searchParams.get('include_prices') === 'true'
     const games = (payload.slugs ?? []).map((slug) => {
-      if (slug === game.slug) return game
+      if (slug === game.slug) return catalogProjection(game, includePrices)
       const id = Number(slug.match(/(\d+)$/)?.[1] ?? 2)
-      return { ...game, id, title: `Catalog Test Game ${id}`, slug }
+      return {
+        ...catalogProjection(game, includePrices),
+        id,
+        title: `Catalog Test Game ${id}`,
+        slug,
+      }
     })
     return json(response, 200, { games, total: games.length })
   }
@@ -230,6 +269,19 @@ const server = http.createServer(async (request, response) => {
   if (url.pathname === '/api/games/complete-test-game/series') return json(response, 200, { series_key: '', games: [], total: 0 })
   if (url.pathname === '/api/games/complete-test-game/trailer') return json(response, 200, { video_id: null, watch_url: null })
   if (url.pathname === '/api/games/complete-test-game') return json(response, 200, game)
+  const catalogDetailMatch = url.pathname.match(/^\/api\/games\/(catalog-test-game-(\d+))(?:\/(similar|series|trailer))?$/)
+  if (catalogDetailMatch) {
+    const [, slug, id, related] = catalogDetailMatch
+    if (related === 'similar') return json(response, 200, { games: [], total: 0 })
+    if (related === 'series') return json(response, 200, { series_key: '', games: [], total: 0 })
+    if (related === 'trailer') return json(response, 200, { video_id: null, watch_url: null })
+    return json(response, 200, {
+      ...game,
+      id: Number(id),
+      title: `Catalog Test Game ${id}`,
+      slug,
+    })
+  }
   if (url.pathname.startsWith('/api/games/')) return json(response, 404, { detail: 'Game not found.' })
   return json(response, 404, { detail: 'Not found.' })
 })

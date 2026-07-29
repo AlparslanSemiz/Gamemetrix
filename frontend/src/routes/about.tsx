@@ -1,13 +1,8 @@
 import type { MetaFunction } from 'react-router'
-import { fetchBackend } from '../server-api.server'
-import type { GameListResponse } from '../types/game'
 import { UtilityRoute } from './utility'
 
 export function headers() {
   return { 'Cache-Control': 'public, max-age=60, s-maxage=900, stale-while-revalidate=3600' }
-}
-export async function loader(): Promise<GameListResponse> {
-  return fetchBackend<GameListResponse>('/api/seo/curated/home?limit=24')
 }
 export const meta: MetaFunction = () => [
   { title: 'How GameMetrix Scores and Ranks Games | GameMetrix' },
@@ -26,7 +21,7 @@ export const meta: MetaFunction = () => [
   { property: 'og:url', content: 'https://gamemetrix.me/about' },
 ]
 
-export default function AboutRoute({ loaderData }: { loaderData: GameListResponse }) {
+export default function AboutRoute() {
   const structuredData = JSON.stringify({
     '@context': 'https://schema.org',
     '@type': 'AboutPage',
@@ -39,7 +34,7 @@ export default function AboutRoute({ loaderData }: { loaderData: GameListRespons
   return (
     <>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: structuredData }} />
-      <UtilityRoute loaderData={loaderData} page="about" />
+      <UtilityRoute page="about" />
     </>
   )
 }

@@ -196,6 +196,62 @@ class GameListResponse(BaseModel):
     total: int
 
 
+class CatalogGameRead(BaseModel):
+    """Card/list payload that deliberately excludes detail-only JSON blobs."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    title: str
+    slug: str
+    summary_short: str | None = None
+    cover_url: str
+    release_date: date
+    release_year: int
+    image_url: str | None = None
+    ratings_refreshed_at: datetime | None = None
+    metadata_refreshed_at: datetime | None = None
+    prices_refreshed_at: datetime | None = None
+    content_type: str = "game"
+    live_primary_source_count: int = 0
+    applicable_source_count: int = 4
+    applicable_sources: list[str] = []
+    confidence_level: str = "Limited"
+    data_strength: str = "CATALOG_ONLY"
+    score_profile: str = "sparse"
+    popularity_label: str | None = None
+    metrix_score: float
+    rank_score: float = 0.0
+    is_rankable: bool = False
+    rank_exclusion_reason: str | None = None
+    seo_updated_at: datetime | None = None
+    genres: list[str]
+    platforms: list[str]
+    source_scores: list[SourceScore]
+    developer: str | None = None
+    publisher: str | None = None
+    steam_app_id: int | None = None
+    playtime_minutes: int = 0
+    hltb_url: str | None = None
+    hltb_main_story_minutes: int = 0
+    hltb_main_extra_minutes: int = 0
+    hltb_completionist_minutes: int = 0
+    hltb_all_styles_minutes: int = 0
+    is_endless: bool = False
+    proton_tier: str | None = None
+    proton_score: float | None = None
+    award_count: int = 0
+    award_nominations: int = 0
+    goty_year: int | None = None
+    awards: list[str] = []
+    price_snapshots: list[PriceSnapshotRead] = []
+
+
+class CatalogGameListResponse(BaseModel):
+    games: list[CatalogGameRead]
+    total: int
+
+
 class GameSlugBatchRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

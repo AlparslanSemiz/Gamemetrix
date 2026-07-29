@@ -1,13 +1,14 @@
 import { useEffect, type Dispatch, type SetStateAction } from 'react'
 import {
   getFacets,
-  getGames,
+  getCatalogGames,
   getIntegrationStatus,
 } from '../services/games'
 import type { Facets, ProviderStatus } from '../types/game'
 import { DEFAULT_FILTERS } from './config'
 
 interface CatalogBootstrapProps {
+  enabled: boolean
   setError: Dispatch<SetStateAction<string | null>>
   setFacets: Dispatch<SetStateAction<Facets>>
   setLibraryTotal: Dispatch<SetStateAction<number>>
@@ -15,12 +16,14 @@ interface CatalogBootstrapProps {
 }
 
 export function useCatalogBootstrap({
+  enabled,
   setError,
   setFacets,
   setLibraryTotal,
   setProviderStatuses,
 }: CatalogBootstrapProps) {
   useEffect(() => {
+    if (!enabled) return
     let active = true
 
     void getFacets()
@@ -30,7 +33,7 @@ export function useCatalogBootstrap({
       .catch(() => {
         if (active) setError('Backend facets could not be loaded.')
       })
-    void getGames(DEFAULT_FILTERS, 1, 0)
+    void getCatalogGames(DEFAULT_FILTERS, 1, 0)
       .then((response) => {
         if (active) setLibraryTotal(response.total)
       })
@@ -44,5 +47,5 @@ export function useCatalogBootstrap({
     return () => {
       active = false
     }
-  }, [setError, setFacets, setLibraryTotal, setProviderStatuses])
+  }, [enabled, setError, setFacets, setLibraryTotal, setProviderStatuses])
 }

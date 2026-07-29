@@ -1,5 +1,5 @@
 import { MonitorCheck } from 'lucide-react'
-import type { Game, ProtonTier } from '../../types/game'
+import type { CatalogGame, ProtonTier } from '../../types/game'
 import {
   PROTON_TIER_DESCRIPTIONS,
   PROTON_TIER_LABELS,
@@ -9,7 +9,7 @@ import { steamAppIdFromGame } from '../../utils/steam'
 
 interface ProtonBadgeProps {
   compact?: boolean
-  game: Game
+  game: CatalogGame
   tier: ProtonTier
 }
 

@@ -1,4 +1,4 @@
-import type { Game } from '../types/game'
+import type { CatalogGame, Game } from '../types/game'
 
 const XML_ESCAPES: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;' }
 
@@ -47,7 +47,11 @@ export function looksLikePlaceholderImage(naturalWidth: number, naturalHeight: n
 
 // Best real image for a card/detail cover: a valid cover, else a screenshot,
 // else image_url, else the generated fallback. Never returns a placeholder URL.
-export function bestCoverUrl(game: Pick<Game, 'title' | 'cover_url' | 'image_url' | 'screenshots'>): string {
+export function bestCoverUrl(
+  game: Pick<CatalogGame, 'title' | 'cover_url' | 'image_url'> & {
+    screenshots?: string[]
+  },
+): string {
   if (!isPlaceholderImageUrl(game.cover_url)) return game.cover_url
   const screenshot = (game.screenshots ?? []).find((s) => !isPlaceholderImageUrl(s))
   if (screenshot) return screenshot

@@ -8,20 +8,15 @@ export interface SourceScore {
   review_count?: number
 }
 
-export interface Game {
+export interface CatalogGame {
   id: number
   title: string
   slug: string
-  summary: string
   summary_short?: string | null
   cover_url: string
   release_date: string
   release_year: number
-  early_access_date?: string | null
-  official_release_date?: string | null
-  metacritic_score?: number | null
   image_url?: string | null
-  website_url?: string | null
   ratings_refreshed_at?: string | null
   metadata_refreshed_at?: string | null
   prices_refreshed_at?: string | null
@@ -37,40 +32,48 @@ export interface Game {
   rank_score: number
   is_rankable: boolean
   rank_exclusion_reason?: string | null
-  seo_indexable: boolean
-  seo_exclusion_reason?: string | null
   seo_updated_at?: string | null
-  seo_genre?: { slug: string; name: string } | null
-  critic_score: number
-  user_score: number
   genres: string[]
   platforms: string[]
   source_scores: SourceScore[]
   developer?: string | null
   publisher?: string | null
   steam_app_id?: number | null
-  game_modes?: string[]
   playtime_minutes: number
-  hltb_id?: number | null
   hltb_url?: string | null
   hltb_main_story_minutes: number
   hltb_main_extra_minutes: number
   hltb_completionist_minutes: number
   hltb_all_styles_minutes: number
-  hltb_refreshed_at?: string | null
   is_endless?: boolean
+  proton_tier?: ProtonTier | null
+  proton_score?: number | null
   award_count: number
   award_nominations: number
   goty_year?: number | null
   awards: string[]
+  price_snapshots?: PriceSnapshot[]
+}
+
+export interface Game extends CatalogGame {
+  summary: string
+  early_access_date?: string | null
+  official_release_date?: string | null
+  metacritic_score?: number | null
+  critic_score: number
+  user_score: number
+  website_url?: string | null
+  seo_indexable: boolean
+  seo_exclusion_reason?: string | null
+  seo_genre?: { slug: string; name: string } | null
+  game_modes?: string[]
+  hltb_id?: number | null
+  hltb_refreshed_at?: string | null
   screenshots: string[]
   system_requirements: SystemRequirement[]
   dlcs: RelatedGame[]
   similar_games: RelatedGame[]
   franchise?: string | null
-  proton_tier?: ProtonTier | null
-  proton_score?: number | null
-  price_snapshots?: PriceSnapshot[]
 }
 
 export type ProtonTier = 'native' | 'platinum' | 'gold' | 'silver' | 'bronze' | 'borked'
@@ -115,6 +118,11 @@ export interface PriceSnapshot {
 
 export interface GameListResponse {
   games: Game[]
+  total: number
+}
+
+export interface CatalogGameListResponse {
+  games: CatalogGame[]
   total: number
 }
 

@@ -1,5 +1,5 @@
 import type { CSSProperties } from 'react'
-import type { Game, SourceScore } from '../../types/game'
+import type { CatalogGame, SourceScore } from '../../types/game'
 import { bestCoverUrl } from '../../utils/coverImage'
 import { formatPlaytimeHours, isEndlessGame } from '../../utils/playtime'
 import { isProtonTier } from '../../utils/proton'
@@ -10,7 +10,7 @@ import type { GameCardModel } from './types'
 
 const ALL_PRIMARY_SOURCES = new Set<string>(CARD_PRIMARY_SOURCE_ORDER)
 
-export function buildGameCardModel(game: Game): GameCardModel {
+export function buildGameCardModel(game: CatalogGame): GameCardModel {
   const isEndless = isEndlessGame(game)
   const hltbMinutes = game.hltb_main_story_minutes > 0
     ? game.hltb_main_story_minutes
@@ -67,7 +67,7 @@ export function buildGameCardModel(game: Game): GameCardModel {
 }
 
 function buildDisplayedSources(
-  game: Game,
+  game: CatalogGame,
   applicableSources: Set<string>,
 ): SourceScore[] {
   const scoreBySource = new Map(
@@ -104,7 +104,7 @@ export function playtimeColor(minutes: number): string {
   return '#dc2626'
 }
 
-export function hltbTooltip(game: Game): string {
+export function hltbTooltip(game: CatalogGame): string {
   const rows = [
     ['Main', game.hltb_main_story_minutes],
     ['Extra', game.hltb_main_extra_minutes],

@@ -61,7 +61,7 @@ function metric(lhr, id) {
 
 function validate(lhr, label) {
   const thresholds = {
-    performance: 0.75,
+    performance: 0.90,
     accessibility: 0.90,
     'best-practices': 0.90,
     seo: 0.90,
@@ -130,8 +130,8 @@ try {
       onlyCategories: ['performance', 'accessibility', 'best-practices', 'seo'],
     })
     if (!result) throw new Error(`Lighthouse returned no result for ${label}`)
-    validate(result.lhr, label)
     await writeFile(`${REPORT_DIRECTORY}/${label}.json`, JSON.stringify(result.lhr, null, 2))
+    validate(result.lhr, label)
   }
 } finally {
   if (chrome) {

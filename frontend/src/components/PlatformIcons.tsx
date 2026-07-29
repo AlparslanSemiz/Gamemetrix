@@ -1,5 +1,5 @@
 import type React from 'react'
-import type { Game } from '../types/game'
+import type { CatalogGame } from '../types/game'
 import { storeUrlForGroup } from '../utils/storeLinks'
 import { deduplicatePlatforms, normalizePlatform } from './platforms'
 import './PlatformIcons.css'
@@ -122,7 +122,7 @@ interface PlatformIconsProps {
   maxVisible?: number
   /** When provided, icons become links to the game's store page (price
    *  snapshot URL → Steam app page → store search, in that order). */
-  game?: Game
+  game?: CatalogGame
 }
 
 export function PlatformIcons({ platforms, mode = 'list', maxVisible, game }: PlatformIconsProps) {

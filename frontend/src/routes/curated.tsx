@@ -1,7 +1,7 @@
 import type { LoaderFunctionArgs, MetaFunction } from 'react-router'
 import { CuratedPage, type CuratedPageData } from '../pages/CuratedPage'
 import { fetchBackend } from '../server-api.server'
-import type { GameListResponse } from '../types/game'
+import type { CatalogGameListResponse } from '../types/game'
 import { latestContentUpdate } from '../utils/seo'
 
 const PAGES = {
@@ -43,7 +43,7 @@ async function loadGenrePage(collection: string): Promise<CuratedPageData | null
   const genre = genres.find((entry) => entry.slug === slug)
   if (!genre) return null
 
-  const result = await fetchBackend<GameListResponse>(
+  const result = await fetchBackend<CatalogGameListResponse>(
     `/api/seo/curated/genre?genre=${encodeURIComponent(slug)}&limit=100`,
   )
   return {
@@ -60,7 +60,7 @@ export async function loader({ params }: LoaderFunctionArgs): Promise<CuratedPag
   const key = params.collection as keyof typeof PAGES
   const page = PAGES[key]
   if (page) {
-    const result = await fetchBackend<GameListResponse>(`/api/seo/curated/${page.api}?limit=100`)
+    const result = await fetchBackend<CatalogGameListResponse>(`/api/seo/curated/${page.api}?limit=100`)
     return { ...result, ...page, canonical: `https://gamemetrix.me/best/${key}`, updatedAt: latestContentUpdate(result.games) }
   }
 

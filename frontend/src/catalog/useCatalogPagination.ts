@@ -8,7 +8,7 @@ import {
   type SetStateAction,
 } from 'react'
 
-import type { Game, GameFilters } from '../types/game'
+import type { CatalogGame, GameFilters } from '../types/game'
 import {
   catalogFilterSignature,
   startCatalogPageLoad,
@@ -20,26 +20,30 @@ const SCROLL_SENTINEL_ROOT_MARGIN = '300px'
 
 export function useCatalogPaginationState({
   filters,
-  hasUrlFilters,
   initialGames,
+  initialHasMore,
+  initialOffset,
   initialTotal,
   pendingApply,
 }: {
   filters: GameFilters
-  hasUrlFilters: boolean
-  initialGames: Game[]
+  initialGames: CatalogGame[]
+  initialHasMore?: boolean
+  initialOffset?: number
   initialTotal: number
   pendingApply: number
 }) {
   const [fetchKey, setFetchKey] = useState(0)
-  const [offset, setOffset] = useState(0)
-  const [hasMore, setHasMore] = useState(!hasUrlFilters && initialGames.length < initialTotal)
+  const [offset, setOffset] = useState(initialOffset ?? 0)
+  const [hasMore, setHasMore] = useState(
+    initialHasMore ?? initialGames.length < initialTotal,
+  )
   const [isLoadingMore, setIsLoadingMore] = useState(false)
   const [loadMoreError, setLoadMoreError] = useState<string | null>(null)
   const loaderRef = useRef<HTMLDivElement>(null)
   // Seeded so SSR-provided games are not immediately refetched on hydration.
   const lastFetchSignatureRef = useRef<string | null>(
-    initialGames.length && !hasUrlFilters ? '0:0' : null,
+    initialGames.length ? `0:${initialOffset ?? 0}` : null,
   )
   const lastFilterResetSignatureRef = useRef(catalogFilterSignature(filters, pendingApply))
   const prefetchRef = useRef<PrefetchedPage | null>(null)
@@ -72,6 +76,7 @@ export type CatalogPagination = ReturnType<typeof useCatalogPaginationState>
 
 interface CatalogLoadEffectsProps {
   catalogTotal: number
+  enabled: boolean
   filters: GameFilters
   filtersRef: RefObject<GameFilters>
   pagination: CatalogPagination
@@ -79,7 +84,7 @@ interface CatalogLoadEffectsProps {
   restoreInProgressRef: RefObject<boolean>
   setCatalogTotal: Dispatch<SetStateAction<number>>
   setError: Dispatch<SetStateAction<string | null>>
-  setGames: Dispatch<SetStateAction<Game[]>>
+  setGames: Dispatch<SetStateAction<CatalogGame[]>>
   setIsLoading: Dispatch<SetStateAction<boolean>>
 }
 
@@ -89,6 +94,7 @@ export function useCatalogLoadEffects({ ...props }: CatalogLoadEffectsProps) {
 }
 
 function useCatalogFilterReset({
+  enabled,
   filters,
   pagination,
   pendingApply,
@@ -98,6 +104,7 @@ function useCatalogFilterReset({
   const filterResetSignature = catalogFilterSignature(filters, pendingApply)
 
   useEffect(() => {
+    if (!enabled) return
     // Mid-restore this effect still sees pre-restore filters; syncing the
     // signature without resetting keeps the restored page/offset intact.
     if (restoreInProgressRef.current) {
@@ -111,6 +118,7 @@ function useCatalogFilterReset({
     setFetchKey((key) => key + 1)
   }, [
     filterResetSignature,
+    enabled,
     lastFilterResetSignatureRef,
     prefetchRef,
     restoreInProgressRef,
@@ -121,6 +129,7 @@ function useCatalogFilterReset({
 
 function useCatalogPageLoad({
   catalogTotal,
+  enabled,
   filtersRef,
   pagination,
   restoreInProgressRef,
@@ -139,9 +148,9 @@ function useCatalogPageLoad({
     setLoadMoreError,
   } = pagination
 
-  useEffect(
-    () =>
-      startCatalogPageLoad({
+  useEffect(() => {
+    if (!enabled) return
+    return startCatalogPageLoad({
         catalogTotal,
         fetchKey,
         filtersRef,
@@ -156,9 +165,11 @@ function useCatalogPageLoad({
         setIsLoading,
         setIsLoadingMore,
         setLoadMoreError,
-      }),
+      })
+  },
     [
       catalogTotal,
+      enabled,
       fetchKey,
       filtersRef,
       lastFetchSignatureRef,

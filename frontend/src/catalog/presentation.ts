@@ -1,5 +1,5 @@
 import type { Collections } from '../state/collections'
-import type { Game, GameFilters } from '../types/game'
+import type { CatalogGame, GameFilters } from '../types/game'
 import {
   CURRENT_YEAR,
   collectionLabels,
@@ -12,8 +12,8 @@ import {
 export function visibleCatalogGames(
   activePage: ActivePage,
   collections: Collections,
-  games: Game[],
-): Game[] {
+  games: CatalogGame[],
+): CatalogGame[] {
   if (activePage === 'suggestions') {
     const excluded = new Set([
       ...collections.seen,
