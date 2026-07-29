@@ -226,6 +226,12 @@ const server = http.createServer(async (request, response) => {
   if (url.pathname === '/api/seo/curated/home' || url.pathname.startsWith('/api/seo/curated/')) {
     return json(response, 200, { games: [catalogProjection(game, true)], total: 400 })
   }
+  if (
+    url.pathname === '/api/catalog/games'
+    && url.searchParams.get('developer') === '__catalog_unavailable__'
+  ) {
+    return json(response, 503, { detail: 'Catalog temporarily unavailable.' })
+  }
   if (url.pathname === '/api/catalog/games' || url.pathname === '/api/games') {
     const offset = Math.max(0, Number(url.searchParams.get('offset') ?? 0))
     const limit = Math.max(1, Number(url.searchParams.get('limit') ?? 24))

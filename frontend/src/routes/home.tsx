@@ -35,11 +35,33 @@ function catalogRequestPath(request: Request): string {
   return `/api/catalog/games?${params.toString()}`
 }
 
+async function loadHomeCatalog(path: string): Promise<CatalogGameListResponse> {
+  try {
+    return await fetchBackend<CatalogGameListResponse>(path)
+  } catch (catalogError) {
+    // During a rolling deploy the frontend can briefly reach a backend instance
+    // that does not have the lightweight route yet. The legacy endpoint reads
+    // the same database and keeps the catalog available until instances converge.
+    const legacyPath = path.replace('/api/catalog/games', '/api/games')
+    try {
+      return await fetchBackend<CatalogGameListResponse>(legacyPath)
+    } catch (legacyError) {
+      // Keep the application shell usable during a full backend interruption.
+      // The client catalog effect retries the lightweight endpoint after hydration.
+      console.error('Catalog database endpoints are unavailable.', {
+        catalogError,
+        legacyError,
+      })
+      return { games: [], total: 0 }
+    }
+  }
+}
+
 export async function loader({ request }: LoaderFunctionArgs): Promise<HomeLoaderData> {
   // The hydrated catalog continues with /api/catalog/games, so SSR must use the same
   // query and total. Mixing the 400-row SEO-curated pool with the full catalog
   // made the badge jump from "24 / 400" to "48 / 10,929" after hydration.
-  const result = await fetchBackend<CatalogGameListResponse>(catalogRequestPath(request))
+  const result = await loadHomeCatalog(catalogRequestPath(request))
   return { ...result, snapshot: null }
 }
 

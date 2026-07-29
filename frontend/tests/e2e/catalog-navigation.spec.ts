@@ -18,6 +18,15 @@ function isCatalogOrRouteData(url: string): boolean {
   )
 }
 
+test('home stays available when the lightweight catalog endpoint is temporarily unavailable', async ({ page }) => {
+  await page.goto('/?developer=__catalog_unavailable__')
+
+  await expect(page.getByRole('heading', {
+    name: 'Game scores and PC compatibility rankings',
+  })).toBeVisible()
+  await expect(page.getByText('Something went wrong')).toHaveCount(0)
+})
+
 test('Home, Wishlist and For You switch locally within the 100 ms budget', async ({ page }) => {
   await gotoHydrated(page, '/')
   await page.waitForTimeout(300)
