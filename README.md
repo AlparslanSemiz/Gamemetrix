@@ -6,7 +6,7 @@ React Router Framework Mode frontend. Public game and curation routes render on
 the server; the catalog remains interactive after hydration.
 
 This README covers how to run and verify the stack. For how the system is built,
-see [AI.md](AI.md) — the architecture map: layer map, data model, scoring
+see [AI.md](AI.md), the architecture map: layer map, data model, scoring
 pipeline, background jobs, quotas, frontend structure and API surface. Written
 for AI agents, but it is the fastest orientation for a person too.
 [ai/AI_Guidelines.md](ai/AI_Guidelines.md) holds the development rules and
