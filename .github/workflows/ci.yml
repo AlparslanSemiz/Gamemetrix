@@ -151,3 +151,20 @@ jobs:
             frontend/playwright-report
           if-no-files-found: ignore
           retention-days: 7
+
+  docker-arm64:
+    # The production VM may be ARM (Oracle Ampere), so make sure both images
+    # still build there. GitHub's ARM runners are free for public repositories.
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Build backend image (arm64)
+        run: docker build -t gamemetrix-backend:arm64 backend
+
+      - name: Build frontend image (arm64)
+        run: docker build -t gamemetrix-frontend:arm64 frontend
+
+      - name: Smoke-test backend image
+        run: docker run --rm --entrypoint python gamemetrix-backend:arm64 -c "import platform, psycopg, bcrypt, argon2, jwt, fastapi; print(platform.machine())"
