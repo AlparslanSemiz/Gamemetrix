@@ -13,7 +13,7 @@ _REAL_ASYNC_CLIENT = httpx.AsyncClient
 class _Settings:
     OPENCRITIC_API_BASE = "https://opencritic-api.p.rapidapi.com"
     OPENCRITIC_API_KEY = ""
-    RAPIDAPI_KEY = "test-key"
+    RAPIDAPI_KEY = "test-key"  # pragma: allowlist secret
     RAPIDAPI_HOST = "opencritic-api.p.rapidapi.com"
 
     def opencritic_configured(self) -> bool:
