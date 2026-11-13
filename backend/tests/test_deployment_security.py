@@ -14,17 +14,21 @@ def test_runtime_images_and_actions_are_immutable() -> None:
             if line.startswith("FROM "):
                 assert "@sha256:" in line
 
+    # Third-party images are pinned by digest. Our own application images are the
+    # exception: CI publishes them per commit (images.yml) and production pulls the
+    # immutable sha-<commit> tag, which is built from the digest-pinned bases above.
+    own_images = ("-backend:${GAMEMETRIX_TAG", "-frontend:${GAMEMETRIX_TAG")
     compose = _read("docker-compose.yml")
     for line in compose.splitlines():
-        if line.strip().startswith("image:"):
+        if line.strip().startswith("image:") and not any(own in line for own in own_images):
             assert "@sha256:" in line
 
-    workflow = _read(".github/workflows/ci.yml")
-    for line in workflow.splitlines():
-        if "uses:" in line:
-            reference = line.split("uses:", 1)[1].split("#", 1)[0].strip()
-            assert "@" in reference
-            assert len(reference.rsplit("@", 1)[1]) == 40
+    for workflow_file in sorted((REPOSITORY_ROOT / ".github" / "workflows").glob("*.yml")):
+        for line in workflow_file.read_text(encoding="utf-8").splitlines():
+            if "uses:" in line:
+                reference = line.split("uses:", 1)[1].split("#", 1)[0].strip()
+                assert "@" in reference, workflow_file.name
+                assert len(reference.rsplit("@", 1)[1]) == 40, f"{workflow_file.name}: {reference}"
 
 
 def test_compose_requires_separate_app_role_and_hardens_public_services() -> None:
