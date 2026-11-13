@@ -39,6 +39,7 @@ and review volume shrink a thin score toward a neutral baseline.
 | Frontend | React Router **Framework Mode** (SSR), React + TypeScript strict, Vite |
 | Proxy | nginx (`nginx.conf`) in front of both, Cloudflare in front of that |
 | Deploy | `docker-compose.yml` — services: `db`, `backend`, `frontend`, `nginx`; volume `pgdata` |
+| Images | `.github/workflows/images.yml` builds both images for amd64 + arm64 on every push to main → `ghcr.io/alparslansemiz/gamemetrix-{backend,frontend}:sha-<commit>` and `:latest`. Production pulls them (`GAMEMETRIX_IMAGE_PREFIX` in `.env`); root cron `ops/auto-deploy.sh` deploys a new main within ~5 min of its images appearing |
 | Host constraint | 1 GB RAM production host. This drives several designs — see §9. |
 | Host | bwCloud (Karlsruhe) `p1.nano`, IPv6 only, 4 GB swap; Cloudflare proxies IPv4 visitors (SSL mode Flexible) |
 | Self-healing | `restart: always`, plus root cron `ops/health-watchdog.sh` every minute (restarts missing/stopped containers, restarts ones unhealthy for 3 checks); nightly `ops/backup-db.sh` |
@@ -577,6 +578,7 @@ A new rule never goes in AI.md; a new module never goes in AI_Guidelines.md.
 
 One line per session that changed the architecture. Newest first. Skip purely cosmetic work.
 
+- **2026-11-14** — Images are built in CI and pulled by production; `ops/auto-deploy.sh` deploys main automatically.
 - **2026-11-14** — Production moved to a new bwCloud instance; added `ops/health-watchdog.sh` (cron, every minute), the nightly backup cron and the `uptime` workflow.
 - **2026-07-29** — `AI.md` created as the shared architecture map for all AI agents; `CLAUDE.md`
   added as the Claude Code entry point. `ai/AI_Guidelines.md` corrected for the `models/` and

@@ -1,0 +1,83 @@
+name: images
+
+# Builds the backend and frontend images on every push to main and publishes them to
+# GitHub Container Registry, so the 1 GB production host only pulls finished images
+# instead of compiling them on one CPU. Each architecture builds natively (amd64 for
+# the current host, arm64 for an Oracle Ampere host) and both are merged into one tag.
+#
+#   ghcr.io/<owner>/gamemetrix-backend:sha-<full sha>   and   :latest
+#   ghcr.io/<owner>/gamemetrix-frontend:sha-<full sha>  and   :latest
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: images-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    strategy:
+      fail-fast: true
+      matrix:
+        service: [backend, frontend]
+        arch: [amd64, arm64]
+    runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Image name
+        id: name
+        run: echo "image=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/gamemetrix-${{ matrix.service }}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.service }}
+          platforms: linux/${{ matrix.arch }}
+          push: true
+          provenance: false
+          tags: ${{ steps.name.outputs.image }}:sha-${{ github.sha }}-${{ matrix.arch }}
+          build-args: |
+            VITE_GA_MEASUREMENT_ID=${{ vars.VITE_GA_MEASUREMENT_ID }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha,scope=${{ matrix.service }}-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}-${{ matrix.arch }}
+
+  merge:
+    needs: build
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service: [backend, frontend]
+    steps:
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: One tag for both architectures
+        run: |
+          image="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/gamemetrix-${{ matrix.service }}"
+          docker buildx imagetools create \
+            -t "$image:sha-${GITHUB_SHA}" -t "$image:latest" \
+            "$image:sha-${GITHUB_SHA}-amd64" "$image:sha-${GITHUB_SHA}-arm64"
+          docker buildx imagetools inspect "$image:sha-${GITHUB_SHA}"

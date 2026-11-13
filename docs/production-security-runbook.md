@@ -92,10 +92,17 @@ sudo -n bash /home/ubuntu/gamemetrix/Gamemetrix/ops/deploy-production.sh
 ```
 
 The script pulls Git as the unprivileged `ubuntu` owner, validates the protected
-file boundary and Compose configuration as root, builds the application images,
+file boundary and Compose configuration as root, gets the application images,
 waits for every service health check, and verifies the internal API before
 reporting success. If Origin CA files are present, it automatically includes the
 production TLS overlay.
+
+Images: with `GAMEMETRIX_IMAGE_PREFIX=ghcr.io/alparslansemiz/gamemetrix` in the root
+`.env`, the script pulls the images CI built for the exact commit
+(`.github/workflows/images.yml`) and records `GAMEMETRIX_TAG` in `.env`; without it,
+it builds them on the host as before. In registry mode the root cron
+`ops/auto-deploy.sh` (every 5 minutes) runs this script by itself once a new `main`
+has its images published, so merging a PR is the whole deployment.
 
 ## Origin TLS and Cloudflare
 
