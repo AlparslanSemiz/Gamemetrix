@@ -1,0 +1,32 @@
+name: uptime
+
+# Checks the live site from outside every 10 minutes. A failed run means the
+# site or the API was unreachable three times in a row, and GitHub emails the
+# repository owner about failed scheduled runs.
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Site and API respond
+        run: |
+          check() {
+            for i in 1 2 3; do
+              code=$(curl -s -o /dev/null -m 20 -w '%{http_code}' "$1" || true)
+              [ "$code" = 200 ] && { echo "$1 ok"; return 0; }
+              echo "$1 attempt $i: $code"; sleep 20
+            done
+            echo "::error::$1 is down"; return 1
+          }
+          ok=0
+          check https://gamemetrix.me/ || ok=1
+          check https://api.gamemetrix.me/health || ok=1
+          exit $ok
