@@ -9,11 +9,11 @@ declare global {
 
 let initialized = false
 
-export function googleAnalyticsConfigured(): boolean {
+function googleAnalyticsConfigured(): boolean {
   return /^G-[A-Z0-9]+$/i.test(measurementId)
 }
 
-export function initializeGoogleAnalytics(): void {
+function initializeGoogleAnalytics(): void {
   if (initialized || !googleAnalyticsConfigured() || typeof document === 'undefined') return
   initialized = true
 

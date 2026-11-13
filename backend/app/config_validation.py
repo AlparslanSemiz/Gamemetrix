@@ -24,7 +24,7 @@ _MODEL_NAME_RE = re.compile(r"^[A-Za-z0-9@._:/-]+$")
 _CLOUDFLARE_ACCOUNT_ID_RE = re.compile(r"^[A-Fa-f0-9]{32}$")
 
 
-def validate_settings(settings: "Settings") -> None:
+def validate_settings(settings: Settings) -> None:
     errors: list[str] = []
     _validate_core(settings, errors)
     _validate_numeric(settings, errors)
@@ -39,7 +39,7 @@ def _is_https_origin(value: str) -> bool:
     return parsed.scheme == "https" and bool(parsed.netloc) and parsed.path in {"", "/"}
 
 
-def _validate_core(settings: "Settings", errors: list[str]) -> None:
+def _validate_core(settings: Settings, errors: list[str]) -> None:
     if settings.ENV not in {"development", "test", "production"}:
         errors.append("ENV must be development, test, or production")
     if not settings.DATABASE_URL.startswith("postgresql+psycopg://"):
@@ -85,7 +85,7 @@ def _validate_core(settings: "Settings", errors: list[str]) -> None:
         errors.append("CLOUDFLARE_ACCOUNT_ID must be a 32-character hexadecimal ID")
 
 
-def _validate_numeric(settings: "Settings", errors: list[str]) -> None:
+def _validate_numeric(settings: Settings, errors: list[str]) -> None:
     _flag_out_of_range(
         errors,
         "These settings must be nonnegative",
@@ -135,7 +135,7 @@ def _flag_out_of_range(errors, message, values, is_invalid) -> None:
         errors.append(f"{message}: {', '.join(offenders)}")
 
 
-def _nonnegative_settings(s: "Settings") -> dict[str, float]:
+def _nonnegative_settings(s: Settings) -> dict[str, float]:
     return {
         "DAILY_RATING_REFRESH_LIMIT": s.DAILY_RATING_REFRESH_LIMIT,
         "STARTUP_RATING_REFRESH_LIMIT": s.STARTUP_RATING_REFRESH_LIMIT,
@@ -172,7 +172,7 @@ def _nonnegative_settings(s: "Settings") -> dict[str, float]:
     }
 
 
-def _positive_settings(s: "Settings") -> dict[str, float]:
+def _positive_settings(s: Settings) -> dict[str, float]:
     return {
         "RATING_REFRESH_INTERVAL_SECONDS": s.RATING_REFRESH_INTERVAL_SECONDS,
         "REFRESH_ALL_INTERVAL_HOURS": s.REFRESH_ALL_INTERVAL_HOURS,
@@ -193,7 +193,7 @@ def _positive_settings(s: "Settings") -> dict[str, float]:
     }
 
 
-def _delay_settings(s: "Settings") -> dict[str, float]:
+def _delay_settings(s: Settings) -> dict[str, float]:
     return {
         "REFRESH_ALL_INTER_GAME_DELAY": s.REFRESH_ALL_INTER_GAME_DELAY,
         "METADATA_BACKFILL_INTER_GAME_DELAY": s.METADATA_BACKFILL_INTER_GAME_DELAY,
@@ -203,7 +203,7 @@ def _delay_settings(s: "Settings") -> dict[str, float]:
     }
 
 
-def _score_modifier_settings(s: "Settings") -> dict[str, float]:
+def _score_modifier_settings(s: Settings) -> dict[str, float]:
     return {
         "SCORE_WEIGHT_METACRITIC": s.SCORE_WEIGHT_METACRITIC,
         "SCORE_WEIGHT_OPENCRITIC": s.SCORE_WEIGHT_OPENCRITIC,
@@ -212,7 +212,7 @@ def _score_modifier_settings(s: "Settings") -> dict[str, float]:
     }
 
 
-def _validate_production(settings: "Settings", errors: list[str]) -> None:
+def _validate_production(settings: Settings, errors: list[str]) -> None:
     if len(settings.JWT_SECRET_KEY) < _MIN_JWT_SECRET_LENGTH:
         errors.append("JWT_SECRET_KEY must contain at least 32 characters")
     if not settings.ADMIN_USERNAME or not settings.ADMIN_PASSWORD_HASH:

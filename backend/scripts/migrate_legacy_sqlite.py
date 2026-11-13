@@ -12,7 +12,7 @@ import argparse
 import json
 import os
 import sqlite3
-from collections.abc import Iterable, Iterator, Mapping, Sequence
+from collections.abc import Iterable, Iterator, Mapping
 from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any

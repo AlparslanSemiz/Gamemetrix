@@ -112,7 +112,7 @@ class MergePayload(StrictPayload):
     dismissed_alerts: list[str] = Field(default_factory=list, max_length=MAX_COLLECTION_ENTRIES)
 
     @model_validator(mode="after")
-    def validate_total_collection_size(self) -> "MergePayload":
+    def validate_total_collection_size(self) -> MergePayload:
         total = sum(len(getattr(self.collections, key)) for key in COLLECTION_TYPES)
         if total > MAX_MERGED_COLLECTION_ENTRIES:
             raise ValueError("Combined collection payload is too large.")

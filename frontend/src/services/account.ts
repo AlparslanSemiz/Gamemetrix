@@ -79,10 +79,6 @@ async function accountFetch<T>(path: string, init: RequestInit = {}): Promise<T>
   return response.json() as Promise<T>
 }
 
-export function getCurrentAccount(): Promise<{ account: Account }> {
-  return accountFetch('/me')
-}
-
 export function getAccountSession(): Promise<{ account: Account | null }> {
   return accountFetch('/session')
 }

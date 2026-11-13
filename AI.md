@@ -61,11 +61,9 @@ frontend/           React Router SSR app
 ai/                 AI_Guidelines.md (rules), CHECKSTYLE-light.md
 docs/               seo-growth.md, provider-access.md, production-security-runbook.md
 ops/                deploy + server hardening shell scripts, nginx TLS variants, locustfile
-memory_bank/        older narrative project notes (historical; AI.md supersedes for architecture)
 reports/            generated analysis output
 nginx.conf          production proxy config
 docker-compose.yml  full stack; docker-compose.production.yml layers prod overrides
-update_proton.py    root-level ProtonDB helper
 ```
 
 ---
@@ -96,9 +94,9 @@ services/           Business transformations. No direct HTTP to providers.
   summarizer/               AI-audited descriptions: text · issues · ai · batch
   catalog_quality/          AI review of suspicious rows: signals · review · research · remediation · batch · repair_batch
   similarity/               "games like X": taxonomy → signals → profiles → scoring/gates → ranking → queries (+ cache, ai_rerank)
-  deduplication/            titles → matching → merge → in_memory → store
+  deduplication/            titles → matching → merge → store
   game_query.py             catalog SELECT/COUNT construction (CatalogFilters, sorts, JSON predicates)
-  game_filter.py            in-memory list filtering and sorting
+  like_escape.py            escaping user input for SQL LIKE/ILIKE
   catalog_projection.py     ORM row → list/card payload
   seo.py / completeness.py  indexability state, data-completeness scoring
   endless.py                "no fixed completion time" classification
@@ -507,7 +505,7 @@ opaque sessions in PostgreSQL.
 | Change the score formula | `integrations/sync/scoring.py` (needs user approval) |
 | Change confidence tiers | `game_signals.py` (needs user approval) |
 | Add a new data source | `source_registry.py` → `integrations/<source>.py` → `<source>_service.py` → `sync/fetching.py` → `provider_status.py` → `types/game.ts` |
-| Add a catalog filter | `services/game_query.py` (SQL) or `services/game_filter.py` (in-memory), then `types/game.ts` + `FilterBar.tsx` |
+| Add a catalog filter | `services/game_query.py` (SQL), then `types/game.ts` + `FilterBar.tsx` |
 | Add an API field | `models/` → Alembic revision → `schemas.py` → `frontend/src/types/game.ts` |
 | Add a DB column | Alembic revision in `backend/alembic/versions/` with a default or server_default |
 | Add an endpoint | the right `routers/` module; packages auto-include their sub-routers |
@@ -578,6 +576,7 @@ A new rule never goes in AI.md; a new module never goes in AI_Guidelines.md.
 
 One line per session that changed the architecture. Newest first. Skip purely cosmetic work.
 
+- **2026-11-14** — Removed dead code: the in-memory catalog filters (`game_filter.py`, `deduplication/in_memory.py`; filtering is SQL-only in `game_query.py`), the unused `integrations/itad.py` facade; `escape_like` moved to `services/like_escape.py`.
 - **2026-11-14** — Images are built in CI and pulled by production; `ops/auto-deploy.sh` deploys main automatically.
 - **2026-11-14** — Production moved to a new bwCloud instance; added `ops/health-watchdog.sh` (cron, every minute), the nightly backup cron and the `uptime` workflow.
 - **2026-07-29** — `AI.md` created as the shared architecture map for all AI agents; `CLAUDE.md`

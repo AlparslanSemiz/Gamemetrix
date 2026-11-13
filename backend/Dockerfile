@@ -2,7 +2,6 @@ FROM python:3.11-slim@sha256:db3ff2e1800a8581e2c48a27c3995339d47bdf046da21c7627a
 
 WORKDIR /app
 
-# Bağımlılıkları yükleyelim
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
@@ -18,8 +17,7 @@ USER gamemetrix
 
 EXPOSE 8000
 
-# FastAPI uygulamasını ayağa kaldıralım
-# Not: Eğer ana çalıştırma dosyan app/main.py içindeyse bu komut aynen kalır.
+# Run migrations, then serve the FastAPI app.
 # --workers 1: one process only — a second worker would double the RSS on a 1GB host.
 #   FastAPI's async event loop already handles many concurrent I/O-bound requests
 #   (httpx calls to RAWG/Steam/etc, DB queries) on a single worker; this is a

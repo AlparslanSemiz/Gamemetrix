@@ -131,7 +131,7 @@ _RAWG_DLC_TYPES = frozenset({"dlc", "expansion", "addon", "update"})
 _SUBTITLE_SEPARATORS = (" – ", " — ", " - ")
 
 
-def infer_content_type(game: "Game", rawg_game_type: str | None = None) -> str:
+def infer_content_type(game: Game, rawg_game_type: str | None = None) -> str:
     # RAWG explicitly tells us the type — trust it
     if rawg_game_type and rawg_game_type.lower() in _RAWG_DLC_TYPES:
         return "dlc"
@@ -161,7 +161,7 @@ def infer_content_type(game: "Game", rawg_game_type: str | None = None) -> str:
     return "game"
 
 
-def infer_content_type_with_parent(game: "Game", parent_titles: frozenset[str]) -> str:
+def infer_content_type_with_parent(game: Game, parent_titles: frozenset[str]) -> str:
     """
     Extended classification that checks whether this game is a DLC/expansion of
     a parent game already in the catalog.

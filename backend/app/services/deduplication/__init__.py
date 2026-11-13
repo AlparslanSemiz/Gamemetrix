@@ -3,11 +3,9 @@
   titles     — normalize a title/slug to a comparable key
   matching   — are two games the same title? which copy is better?
   merge      — fold a duplicate's data into the keeper
-  in_memory  — dedupe a list held in memory
   store      — DB-backed detection, preview and consolidation
 """
 
-from .in_memory import dedupe_games_in_memory
 from .matching import (
     duplicate_quality_key,
     games_are_duplicates,
@@ -31,7 +29,6 @@ __all__ = [
     "build_duplicate_candidate_index",
     "canonical_title",
     "consolidate_duplicate_games",
-    "dedupe_games_in_memory",
     "duplicate_quality_key",
     "find_duplicate_groups",
     "find_existing_duplicate",

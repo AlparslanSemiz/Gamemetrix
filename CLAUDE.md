@@ -91,5 +91,3 @@ If nothing above applies, say so in one line rather than silently skipping it.
 ## Notes
 
 - Conversations may be in Turkish; code, comments and documentation stay in English.
-- `memory_bank/` holds older narrative notes. `AI.md` supersedes it for architecture — do not
-  update `memory_bank/` as part of routine work.
