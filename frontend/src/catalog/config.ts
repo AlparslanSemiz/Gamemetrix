@@ -47,7 +47,7 @@ export interface SidebarGroup {
 
 export const CURRENT_YEAR = new Date().getFullYear()
 export const PAGE_SIZE = 24
-export const EARLIEST_YEAR = 1970
+const EARLIEST_YEAR = 1970
 
 export const ROUTABLE_MAIN_PAGES = new Set<MainPage>([
   'watchlist', 'playing', 'seen', 'completed', 'on_hold', 'dropped',

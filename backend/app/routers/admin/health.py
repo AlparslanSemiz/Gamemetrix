@@ -71,7 +71,7 @@ async def api_health(force: bool = Query(default=False)) -> dict:
 async def _safe_health_check(label: str, service) -> SourceHealth:
     try:
         return await asyncio.wait_for(service.health_check(), timeout=_HEALTH_CHECK_TIMEOUT)
-    except asyncio.TimeoutError:
+    except TimeoutError:
         return SourceHealth(
             source=label,
             configured=True,
@@ -107,7 +107,7 @@ async def source_test(
     """Run a live search against one source and return the normalized result."""
     try:
         result = await asyncio.wait_for(_run_source_test(source, q), timeout=_SOURCE_TEST_TIMEOUT)
-    except asyncio.TimeoutError:
+    except TimeoutError:
         raise HTTPException(status_code=504, detail=f"Source test for '{source.value}' timed out")
 
     if result is None:

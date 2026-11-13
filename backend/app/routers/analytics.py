@@ -101,7 +101,7 @@ class AnalyticsEventPayload(BaseModel):
 def _stable_hash(value: str | None) -> str | None:
     if not value:
         return None
-    return sha256(f"{get_settings().analytics_salt()}:{value}".encode("utf-8")).hexdigest()
+    return sha256(f"{get_settings().analytics_salt()}:{value}".encode()).hexdigest()
 
 
 def _valid_ip(value: str | None) -> str | None:

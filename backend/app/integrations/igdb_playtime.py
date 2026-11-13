@@ -86,9 +86,3 @@ async def get_igdb_playtimes_minutes(igdb_ids: list[int]) -> dict[int, int] | No
         log.debug("IGDB time-to-beat request failed", exc_info=True)
         return None
     return parse_igdb_playtimes_minutes(rows)
-
-
-async def get_igdb_playtime_minutes(igdb_id: int) -> int | None:
-    """Compatibility wrapper for a single IGDB game id."""
-    results = await get_igdb_playtimes_minutes([igdb_id])
-    return results.get(igdb_id) if results is not None else None

@@ -37,7 +37,7 @@ class PkceChallenge:
     challenge: str
 
     @classmethod
-    def generate(cls) -> "PkceChallenge":
+    def generate(cls) -> PkceChallenge:
         verifier = token_urlsafe(_VERIFIER_BYTES)
         digest = sha256(verifier.encode()).digest()
         return cls(

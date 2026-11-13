@@ -39,7 +39,7 @@ from sqlalchemy.sql.expression import TableValuedAlias
 
 from ..integrations.source_registry import CRITIC_SOURCES, PC_PLATFORM_KEYS, PRIMARY_SOURCES
 from ..models import Game, PriceSnapshot
-from .game_filter import LIKE_ESCAPE_CHAR, escape_like
+from .like_escape import LIKE_ESCAPE_CHAR, escape_like
 
 _DEAL_FRESHNESS_HOURS = 24
 _BEST_DEAL_MIN_DISCOUNT_PERCENT = 50

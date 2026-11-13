@@ -39,7 +39,7 @@ export interface PlatformMeta {
 export type PlatformEntry = PlatformMeta & { key: string }
 
 // Each entry: canonical key → display info
-export const PLATFORM_META: Record<string, PlatformMeta> = {
+const PLATFORM_META: Record<string, PlatformMeta> = {
   pc:         { name: 'Windows PC',       short: 'Win',  color: '#00A4EF', group: 'pc',    priority: 2 },
   steam:      { name: 'Steam',            short: 'Steam',color: '#66C0F4', group: 'pc',    priority: 1 },
   macos:      { name: 'macOS',            short: 'Mac',  color: '#A2AAAD', group: 'macos', priority: 1 },

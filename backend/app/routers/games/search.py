@@ -13,7 +13,7 @@ from ...rate_limit import limiter
 from ...schemas import GameRead
 from ...security import require_admin_user
 from ...services.deduplication import find_existing_duplicate, merge_game_data
-from ...services.game_filter import LIKE_ESCAPE_CHAR, escape_like
+from ...services.like_escape import LIKE_ESCAPE_CHAR, escape_like
 from ...services.rawg_import import apply_rawg_to_game, game_from_rawg_search
 
 router = APIRouter()

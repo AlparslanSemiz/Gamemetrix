@@ -79,8 +79,7 @@ Every function must do exactly ONE thing:
 - `calculate_metrix_score` — computes the score, nothing else.
 - `_score_reliability_factor` — computes the reliability multiplier, nothing else.
 - `weighted_source_average` — averages one set of sources, nothing else.
-- `dedupe_near_duplicates` — deduplicates a list, nothing else.
-- Each `filter_by_*` function — one filter condition, nothing else.
+- Each catalog filter in `CatalogFilters` (`services/game_query.py`) — one SQL condition, nothing else.
 - `clean_game_summary` — sanitizes text, nothing else.
 - `summary_needs_enrichment` — returns bool, nothing else.
 - `enrich_game_summary` — async fetch + mutate, nothing else.
@@ -131,7 +130,7 @@ The score is a **reliability-adjusted weighted average**, not Bayesian prior shr
 ## 6. Services Layer Rules
 
 - `services/metadata.py` owns all text cleaning and enrichment. Never duplicate `_WEAK_SUMMARY_MARKERS`.
-- `services/game_filter.py` owns deduplication and all `filter_by_*` functions. Add new filter conditions here.
+- `services/game_query.py` owns catalog filtering and sorting, in SQL. Add new filter conditions there. Deduplication lives in `services/deduplication/`.
 - `services/rawg_import.py` owns all RAWG → Game conversion logic. Route handlers must not build `Game` objects directly from RAWG API dicts.
 - `services/background.py` owns the periodic refresh loop. Timing constants come from `config.py` via `get_settings()`.
 

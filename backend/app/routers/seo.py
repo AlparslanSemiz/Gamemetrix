@@ -17,7 +17,6 @@ from ..services.seo import (
     SITEMAP_CHUNK_SIZE,
     SitemapEntry,
     game_url_sitemap,
-    genre_slug,
     indexable_genre_facets,
     sitemap_chunk_count,
     sitemap_index_document,

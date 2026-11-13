@@ -481,18 +481,12 @@ class Settings:
     def steam_configured(self) -> bool:
         return bool(self.STEAM_WEB_API_KEY)
 
-    def wikidata_configured(self) -> bool:
-        return True
-
     def gamebrain_configured(self) -> bool:
         return bool(
             self.GAMEBRAIN_API_KEY
             and self.GAMEBRAIN_NONCOMMERCIAL_ENABLED
             and self.GAMEBRAIN_CACHE_PERMISSION_GRANTED
         )
-
-    def cheapshark_configured(self) -> bool:
-        return True  # No key required
 
 
 _settings: Settings | None = None

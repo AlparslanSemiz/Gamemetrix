@@ -25,7 +25,7 @@ function writeStorage(key: string, value: string): void {
   window.dispatchEvent(new Event(PREFERENCE_EVENT))
 }
 
-export function getAnalyticsConsent(): AnalyticsConsent {
+function getAnalyticsConsent(): AnalyticsConsent {
   const value = readStorage(CONSENT_KEY)
   return value === 'granted' || value === 'denied' ? value : 'unset'
 }
@@ -40,7 +40,7 @@ export function setAnalyticsConsent(consent: Exclude<AnalyticsConsent, 'unset'>)
   })
 }
 
-export function isInternalAnalyticsTraffic(): boolean {
+function isInternalAnalyticsTraffic(): boolean {
   return readStorage(INTERNAL_TRAFFIC_KEY) === 'true'
 }
 
