@@ -52,8 +52,23 @@ fi
 echo ">>> Compose configuration check..."
 "${compose[@]}" config --quiet
 
-echo ">>> Docker build & health-checked rollout..."
-"${compose[@]}" build backend frontend
+# With GAMEMETRIX_IMAGE_PREFIX in .env the images come ready-made from CI (see
+# .github/workflows/images.yml), tagged with the commit just pulled. Otherwise build here.
+image_prefix="$(sed -n 's/^GAMEMETRIX_IMAGE_PREFIX=//p' .env | tail -1)"
+if [[ -n "$image_prefix" ]]; then
+  export GAMEMETRIX_TAG="sha-$(git rev-parse HEAD)"
+  echo ">>> Pulling CI-built images $image_prefix-{backend,frontend}:$GAMEMETRIX_TAG ..."
+  if ! "${compose[@]}" pull backend frontend; then
+    echo "Images for $(git rev-parse --short HEAD) are not published yet; wait for the images workflow and run again." >&2
+    exit 75
+  fi
+  # Remember the deployed tag so later `compose up` runs (the health watchdog) use the same images.
+  if grep -q '^GAMEMETRIX_TAG=' .env; then sed -i "s/^GAMEMETRIX_TAG=.*/GAMEMETRIX_TAG=$GAMEMETRIX_TAG/" .env
+  else echo "GAMEMETRIX_TAG=$GAMEMETRIX_TAG" >> .env; fi
+else
+  echo ">>> Docker build & health-checked rollout..."
+  "${compose[@]}" build backend frontend
+fi
 # Compose can retain a stale dependency container ID when backend and frontend
 # are both recreated in one `up --wait` operation while nginx is still running.
 # Start each dependency layer deterministically before checking the next one.
