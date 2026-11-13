@@ -23,13 +23,13 @@ export default defineConfig({
       timeout: 30_000,
     },
     {
-      command: 'npm run dev -- --host 127.0.0.1 --port 4173',
-      port: 4173,
+      // Production build behind an nginx-like proxy (see tests/e2e-server.mjs).
+      // The catalog timeout is a build-time value, so the tests build their own copy.
+      command: 'npx react-router build && node tests/e2e-server.mjs',
+      url: 'http://127.0.0.1:4173/',
       reuseExistingServer: false,
-      timeout: 60_000,
+      timeout: 180_000,
       env: {
-        INTERNAL_API_BASE_URL: 'http://127.0.0.1:8001',
-        DEV_API_BASE_URL: 'http://127.0.0.1:8001',
         VITE_CATALOG_REQUEST_TIMEOUT_MS: '500',
       },
     },
