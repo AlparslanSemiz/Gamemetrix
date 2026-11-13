@@ -216,7 +216,15 @@ function useRestoredCatalogScroll(
       || typeof initialSnapshot.focusedGameViewportTop !== 'number'
     ) return
     restoreScrollPosition(initialSnapshot, lastScrollYRef)
+    // React Router's <ScrollRestoration> lives in the root layout, so its
+    // layout effect runs after this one and puts back the raw scrollY. That
+    // value was recorded with a different masthead state, which shifts the
+    // card by the header height. Re-anchor once after it has run.
+    const frame = window.requestAnimationFrame(() => {
+      restoreScrollPosition(initialSnapshot, lastScrollYRef)
+    })
     snapshotAnchorRef.current = null
+    return () => window.cancelAnimationFrame(frame)
   }, [initialSnapshot, lastScrollYRef, mastheadVisibleRef, snapshotAnchorRef])
 }
 
