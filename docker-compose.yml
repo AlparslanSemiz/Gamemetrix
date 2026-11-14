@@ -74,7 +74,7 @@ services:
     # letting a leak or traffic spike take down the whole VM.
     mem_limit: 400m
     mem_reservation: 150m
-    memswap_limit: 528m # +128m swap cushion for heavy-job memory spikes
+    memswap_limit: 1424m # 400m RAM + 1 GiB swap (host has 4 GiB swap); spikes slow down instead of OOM-killing
     cpus: 0.75
     read_only: true
     tmpfs:
