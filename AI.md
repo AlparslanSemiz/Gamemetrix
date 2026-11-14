@@ -365,6 +365,11 @@ The production host has **1 GB RAM**. Several designs exist only because of it:
   the catalog is in memory instead of two.
 - `yield_per` streaming + `load_only` + `noload` in `background._rating_refresh_plan` instead of
   materializing 50k `Game` objects.
+- Full-catalog sweeps (`completeness.sweep_data_complete`, `seo.refresh_catalog_seo_states`)
+  flush and expunge **every** streamed row per batch and assign a column only when its value
+  changes. Any assignment marks a row modified and the session then holds it strongly, so
+  `yield_per` alone does not bound memory; the old completeness sweep grew the backend to its
+  400 MiB limit and got it OOM-killed on every data-fill run.
 - The single shared `HEAVY_JOB_LOCK`.
 - `STARTUP_CATALOG_MAINTENANCE_ENABLED=false` by default.
 - Compose PostgreSQL is tuned below its 160 MiB cgroup limit (`shared_buffers=64MB`,
