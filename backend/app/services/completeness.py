@@ -62,8 +62,18 @@ def refresh_data_complete(game: Game) -> bool:
     return game.data_complete
 
 
+_SWEEP_BATCH = 500
+
+
 def sweep_data_complete(db: Session) -> dict[str, int]:
-    """Recompute the flag for the whole catalog. No API calls — pure state."""
+    """Recompute the flag for the whole catalog. No API calls — pure state.
+
+    The catalog is ~50k rows and the backend container has a 400 MiB limit, so
+    every row is expunged once its batch is flushed. Assigning an attribute marks
+    the row modified even when the value does not change, and the session holds
+    modified rows strongly; so the flag is only written when it really changes,
+    and nothing from a finished batch stays in the identity map.
+    """
     complete = 0
     changed = 0
     pending: list[Game] = []
@@ -77,6 +87,7 @@ def sweep_data_complete(db: Session) -> dict[str, int]:
                 Game.platforms,
                 Game.source_scores,
                 Game.summary,
+                Game.summary_quality,
                 Game.cover_url,
                 Game.release_year,
                 Game.playtime_minutes,
@@ -91,20 +102,26 @@ def sweep_data_complete(db: Session) -> dict[str, int]:
             ),
             noload(Game.price_snapshots),
         )
-        .execution_options(yield_per=500)
+        .execution_options(yield_per=_SWEEP_BATCH)
     )
     for game in games:
-        before = game.data_complete
-        if refresh_data_complete(game) != before:
+        is_complete = compute_data_complete(game)
+        if is_complete != game.data_complete:
+            game.data_complete = is_complete
             changed += 1
-            db.add(game)
-            pending.append(game)
-        if game.data_complete:
+        if is_complete:
             complete += 1
-        if len(pending) >= 500:
-            db.flush()
-            for persisted in pending:
-                db.expunge(persisted)
-            pending.clear()
+        pending.append(game)
+        if len(pending) >= _SWEEP_BATCH:
+            _flush_and_expunge(db, pending)
+    if pending:
+        _flush_and_expunge(db, pending)
     db.commit()
     return {"complete": complete, "changed": changed}
+
+
+def _flush_and_expunge(db: Session, games: list[Game]) -> None:
+    db.flush()
+    for game in games:
+        db.expunge(game)
+    games.clear()
