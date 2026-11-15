@@ -14,3 +14,7 @@ alembic==1.16.5
 argon2-cffi==25.1.0
 email-validator==2.3.0
 aiosmtplib==5.1.2
+# Transitive dependencies pinned to versions with known security fixes
+anyio==4.14.2
+certifi==2026.10.18
+idna==3.18
