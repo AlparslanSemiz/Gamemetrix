@@ -68,7 +68,7 @@ jobs:
         run: bandit -q -r app -ll
 
       - name: Scan tracked files for secrets
-        run: detect-secrets-hook --baseline .secrets.baseline.json $(git ls-files)
+        run: git ls-files -z | xargs -0 detect-secrets-hook --baseline .secrets.baseline.json
 
       - name: Validate production settings
         working-directory: backend

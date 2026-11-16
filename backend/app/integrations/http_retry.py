@@ -36,7 +36,7 @@ _THROTTLED_STATUS_CODE = 429
 
 
 def _retry_after_seconds(response: httpx.Response) -> float | None:
-    """Honour an integer Retry-After header; ignore HTTP-date form and unparseable values."""
+    """Honour an integer Retry-After header; ignore HTTP-date form and unparsable values."""
     raw = response.headers.get("retry-after")
     if not raw:
         return None

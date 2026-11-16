@@ -184,7 +184,7 @@ def consolidate_duplicate_games(db: Session) -> dict[str, int]:
             # The session runs with autoflush=False, so the ExternalId re-parenting
             # above is still pending here. Flush it before the Core DELETE — its
             # ON DELETE CASCADE would otherwise remove those rows first and the
-            # deferred UPDATEs would raise StaleDataError at commit.
+            # deferred UPDATE statements would raise StaleDataError at commit.
             db.flush()
             db.execute(delete(Game).where(Game.id == duplicate.id))
             removed += 1

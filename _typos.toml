@@ -1,0 +1,13 @@
+# Config for https://github.com/crate-ci/typos
+[default.extend-words]
+# Brand name (GameMetrix), not a typo of "Matrix" or "Metric".
+Metrix = "Metrix"
+metrix = "metrix"
+
+[files]
+extend-exclude = [
+  # Catalog data: real game titles and character names ("Shepard"), source spellings.
+  "backend/app/data/seed_games.json",
+  # Written in Turkish; Turkish words trip the English dictionary.
+  "ai/CHECKSTYLE-light.md",
+]
