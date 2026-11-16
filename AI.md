@@ -548,7 +548,7 @@ in `_test`. 42 backend test modules live in `backend/tests/`; `test_scoring.py`,
 regression in the core pipeline. Frontend e2e specs are in `frontend/tests/e2e/`.
 
 Operational procedure lives in `docs/production-security-runbook.md`, `docs/provider-access.md`
-and `docs/seo-growth.md`. Run and deployment commands are in `README.md`.
+and `docs/seo-growth.md`. Run and deployment commands are in `docs/running.md`.
 
 ---
 
@@ -567,7 +567,7 @@ false — not later.
 | adds a route, page, catalog hook or state key | §10 |
 | adds, removes or renames an endpoint | §11 |
 | changes where a common task starts | §12 |
-| changes a build, test or verification command | §13, and `README.md` if user-facing |
+| changes a build, test or verification command | §13, and `README.md` / `docs/running.md` if user-facing |
 | establishes a new rule or invariant | `ai/AI_Guidelines.md` — **not** here |
 
 Then append one line to §15.
