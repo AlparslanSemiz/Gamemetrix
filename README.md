@@ -16,7 +16,7 @@
 
 ## Why
 
-A 95 from one reviewer and a 95 backed by four sources and thousands of reviews are not the
+A 95 backed by one source and a 95 backed by four sources and thousands of reviews are not the
 same signal, but most catalogs rank them the same. GameMetrix aggregates ratings from several
 external sources and shrinks thin scores toward a neutral baseline, based on source coverage,
 critic/user balance and review volume. A visitor can then filter and rank games and save them
@@ -46,7 +46,7 @@ No license file is included in this repository.
 
 ## Run locally
 
-PowerShell shown; the same commands work in any shell with the usual path separators.
+PowerShell shown. On Linux and macOS the commands are the same, except that paths use `/` instead of `\` (for example `backend/requirements-dev.txt`).
 
 ```powershell
 # 1. database (copy .env.example to .env first and set the passwords)
