@@ -14,6 +14,9 @@ import { AccountProvider } from './state/AccountProvider'
 import { CollectionsProvider } from './state/CollectionsProvider'
 import './index.css'
 
+const CLOUDFLARE_BEACON_URL = 'https://static.cloudflareinsights.com/beacon.min.js'
+const CLOUDFLARE_BEACON_CONFIG = JSON.stringify({ token: '57b91d1cbe0d4f8eacbfc967324be352' })
+
 export function Layout({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
@@ -24,6 +27,12 @@ export function Layout({ children }: { children: ReactNode }) {
         <link rel="icon" href="/favicon.svg" />
         <Meta />
         <Links />
+        {/* Cloudflare Web Analytics: cookieless page-view counts, no consent needed. */}
+        <script
+          defer
+          src={CLOUDFLARE_BEACON_URL}
+          data-cf-beacon={CLOUDFLARE_BEACON_CONFIG}
+        />
       </head>
       <body>
         {children}
