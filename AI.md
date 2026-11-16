@@ -581,7 +581,7 @@ A new rule never goes in AI.md; a new module never goes in AI_Guidelines.md.
 
 One line per session that changed the architecture. Newest first. Skip purely cosmetic work.
 
-- **2026-11-16** — Added Cloudflare Web Analytics (cookieless beacon in `root.tsx`, CSP in `nginx.conf`); `deploy-production.sh` now restarts nginx when `nginx.conf` changed (single-file bind mounts go stale after `git pull`).
+- **2026-11-16** — Added Cloudflare Web Analytics (cookieless beacon in `root.tsx`, enabled by the `VITE_CF_BEACON_TOKEN` repo variable in production images only; CSP in `nginx.conf`); `deploy-production.sh` now restarts nginx when `nginx.conf` changed (single-file bind mounts go stale after `git pull`).
 - **2026-11-14** — Removed dead code: the in-memory catalog filters (`game_filter.py`, `deduplication/in_memory.py`; filtering is SQL-only in `game_query.py`), the unused `integrations/itad.py` facade; `escape_like` moved to `services/like_escape.py`.
 - **2026-11-14** — Images are built in CI and pulled by production; `ops/auto-deploy.sh` deploys main automatically.
 - **2026-11-14** — Production moved to a new bwCloud instance; added `ops/health-watchdog.sh` (cron, every minute), the nightly backup cron and the `uptime` workflow.
