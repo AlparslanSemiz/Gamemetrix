@@ -48,7 +48,7 @@ docker compose config
 docker compose up -d db
 ```
 
-PostgreSQL is the only supported runtime database. Full command reference: `README.md`.
+PostgreSQL is the only supported runtime database. Full command reference: `docs/running.md`.
 
 ## Working rules
 

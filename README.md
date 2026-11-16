@@ -1,183 +1,84 @@
-GameMetrix
-==========
+<div align="center">
 
-GameMetrix is a game decision catalog with a FastAPI/PostgreSQL backend and a
-React Router Framework Mode frontend. Public game and curation routes render on
-the server; the catalog remains interactive after hydration.
+<img src="frontend/public/favicon.svg" alt="GameMetrix logo" width="80">
 
-This README covers how to run and verify the stack. For how the system is built,
-see [AI.md](AI.md), the architecture map: layer map, data model, scoring
-pipeline, background jobs, quotas, frontend structure and API surface. Written
-for AI agents, but it is the fastest orientation for a person too.
-[ai/AI_Guidelines.md](ai/AI_Guidelines.md) holds the development rules and
-[CLAUDE.md](CLAUDE.md) is the Claude Code entry point.
+# GameMetrix
 
-## Run PostgreSQL
+**A game decision catalog: ratings from several sources merged into one reliability-weighted score, for about 50k games.**
 
-Copy `.env.example` to the gitignored root `.env` and replace its URL-safe
-PostgreSQL password. Docker Compose loads these values automatically. For a
-one-off shell session, the equivalent is:
+[![Python](https://img.shields.io/badge/backend-FastAPI-2b6cb0?style=flat)](backend/)
+[![React Router](https://img.shields.io/badge/frontend-React%20Router%20SSR-2b6cb0?style=flat)](frontend/)
+[![PostgreSQL](https://img.shields.io/badge/database-PostgreSQL-2b6cb0?style=flat)](docs/running.md)
+
+### [Open gamemetrix.me](https://gamemetrix.me)
+
+</div>
+
+## Why
+
+A 95 from one reviewer and a 95 backed by four sources and thousands of reviews are not the
+same signal, but most catalogs rank them the same. GameMetrix aggregates ratings from several
+external sources and shrinks thin scores toward a neutral baseline, based on source coverage,
+critic/user balance and review volume. A visitor can then filter and rank games and save them
+into personal collections.
+
+## Features
+
+- GameMetrix Score: one reliability-weighted score per game, built from several rating sources.
+- Per-game metadata: playtime, price, system requirements, Linux/Proton compatibility, screenshots, DLC.
+- Filter and sort the catalog; save games into personal collections.
+- Public game and curation pages render on the server; the catalog stays interactive after hydration.
+- Separate normal accounts (Argon2id, hashed opaque sessions) and admin authentication; admin dashboard with visitor counts.
+- Analytics only after the visitor opts in; no counting of automated traffic.
+
+## Status
+
+Live at [gamemetrix.me](https://gamemetrix.me) and under active development. It runs on a
+single small (1 GB RAM) host, which shapes several design choices; see [AI.md](AI.md).
+Provider API access is limited by quotas ([docs/provider-access.md](docs/provider-access.md)).
+No license file is included in this repository.
+
+## Tech stack
+
+- Backend: FastAPI, SQLAlchemy 2, Alembic, PostgreSQL (the only supported runtime database)
+- Frontend: React Router Framework Mode (SSR), React, TypeScript, Vite
+- Deploy: Docker Compose with nginx in front, images built by GitHub Actions
+
+## Run locally
+
+PowerShell shown; the same commands work in any shell with the usual path separators.
 
 ```powershell
-$env:POSTGRES_USER="gamemetrix"
-$env:POSTGRES_PASSWORD="<choose-a-local-password>"
-$env:POSTGRES_DB="gamemetrix"
-$env:APP_DB_USER="gamemetrix_app"
-$env:APP_DB_PASSWORD="<choose-a-different-local-password>"
-$env:ENV="development"
+# 1. database (copy .env.example to .env first and set the passwords)
 docker compose up -d db
-```
 
-When the backend runs directly on Windows, set `backend\.env` with a matching
-PostgreSQL database URL:
-
-```text
-DATABASE_URL=postgresql+psycopg://gamemetrix:<choose-a-local-password>@localhost:5432/gamemetrix
-```
-
-Docker Compose builds the backend's `DATABASE_URL` from the separate,
-non-superuser `APP_DB_USER` and `APP_DB_PASSWORD` values:
-
-```text
-postgresql+psycopg://<APP_DB_USER>:<APP_DB_PASSWORD>@db:5432/<POSTGRES_DB>
-```
-
-Compose therefore overrides any host-only `DATABASE_URL` from `backend/.env`;
-provider credentials still come from that file. `ENV`, `APP_DB_USER`, and
-`APP_DB_PASSWORD` are mandatory. The PostgreSQL bootstrap/admin credential is
-never passed to the backend container.
-
-`DATABASE_URL` is required. The backend intentionally supports one runtime
-database: PostgreSQL.
-
-To merge an existing `backend/gamemetrix.dev.db` catalog into an empty or
-partially populated PostgreSQL database, preview the operation first and then
-apply it:
-
-```powershell
-cd backend
-python scripts\migrate_legacy_sqlite.py
-python scripts\migrate_legacy_sqlite.py --apply
-```
-
-The source SQLite file is opened read-only. Existing PostgreSQL games win on
-slug; legacy-only games and related snapshot rows are copied with remapped IDs.
-
-PostgreSQL is the only runtime source of truth in development, tests, Docker,
-and production. The ignored `backend/gamemetrix.dev.db` file is a legacy
-read-only migration/archive input, not a fallback database. Keep it only until
-the PostgreSQL dump and migrated row counts have been verified; the application
-deliberately rejects a SQLite `DATABASE_URL` instead of silently creating a
-second catalog.
-
-Copy the non-secret settings from `backend/.env.example` and fill the provider
-credentials you use. API Health reports rejected, expired, and misrouted
-providers without returning credential values.
-
-The full 50k-row classify/rescore/deduplicate pass is intentionally disabled on
-ordinary boots (`STARTUP_CATALOG_MAINTENANCE_ENABLED=false`) so API readiness
-does not wait behind a CPU- and memory-heavy maintenance scan. Enable it for one
-controlled restart only when that complete recomputation is explicitly needed.
-
-The Compose PostgreSQL service is deliberately tuned below its 160 MiB cgroup
-limit (`shared_buffers=64MB`, `work_mem=2MB`,
-`maintenance_work_mem=32MB`, `max_connections=40`). Keep those values aligned
-with the container memory limit if deployment resources change.
-
-Visitor counts are available in the admin dashboard. To retain exact IPs for
-new visits, set `ANALYTICS_STORE_RAW_IP=true`; raw IPs are removed after
-`ANALYTICS_RAW_IP_RETENTION_DAYS` while their hashes remain usable for unique
-counts. Behind the bundled nginx proxy, also set
-`ANALYTICS_TRUST_PROXY_HEADERS=true`. Do not enable trusted proxy headers when
-the backend is directly reachable from the internet.
-
-Analytics collection starts only after the visitor explicitly allows it in the
-site privacy control. Browser IDs are pseudonymous browser-storage identifiers,
-network IDs are hashed IP addresses, and neither is an exact person count.
-Automated user agents and browsers marked as internal traffic are excluded from
-newly collected metrics. Set `VITE_GA_MEASUREMENT_ID=G-...` in the root
-deployment environment to add consented GA4 collection; ad storage, Google
-signals, and advertising personalization remain disabled.
-
-## Run Backend
-
-```powershell
+# 2. backend, at http://127.0.0.1:8000 (needs backend/.env, see backend/.env.example)
 python -m pip install -r backend\requirements-dev.txt
 cd backend
 alembic upgrade head
 python -m uvicorn app.main:app --reload
-```
 
-The API runs at `http://127.0.0.1:8000`.
-
-Run one recorded, resumable data-fill cycle without starting the web server:
-
-```powershell
-python scripts\run_data_fill_once.py --target-total 50000
-```
-
-To preview catalog drift between the public production catalog and local
-PostgreSQL, then synchronize it:
-
-```powershell
-cd backend
-python scripts\sync_public_catalog.py
-python scripts\sync_public_catalog.py --apply
-```
-
-Production is the source of truth for this operation. Use
-`--apply --prune-local-only` only after taking a local PostgreSQL dump; it
-removes games absent from production and their cascading local catalog rows.
-The public endpoint supplies game fields only, so this does not clone production
-accounts, analytics, provider budgets, external IDs, or snapshot audit history.
-
-## Run Frontend
-
-```powershell
+# 3. frontend, at http://127.0.0.1:5173 (in a second terminal)
 cd frontend
 npm install
 npm run dev
 ```
 
-The SSR app runs at `http://127.0.0.1:5173`. Server loaders use
-`INTERNAL_API_BASE_URL` when set and otherwise call `http://127.0.0.1:8000`.
-Browser API calls stay same-origin; the development server proxies `/api` and
-backend `/admin/*` requests to port 8000 so account cookies behave like production.
+Verification (`pytest`, `lint`, `typecheck`, `build`, `test:e2e`), the database and
+provider configuration, analytics settings and the data scripts are in
+[docs/running.md](docs/running.md).
 
-## Accounts
+## Project structure
 
-Normal accounts and admin authentication are intentionally separate. Normal
-accounts use Argon2id passwords and hashed opaque sessions in PostgreSQL;
-admin continues to use `/api/auth/token` and a short-lived Bearer token. The
-admin token is held in page memory only and is never written to browser storage.
-
-Development can use `ACCOUNT_EMAIL_DELIVERY=log`. Production requires
-`ENV=production` and validates HTTPS, JWT issuer/audience, SMTP, numeric job
-limits, and admin settings before startup. Configure Google OAuth and SMTP only
-in backend/deployment secrets.
-
-## Verify
-
-```powershell
-cd backend
-python -m pytest -q
-python -m compileall app alembic
-
-cd ..\frontend
-npm run lint
-npm run typecheck
-npm run build
-npm run test:e2e
-npm run lighthouse:ci
-
-cd ..
-docker compose config
+```
+backend/    FastAPI app, Alembic migrations, tests, one-off scripts
+frontend/   React Router SSR app
+ops/        production scripts: deploy, backup, watchdogs
+docs/       running guide, provider access, SEO, security runbook
+ai/         development rules (AI_Guidelines.md)
+AI.md       architecture map: layers, data model, scoring, jobs, API
 ```
 
-PostgreSQL integration tests run when `TEST_DATABASE_URL` names a dedicated
-database ending in `_test`.
-
-Operational policy is documented in [SEO growth](docs/seo-growth.md) and
-[provider access](docs/provider-access.md). The ordered production hardening
-and rollback procedure is in
-[Production security rollout](docs/production-security-runbook.md).
+[CLAUDE.md](CLAUDE.md) is the entry point for Claude Code; [AI.md](AI.md) is the fastest
+orientation for people too. Operational policy: [SEO growth](docs/seo-growth.md),
+[production security rollout](docs/production-security-runbook.md).
