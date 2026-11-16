@@ -14,6 +14,10 @@ import { AccountProvider } from './state/AccountProvider'
 import { CollectionsProvider } from './state/CollectionsProvider'
 import './index.css'
 
+const CLOUDFLARE_BEACON_URL = 'https://static.cloudflareinsights.com/beacon.min.js'
+// Set only for production images (images.yml); local, test and Lighthouse builds load no beacon.
+const CLOUDFLARE_BEACON_TOKEN = String(import.meta.env.VITE_CF_BEACON_TOKEN ?? '').trim()
+
 export function Layout({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
@@ -24,6 +28,14 @@ export function Layout({ children }: { children: ReactNode }) {
         <link rel="icon" href="/favicon.svg" />
         <Meta />
         <Links />
+        {/* Cloudflare Web Analytics: cookieless page-view counts, no consent needed. */}
+        {CLOUDFLARE_BEACON_TOKEN && (
+          <script
+            defer
+            src={CLOUDFLARE_BEACON_URL}
+            data-cf-beacon={JSON.stringify({ token: CLOUDFLARE_BEACON_TOKEN })}
+          />
+        )}
       </head>
       <body>
         {children}

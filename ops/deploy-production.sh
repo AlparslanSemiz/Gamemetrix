@@ -76,6 +76,18 @@ fi
 "${compose[@]}" up -d --wait --wait-timeout 240 frontend
 "${compose[@]}" up -d --wait --wait-timeout 240 nginx
 
+# nginx.conf is a single-file bind mount: `git pull` replaces the file, the running
+# container keeps the old one, and `up` does not notice. Restart nginx when it changed,
+# after checking the new file in a throwaway container.
+nginx_state=.deployed-nginx-conf.sha256
+nginx_sum=$(sha256sum nginx.conf | cut -d' ' -f1)
+if [ "$(cat "$nginx_state" 2>/dev/null)" != "$nginx_sum" ]; then
+  echo ">>> nginx.conf changed; validating and restarting nginx..."
+  "${compose[@]}" run --rm --no-deps --entrypoint nginx nginx -t
+  "${compose[@]}" restart nginx
+  echo "$nginx_sum" > "$nginx_state"
+fi
+
 curl --fail --silent --show-error --max-time 15 \
   -H "Host: api.gamemetrix.me" \
   -H "X-Forwarded-Proto: https" \
