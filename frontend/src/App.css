@@ -1256,6 +1256,14 @@ html { font-size: 16px; }
   animation: skeleton-shimmer 1.4s infinite;
 }
 
+/* Layout-only stand-in for cards that arrive at hydration: no shimmer, and a
+   height close to a measured list card so the footer does not move. */
+.skeleton-card-static::after { display: none; }
+.game-list-list .skeleton-card-static { height: 484px; }
+@media (max-width: 1279px) { .game-list-list .skeleton-card-static { height: 510px; } }
+@media (max-width: 1023px) { .game-list-list .skeleton-card-static { height: 738px; } }
+@media (max-width: 600px) { .game-list-list .skeleton-card-static { height: 751px; } }
+
 @keyframes skeleton-shimmer {
   100% { transform: translateX(100%); }
 }
@@ -2141,6 +2149,25 @@ a.source-name-link:hover {
 
 .game-card-compact:hover .compact-cover img {
   transform: scale(1.025);
+}
+
+.compact-cover-button {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.compact-cover-button:focus-visible {
+  outline: 2px solid var(--gm-accent);
+  outline-offset: -3px;
+}
+
+.compact-cover:has(.compact-cover-button:focus-visible) .compact-play-hint {
+  opacity: 1;
 }
 
 .compact-play-hint {

@@ -325,7 +325,14 @@ def _has_live_critic_expression() -> ColumnElement[bool]:
 
 def json_array_values_statement(column: ColumnElement) -> Select[tuple[str]]:
     """Distinct, trimmed, sorted values of a JSON array column across all games."""
-    values = func.jsonb_array_elements_text(cast(column, JSONB)).table_valued("value").lateral()
+    # A scalar or null JSON value makes jsonb_array_elements_text raise, which
+    # would fail the whole query (a 500 on /api/facets). Treat those as empty.
+    as_jsonb = cast(column, JSONB)
+    safe_array = case(
+        (func.jsonb_typeof(as_jsonb) == "array", as_jsonb),
+        else_=cast("[]", JSONB),
+    )
+    values = func.jsonb_array_elements_text(safe_array).table_valued("value").lateral()
     trimmed = func.trim(values.c.value).label("value")
     return (
         select(trimmed)

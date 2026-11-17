@@ -1,9 +1,11 @@
 """Paginated catalog listing and the filter-option facets."""
 
 import datetime
+import logging
 
 from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy import func, select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, noload, selectinload
 
 from ...config import get_settings
@@ -27,6 +29,7 @@ from ...services.game_query import (
 )
 from ._common import ContentTypeFilter, DealFilter, PlayerModeFilter
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 _FACETS_TTL = 300.0  # 5 minutes
@@ -128,16 +131,24 @@ def get_facets(
     if _facets_cache is not None and (now - _facets_cache_time) < _FACETS_TTL:
         return _facets_cache
 
-    result = FacetsResponse(
-        # Expand JSON arrays at SQL level without loading ORM objects.
-        # TRIM collapses variants like " MMORPG" / "MMORPG" into one facet entry.
-        genres=list(db.scalars(json_array_values_statement(Game.genres)).all()),
-        years=_release_years(db),
-        platforms=sorted(
-            build_platform_filters(set(db.scalars(json_array_values_statement(Game.platforms)).all()))
-        ),
-        developers=_top_developers(db),
-    )
+    try:
+        result = FacetsResponse(
+            # Expand JSON arrays at SQL level without loading ORM objects.
+            # TRIM collapses variants like " MMORPG" / "MMORPG" into one facet entry.
+            genres=list(db.scalars(json_array_values_statement(Game.genres)).all()),
+            years=_release_years(db),
+            platforms=sorted(
+                build_platform_filters(set(db.scalars(json_array_values_statement(Game.platforms)).all()))
+            ),
+            developers=_top_developers(db),
+        )
+    except SQLAlchemyError:
+        if _facets_cache is None:
+            raise
+        # Serve the last good answer instead of an empty filter bar.
+        logger.warning("Facets query failed; serving stale facets", exc_info=True)
+        db.rollback()
+        return _facets_cache
     _facets_cache = result
     _facets_cache_time = now
     return result

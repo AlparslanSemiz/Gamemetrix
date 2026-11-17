@@ -16,9 +16,7 @@ export function sourceScoreUrl(
     case RATING_SOURCE_NAMES.metacritic:
       return `https://www.metacritic.com/search/${query}/`
     case RATING_SOURCE_NAMES.openCritic:
-      return context === 'game-detail'
-        ? `https://opencritic.com/game/search?criteria=${query}`
-        : `https://opencritic.com/search?q=${query}`
+      return `https://opencritic.com/search?q=${query}`
     case RATING_SOURCE_NAMES.steam:
       if (steamAppId) return `https://store.steampowered.com/app/${steamAppId}/`
       return context === 'catalog-card'

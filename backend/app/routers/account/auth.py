@@ -204,7 +204,11 @@ def me(principal: AccountPrincipal = Depends(require_account_principal)) -> dict
 def account_session(
     principal: AccountPrincipal | None = Depends(optional_account_principal),
 ) -> dict:
-    return {"account": account_payload(principal.user) if principal else None}
+    cfg = get_settings()
+    return {
+        "account": account_payload(principal.user) if principal else None,
+        "google_login": bool(cfg.GOOGLE_CLIENT_ID and cfg.GOOGLE_CLIENT_SECRET),
+    }
 
 
 @router.post("/password/forgot", response_model=MessageResponse, status_code=status.HTTP_202_ACCEPTED)

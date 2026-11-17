@@ -61,7 +61,11 @@ export default function Root() {
 export function ErrorBoundary() {
   const error = useRouteError()
   const status = isRouteErrorResponse(error) ? error.status : 500
-  const title = status === 404 ? 'Page not found' : 'Something went wrong'
+  const title = status === 404
+    ? 'Page not found'
+    : status === 429 || status === 503
+      ? 'Busy right now, please try again in a moment'
+      : 'Something went wrong'
   return (
     <main className="route-error">
       <a className="route-error-brand" href="/">GameMetrix</a>

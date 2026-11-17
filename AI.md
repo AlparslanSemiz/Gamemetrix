@@ -489,7 +489,7 @@ GET  /api/rate-limits    live provider budget status
 ```
 
 Note `routers/ratings.py` has **no router-level admin dependency** — each route declares
-`_admin=Depends(require_admin_user)` individually. Only `GET /api/integrations/status` and
+`_admin=Depends(require_admin_user)` individually. Only `GET /api/integrations/status` (source + status only, no detail text) and
 `GET /api/score-weights` are public there; everything else in that module is admin. When adding a
 route to `ratings.py`, add the dependency explicitly or it ships unauthenticated.
 

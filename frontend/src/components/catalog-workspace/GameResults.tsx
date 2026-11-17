@@ -8,6 +8,7 @@ const SKELETON_CARD_COUNT = PAGE_SIZE / 3
 type GameResultsProps = WorkspaceProps<
   | 'activePage'
   | 'collectionSets'
+  | 'deferredCardCount'
   | 'error'
   | 'isLoading'
   | 'isLoadingMore'
@@ -22,6 +23,7 @@ type GameResultsProps = WorkspaceProps<
   | 'onFilterPublisher'
   | 'onOpenDetail'
   | 'onOpenTrailer'
+  | 'onRetryError'
   | 'onRetryLoadMore'
   | 'onToggleCollection'
 >
@@ -29,6 +31,7 @@ type GameResultsProps = WorkspaceProps<
 export function GameResults({
   activePage,
   collectionSets,
+  deferredCardCount,
   error,
   isLoading,
   isLoadingMore,
@@ -43,6 +46,7 @@ export function GameResults({
   onFilterPublisher,
   onOpenDetail,
   onOpenTrailer,
+  onRetryError,
   onRetryLoadMore,
   onToggleCollection,
 }: GameResultsProps) {
@@ -50,7 +54,16 @@ export function GameResults({
 
   return (
     <>
-      {error ? <p className="status status-error">{error}</p> : null}
+      {error ? (
+        <div className="status status-error load-more-error" role="alert">
+          <span>{error}</span>
+          {onRetryError ? (
+            <button type="button" className="ghost-button" onClick={onRetryError}>
+              Try again
+            </button>
+          ) : null}
+        </div>
+      ) : null}
       {isLoading ? (
         <div className={listClass} aria-hidden="true">
           {Array.from({ length: SKELETON_CARD_COUNT }, (_, index) => (
@@ -87,6 +100,9 @@ export function GameResults({
             onFilterPublisher={onFilterPublisher}
             onToggleCollection={onToggleCollection}
           />
+        ))}
+        {Array.from({ length: deferredCardCount }, (_, index) => (
+          <div key={`deferred-${index}`} className="skeleton-card skeleton-card-static" aria-hidden="true" />
         ))}
       </div>
       <div ref={loaderRef} className="scroll-sentinel" aria-live="polite">

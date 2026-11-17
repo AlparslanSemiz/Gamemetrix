@@ -142,6 +142,7 @@ function CatalogBody({
       <GameResults
         activePage={props.activePage}
         collectionSets={props.collectionSets}
+        deferredCardCount={props.deferredCardCount}
         error={props.error}
         isLoading={props.isLoading}
         isLoadingMore={props.isLoadingMore}
@@ -156,6 +157,7 @@ function CatalogBody({
         onFilterPublisher={props.onFilterPublisher}
         onOpenDetail={props.onOpenDetail}
         onOpenTrailer={props.onOpenTrailer}
+        onRetryError={props.onRetryError}
         onRetryLoadMore={props.onRetryLoadMore}
         onToggleCollection={props.onToggleCollection}
       />

@@ -1,3 +1,5 @@
+import logging
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from typing import Literal
 
@@ -24,16 +26,42 @@ from ..services.seo import (
 )
 
 
+logger = logging.getLogger(__name__)
 router = APIRouter(tags=["seo"])
 CuratedCollection = Literal["home", "linux", "steam-deck", "free", "deals", "year", "genre"]
 
 # Sitemaps are pure derived data — a one-hour edge cache with a day of
 # stale-while-revalidate keeps crawlers fast without hammering the catalog.
-_SITEMAP_CACHE = "public, max-age=3600, stale-while-revalidate=86400"
+_SITEMAP_CACHE = "public, s-maxage=3600, stale-while-revalidate=86400"
+# Process-local copy of the last good sitemap bodies. A database hiccup then
+# serves the previous document instead of a 500/503 that crawlers count against us.
+_SITEMAP_MEMORY_TTL = timedelta(minutes=10)
+_sitemap_memory: dict[str, tuple[datetime, str]] = {}
 _FRESH_PRICE_WINDOW = timedelta(hours=24)
 # A curated landing page (Linux, Steam Deck, free, deals, a given year) is only
 # advertised once it has enough qualifying games to be worth crawling.
 _MIN_CURATED_GAMES = 5
+
+
+def _sitemap_response(key: str, build: Callable[[], str]) -> Response:
+    """Serve a sitemap from memory while fresh; on build failure fall back to the last good one."""
+    now = datetime.now(UTC)
+    cached = _sitemap_memory.get(key)
+    if cached is not None and now - cached[0] < _SITEMAP_MEMORY_TTL:
+        body = cached[1]
+    else:
+        try:
+            body = build()
+        except HTTPException:
+            raise
+        except Exception:
+            if cached is None:
+                raise
+            logger.warning("Sitemap %s failed to build; serving the last good copy", key, exc_info=True)
+            body = cached[1]
+        else:
+            _sitemap_memory[key] = (now, body)
+    return Response(body, media_type="application/xml", headers={"Cache-Control": _SITEMAP_CACHE})
 
 
 def _indexable_count(db: Session) -> int:
@@ -89,75 +117,72 @@ def _curated_years(games: list[Game]) -> list[int]:
 @router.get("/sitemap.xml", include_in_schema=False)
 def sitemap_index(db: Session = Depends(get_db)) -> Response:
     """The sitemap index Google reads first: one static child plus N game chunks."""
-    latest = _latest_indexable_update(db)
-    chunks = sitemap_chunk_count(_indexable_count(db))
-    children: list[tuple[str, datetime | None]] = [(f"{CANONICAL_ORIGIN}/sitemap-static.xml", latest)]
-    children.extend(
-        (f"{CANONICAL_ORIGIN}/sitemap-games-{index}.xml", latest)
-        for index in range(1, chunks + 1)
-    )
-    return Response(
-        sitemap_index_document(children),
-        media_type="application/xml",
-        headers={"Cache-Control": _SITEMAP_CACHE},
-    )
+    def build() -> str:
+        latest = _latest_indexable_update(db)
+        chunks = sitemap_chunk_count(_indexable_count(db))
+        children: list[tuple[str, datetime | None]] = [(f"{CANONICAL_ORIGIN}/sitemap-static.xml", latest)]
+        children.extend(
+            (f"{CANONICAL_ORIGIN}/sitemap-games-{index}.xml", latest)
+            for index in range(1, chunks + 1)
+        )
+        return sitemap_index_document(children)
+
+    return _sitemap_response("index", build)
 
 
 @router.get("/sitemap-games-{chunk}.xml", include_in_schema=False)
 def sitemap_games(chunk: int = Path(ge=1), db: Session = Depends(get_db)) -> Response:
     """One 10k-URL slice of the published game cohort, ordered deterministically."""
-    published = min(_indexable_count(db), get_settings().SEO_INDEX_LIMIT)
-    offset = (chunk - 1) * SITEMAP_CHUNK_SIZE
-    page_size = min(SITEMAP_CHUNK_SIZE, published - offset)
-    if page_size <= 0:
-        raise HTTPException(status_code=404, detail="No such sitemap chunk")
-    games = list(
-        db.scalars(
-            select(Game)
-            .where(Game.seo_indexable.is_(True))
-            .order_by(desc(Game.rank_score), Game.slug)
-            .offset(offset)
-            .limit(page_size)
-        ).all()
-    )
-    return Response(
-        game_url_sitemap(games),
-        media_type="application/xml",
-        headers={"Cache-Control": _SITEMAP_CACHE},
-    )
+    def build() -> str:
+        published = min(_indexable_count(db), get_settings().SEO_INDEX_LIMIT)
+        offset = (chunk - 1) * SITEMAP_CHUNK_SIZE
+        page_size = min(SITEMAP_CHUNK_SIZE, published - offset)
+        if page_size <= 0:
+            raise HTTPException(status_code=404, detail="No such sitemap chunk")
+        games = list(
+            db.scalars(
+                select(Game)
+                .where(Game.seo_indexable.is_(True))
+                .order_by(desc(Game.rank_score), Game.slug)
+                .offset(offset)
+                .limit(page_size)
+            ).all()
+        )
+        return game_url_sitemap(games)
+
+    return _sitemap_response(f"games-{chunk}", build)
 
 
 @router.get("/sitemap-static.xml", include_in_schema=False)
 def sitemap_static(db: Session = Depends(get_db)) -> Response:
     """Landing, curation, genre and year pages — the non-game half of the index."""
-    games = list(
-        db.scalars(
-            select(Game)
-            .where(Game.seo_indexable.is_(True))
-            .options(selectinload(Game.price_snapshots))
-            .order_by(desc(Game.rank_score), Game.slug)
-            .limit(get_settings().SEO_INDEX_LIMIT)
-        ).all()
-    )
-    fresh_before = datetime.now(UTC) - _FRESH_PRICE_WINDOW
-    entries = [
-        SitemapEntry(f"{CANONICAL_ORIGIN}/", "daily", "1.0"),
-        SitemapEntry(f"{CANONICAL_ORIGIN}/about", "monthly", "0.3"),
-    ]
-    entries.extend(
-        SitemapEntry(f"{CANONICAL_ORIGIN}{path}", "weekly", "0.7")
-        for path in _curated_paths(db, games, fresh_before)
-    )
-    entries.extend(
-        SitemapEntry(f"{CANONICAL_ORIGIN}/best/games/{year}", "weekly", "0.6")
-        for year in _curated_years(games)
-    )
-    lastmod = max((game.seo_updated_at for game in games if game.seo_updated_at), default=None)
-    return Response(
-        static_url_sitemap(entries, lastmod),
-        media_type="application/xml",
-        headers={"Cache-Control": _SITEMAP_CACHE},
-    )
+    def build() -> str:
+        games = list(
+            db.scalars(
+                select(Game)
+                .where(Game.seo_indexable.is_(True))
+                .options(selectinload(Game.price_snapshots))
+                .order_by(desc(Game.rank_score), Game.slug)
+                .limit(get_settings().SEO_INDEX_LIMIT)
+            ).all()
+        )
+        fresh_before = datetime.now(UTC) - _FRESH_PRICE_WINDOW
+        entries = [
+            SitemapEntry(f"{CANONICAL_ORIGIN}/", "daily", "1.0"),
+            SitemapEntry(f"{CANONICAL_ORIGIN}/about", "monthly", "0.3"),
+        ]
+        entries.extend(
+            SitemapEntry(f"{CANONICAL_ORIGIN}{path}", "weekly", "0.7")
+            for path in _curated_paths(db, games, fresh_before)
+        )
+        entries.extend(
+            SitemapEntry(f"{CANONICAL_ORIGIN}/best/games/{year}", "weekly", "0.6")
+            for year in _curated_years(games)
+        )
+        lastmod = max((game.seo_updated_at for game in games if game.seo_updated_at), default=None)
+        return static_url_sitemap(entries, lastmod)
+
+    return _sitemap_response("static", build)
 
 
 @router.get("/api/seo/genres")

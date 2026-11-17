@@ -3,7 +3,7 @@ import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
@@ -177,7 +177,16 @@ app = FastAPI(
 )
 
 app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+
+def _rate_limited(request: Request, exc: RateLimitExceeded) -> Response:
+    """429 with Retry-After, so well-behaved clients and crawlers back off."""
+    response = _rate_limit_exceeded_handler(request, exc)
+    response.headers.setdefault("Retry-After", "60")
+    return response
+
+
+app.add_exception_handler(RateLimitExceeded, _rate_limited)
 app.add_middleware(SlowAPIMiddleware)
 
 app.add_middleware(

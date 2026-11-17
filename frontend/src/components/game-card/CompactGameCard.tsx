@@ -23,15 +23,13 @@ export function CompactGameCard({
       style={model.cardStyle}
       data-game-slug={game.slug}
     >
-      <div
-        className="compact-cover"
-        role="button"
-        tabIndex={0}
-        onClick={() => onOpenTrailer(game)}
-        onKeyDown={(event) => {
-          if (event.key === 'Enter') onOpenTrailer(game)
-        }}
-      >
+      <div className="compact-cover">
+        <button
+          type="button"
+          className="compact-cover-button"
+          aria-label={`Play ${game.title} trailer`}
+          onClick={() => onOpenTrailer(game)}
+        />
         <img
           src={model.coverSrc}
           alt={`${game.title} cover`}

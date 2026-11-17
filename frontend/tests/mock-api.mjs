@@ -194,7 +194,7 @@ const server = http.createServer(async (request, response) => {
     return hasSession(request) ? json(response, 200, { account }) : json(response, 401, { detail: 'Not authenticated.' })
   }
   if (url.pathname === '/api/account/session') {
-    return json(response, 200, { account: hasSession(request) ? account : null })
+    return json(response, 200, { account: hasSession(request) ? account : null, google_login: true })
   }
   if (url.pathname === '/api/account/state') {
     return hasSession(request) ? json(response, 200, state) : json(response, 401, { detail: 'Not authenticated.' })

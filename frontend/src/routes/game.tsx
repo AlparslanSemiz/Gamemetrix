@@ -1,7 +1,7 @@
 import type { LoaderFunctionArgs, MetaFunction } from 'react-router'
 import { GameStructuredData } from '../components/GameStructuredData'
 import { GameDetailPage } from '../pages/GameDetailPage'
-import { BackendResponseError, fetchBackend } from '../server-api.server'
+import { BackendResponseError, clientForwardHeaders, fetchBackend } from '../server-api.server'
 import type { Game } from '../types/game'
 
 export async function loader({ params, request }: LoaderFunctionArgs): Promise<Game> {
@@ -10,7 +10,7 @@ export async function loader({ params, request }: LoaderFunctionArgs): Promise<G
   try {
     return await fetchBackend<Game>(
       `/api/games/${encodeURIComponent(slug)}?refresh=false`,
-      { signal: request.signal },
+      { signal: request.signal, headers: clientForwardHeaders(request) },
     )
   } catch (error) {
     if (error instanceof BackendResponseError && error.status === 404) {
@@ -47,7 +47,14 @@ export const meta: MetaFunction<typeof loader> = ({ loaderData, location }) => {
   ]
 }
 
-export function headers() {
+export function headers({ errorHeaders }: { errorHeaders?: Headers }) {
+  // A thrown 429/503 must keep its Retry-After and must never be cached.
+  if (errorHeaders && errorHeaders.has('Retry-After')) {
+    return {
+      'Cache-Control': 'no-store',
+      'Retry-After': errorHeaders.get('Retry-After') ?? '30',
+    }
+  }
   return { 'Cache-Control': 'public, max-age=60, s-maxage=900, stale-while-revalidate=3600' }
 }
 

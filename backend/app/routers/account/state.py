@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, Path, Response, status
 from sqlalchemy.orm import Session
 
@@ -20,6 +22,7 @@ from ...services.account_state import (
 )
 from .schemas import MergePayload
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 _SLUG_PATTERN = r"^[a-z0-9]+(?:-[a-z0-9]+)*$"
@@ -47,7 +50,8 @@ def merge_account_state(
     try:
         return merge_guest_state(db, principal.user, _guest_state(payload))
     except AccountStateLimitError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
+        logger.info("Account state merge rejected: %s", exc)
+        raise HTTPException(status_code=422, detail="Account state exceeds the allowed limits.") from exc
 
 
 def _guest_state(payload: MergePayload) -> GuestState:

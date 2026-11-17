@@ -13,9 +13,10 @@ import {
   looksLikePlaceholderImage,
   thumbnailUrl,
 } from '../../utils/coverImage'
+import { useModalFocus } from '../../hooks/useModalFocus'
 
 const GALLERY_INLINE_LIMIT = 10
-const GALLERY_EAGER_LIMIT = 4
+const GALLERY_EAGER_LIMIT = 2
 
 function thumbErrorHandler(fullUrl: string) {
   return (event: SyntheticEvent<HTMLImageElement>) => {
@@ -91,8 +92,9 @@ function GalleryLightbox({
   onNavigate: (index: number) => void
   title: string
 }) {
+  const dialogRef = useModalFocus<HTMLDivElement>()
   return createPortal(
-    <div className="dp-lightbox" role="dialog" aria-modal="true">
+    <div ref={dialogRef} className="dp-lightbox" role="dialog" aria-modal="true" aria-label={`${title} gallery`}>
       <button type="button" className="dp-lightbox-backdrop" aria-label="Close" onClick={onClose} />
       <div className="dp-lightbox-stage">
         <img
@@ -105,7 +107,7 @@ function GalleryLightbox({
           } as CSSProperties : undefined}
         />
       </div>
-      <button type="button" className="dp-lightbox-close" onClick={onClose}>✕</button>
+      <button type="button" className="dp-lightbox-close" data-autofocus aria-label="Close" onClick={onClose}>✕</button>
       {images.length > 1 ? (
         <>
           <button type="button" className="dp-lightbox-nav dp-lightbox-prev" onClick={() => onNavigate((index - 1 + images.length) % images.length)} aria-label="Previous image">‹</button>

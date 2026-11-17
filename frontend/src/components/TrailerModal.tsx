@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { X } from 'lucide-react'
+import { useModalFocus } from '../hooks/useModalFocus'
 import './TrailerModal.css'
 
 interface TrailerModalProps {
@@ -11,6 +12,7 @@ interface TrailerModalProps {
 }
 
 export function TrailerModal({ title, videoId, loading, onClose }: TrailerModalProps) {
+  const dialogRef = useModalFocus<HTMLDivElement>()
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
       if (event.key === 'Escape') onClose()
@@ -22,7 +24,7 @@ export function TrailerModal({ title, videoId, loading, onClose }: TrailerModalP
   const searchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(`${title} official trailer game`)}`
 
   return createPortal(
-    <div className="trailer-modal" role="dialog" aria-modal="true" aria-label={`${title} trailer`}>
+    <div ref={dialogRef} className="trailer-modal" role="dialog" aria-modal="true" aria-label={`${title} trailer`}>
       <button
         type="button"
         className="trailer-modal-backdrop"
@@ -32,7 +34,7 @@ export function TrailerModal({ title, videoId, loading, onClose }: TrailerModalP
       <div className="trailer-modal-panel">
         <div className="trailer-modal-heading">
           <h2>{title}</h2>
-          <button type="button" aria-label="Close trailer" onClick={onClose}>
+          <button type="button" data-autofocus aria-label="Close trailer" onClick={onClose}>
             <X size={18} aria-hidden="true" />
           </button>
         </div>

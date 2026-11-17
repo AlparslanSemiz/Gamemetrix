@@ -13,6 +13,7 @@ export interface CatalogWorkspaceProps {
   catalogTotal: number
   collections: Collections
   collectionSets: CollectionSets
+  deferredCardCount: number
   error: string | null
   facets: Facets
   filters: GameFilters
@@ -44,6 +45,7 @@ export interface CatalogWorkspaceProps {
   onFocusSearch: () => void
   onOpenDetail: (game: CatalogGame) => void
   onOpenTrailer: (game: CatalogGame) => void
+  onRetryError?: () => void
   onRetryLoadMore: () => void
   onToggleCollection: (collection: CollectionKey, slug: string) => void
 }

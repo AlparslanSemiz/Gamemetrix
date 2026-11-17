@@ -3,6 +3,7 @@ import { Link } from 'react-router'
 import { useAccount } from '../state/useAccount'
 import { trackProductEvent } from '../services/analytics'
 import type { CatalogGame, PriceSnapshot } from '../types/game'
+import { thumbnailUrl } from '../utils/coverImage'
 import { ACTIONABLE_PRICE_MAX_AGE_MS, currentPriceSnapshots } from '../utils/prices'
 import { isProtonTier, PROTON_TIER_LABELS } from '../utils/proton'
 import { safeExternalUrl } from '../utils/url'
@@ -103,7 +104,7 @@ export function CuratedPage({ data }: { data: CuratedPageData }) {
                 <li key={game.slug}>
                   <span className="curated-rank">{index + 1}</span>
                   <Link className="curated-cover" to={`/game/${game.slug}`} aria-label={`Open ${game.title}`}>
-                    <img src={game.cover_url || game.image_url || '/favicon.svg'} alt="" loading={index < 4 ? 'eager' : 'lazy'} />
+                    <img src={thumbnailUrl(game.cover_url || game.image_url || '/favicon.svg')} alt="" loading={index < 4 ? 'eager' : 'lazy'} />
                   </Link>
                   <article>
                     <div className="curated-game-head">

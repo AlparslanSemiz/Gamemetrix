@@ -1,6 +1,6 @@
 import type { CSSProperties } from 'react'
 import type { CatalogGame, SourceScore } from '../../types/game'
-import { bestCoverUrl } from '../../utils/coverImage'
+import { bestCoverUrl, thumbnailUrl } from '../../utils/coverImage'
 import { formatPlaytimeHours, isEndlessGame } from '../../utils/playtime'
 import { isProtonTier } from '../../utils/proton'
 import { CARD_PRIMARY_SOURCE_ORDER } from '../../utils/ratingSources'
@@ -38,7 +38,7 @@ export function buildGameCardModel(game: CatalogGame): GameCardModel {
     && game.is_rankable === false
     && confidenceLevel !== 'Catalog'
   )
-  const coverSrc = bestCoverUrl(game)
+  const coverSrc = thumbnailUrl(bestCoverUrl(game))
   const displayScore = Math.round(game.metrix_score)
 
   return {

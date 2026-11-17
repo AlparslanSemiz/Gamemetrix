@@ -158,7 +158,6 @@ export type PlayerMode = 'singleplayer' | 'multiplayer' | 'coop'
 export interface ProviderStatus {
   source: string
   status: string
-  detail: string
 }
 
 export type GameSort =

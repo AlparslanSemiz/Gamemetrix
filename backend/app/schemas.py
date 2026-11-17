@@ -303,6 +303,13 @@ class ProviderStatus(BaseModel):
     detail: str
 
 
+class PublicProviderStatus(BaseModel):
+    """Public view of provider health: no configuration detail."""
+
+    source: str
+    status: str
+
+
 class ImportResponse(BaseModel):
     imported: int
     skipped: int

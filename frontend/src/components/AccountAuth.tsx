@@ -173,6 +173,7 @@ function authIcon(mode: AuthMode) {
 }
 
 export function AccountAuth({ mode }: { mode: AuthMode }) {
+  const { googleLoginAvailable } = useAccount()
   const [searchParams] = useSearchParams()
   const [actionToken] = useState(() => {
     const queryToken = searchParams.get('token') ?? ''
@@ -207,7 +208,7 @@ export function AccountAuth({ mode }: { mode: AuthMode }) {
           </button>
         </form>
 
-        {mode === 'login' || mode === 'register' ? (
+        {(mode === 'login' || mode === 'register') && googleLoginAvailable ? (
           <>
             <div className="account-auth-divider"><span>or</span></div>
             <a className="account-auth-google" href={googleUrl}>Continue with Google</a>

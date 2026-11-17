@@ -26,7 +26,7 @@ import {
   useCatalogActions,
   useCatalogFilterActions,
 } from './catalog/useCatalogActions'
-import { useCatalogBootstrap } from './catalog/useCatalogBootstrap'
+import { FACETS_ERROR, useCatalogBootstrap } from './catalog/useCatalogBootstrap'
 import { useCollectionGames } from './catalog/useCollectionGames'
 import { useCatalogScroll } from './catalog/useCatalogScroll'
 import {
@@ -162,7 +162,7 @@ export function AppContent({
     },
   })
 
-  useCatalogBootstrap({
+  const { retry: retryBootstrap } = useCatalogBootstrap({
     enabled: catalogEnabled,
     setError,
     setFacets,
@@ -217,6 +217,9 @@ export function AppContent({
   )
     ? visibleGames.slice(0, SSR_CATALOG_CARD_COUNT)
     : visibleGames
+  // Cards held back from the first render are replaced by same-size placeholders
+  // so the footer below does not jump when hydration fills the list in.
+  const deferredCardCount = visibleGames.length - renderedGames.length
   const pageTitle = useMemo(
     () => catalogPageTitle(activePage, activePreset, filters),
     [activePage, activePreset, filters],
@@ -267,7 +270,9 @@ export function AppContent({
         catalogTotal={catalogTotal}
         collections={collections}
         collectionSets={collectionSets}
+        deferredCardCount={deferredCardCount}
         error={savedList.error ?? error}
+        onRetryError={!savedList.error && error === FACETS_ERROR ? retryBootstrap : undefined}
         facets={facets}
         filters={filters}
         filtersOpen={filtersOpen}
