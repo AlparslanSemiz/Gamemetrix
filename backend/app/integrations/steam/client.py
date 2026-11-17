@@ -6,6 +6,8 @@ nothing — so the request/unwrap dance lives here once.
 
 import re
 from collections.abc import Mapping
+from dataclasses import dataclass
+from typing import Literal
 
 import httpx
 
@@ -92,3 +94,33 @@ async def fetch_app_data(
     if not entry.get("success"):
         return None
     return entry.get("data", {})
+
+
+@dataclass(frozen=True)
+class AppdetailsOutcome:
+    """What one appdetails call told us. `error` means "ask again later", never "wrong id"."""
+
+    status: Literal["ok", "removed", "error"]
+    data: dict | None = None
+
+
+async def fetch_app_outcome(app_id: int, client: httpx.AsyncClient) -> AppdetailsOutcome:
+    """Like `fetch_app_data`, but separates "Steam has no such app" from outages and 429s."""
+    try:
+        response = await client.get(
+            APP_DETAILS_URL,
+            params={"appids": app_id, "cc": "us", "l": "english"},
+            timeout=TIMEOUT_DETAILS,
+        )
+    except httpx.HTTPError:
+        return AppdetailsOutcome("error")
+    if stop_steam_requests_if_rate_limited(response) or not response.is_success:
+        return AppdetailsOutcome("error")
+    try:
+        entry = response.json().get(str(app_id), {})
+    except ValueError:
+        return AppdetailsOutcome("error")
+    if not entry.get("success"):
+        return AppdetailsOutcome("removed")
+    data = entry.get("data")
+    return AppdetailsOutcome("ok", data if isinstance(data, dict) else {})
