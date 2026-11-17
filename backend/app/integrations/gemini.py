@@ -15,6 +15,8 @@ from .ai_types import (
     GenerationResult,
     ProviderFailure,
     classify_http_error,
+    json_mode_rejection,
+    mark_request_dispatched,
     transport_failure,
 )
 from .http_retry import DEFAULT_HEADERS
@@ -90,6 +92,7 @@ class GeminiProvider:
         async with _request_lock:
             await _wait_for_request_slot(cfg.GEMINI_MIN_REQUEST_INTERVAL_SECONDS)
             try:
+                mark_request_dispatched()
                 async with httpx.AsyncClient(timeout=timeout_seconds) as client:
                     response = await client.post(url, headers=headers, json=payload)
             except httpx.HTTPError as exc:
@@ -100,7 +103,10 @@ class GeminiProvider:
         except ValueError:
             data = None
         if not response.is_success:
-            raise self.classify_error(response.status_code, data, response.headers)
+            raise json_mode_rejection(
+                request,
+                self.classify_error(response.status_code, data, response.headers),
+            )
         return GenerationResult(
             text=_extract_text(data),
             provider=self.name,

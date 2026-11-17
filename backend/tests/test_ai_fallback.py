@@ -77,6 +77,10 @@ class _Limiter:
     def __init__(self) -> None:
         self.acquired: list[tuple[str, int]] = []
         self.settled: list[tuple[str, int, int]] = []
+        self.blocked: list[tuple[str, int]] = []
+
+    def block(self, source: str, seconds: int) -> None:
+        self.blocked.append((source, seconds))
 
     async def acquire(self, source: str, estimated_tokens: int = 0) -> bool:
         self.acquired.append((source, estimated_tokens))

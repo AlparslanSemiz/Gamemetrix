@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
@@ -13,6 +14,31 @@ import httpx
 
 
 ResponseValidator = Callable[[str], bool]
+
+# Providers call mark_request_dispatched() right before the network call, so the
+# orchestrator can tell "timed out before anything was sent" (the token reservation can
+# be returned) from "timed out waiting for the provider" (it may have been charged).
+_dispatch_marker: ContextVar[list[bool] | None] = ContextVar("ai_dispatch_marker", default=None)
+
+
+def begin_dispatch_tracking() -> tuple[list[bool], object]:
+    marker = [False]
+    return marker, _dispatch_marker.set(marker)
+
+
+def end_dispatch_tracking(token: object) -> None:
+    _dispatch_marker.reset(token)  # type: ignore[arg-type]
+
+
+def mark_request_dispatched() -> None:
+    marker = _dispatch_marker.get()
+    if marker is not None:
+        marker[0] = True
+
+
+# Chat-completions providers that run reasoning models spend max_tokens on hidden
+# reasoning first; a tiny allowance (8/96/180) then yields an empty answer.
+MIN_OPENAI_COMPAT_OUTPUT_TOKENS = 256
 
 
 class ErrorCategory(StrEnum):
@@ -130,6 +156,20 @@ def classify_http_error(
         status_code=status_code,
         fallback_allowed=False,
     )
+
+
+def json_mode_rejection(
+    request: GenerationRequest,
+    failure: ProviderFailure,
+) -> ProviderFailure:
+    """A 400 on a json_object request means the model cannot do JSON mode.
+
+    That is a property of this provider/model, not of the prompt, so report it as an
+    unusable response and let the chain try the next provider instead of aborting.
+    """
+    if request.json_object and failure.status_code == 400 and not failure.fallback_allowed:
+        return ProviderFailure(ErrorCategory.INVALID_RESPONSE, status_code=400)
+    return failure
 
 
 def transport_failure(exc: httpx.HTTPError) -> ProviderFailure:

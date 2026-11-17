@@ -11,7 +11,10 @@ from .ai_types import (
     GenerationResult,
     ProviderFailure,
     classify_http_error,
+    MIN_OPENAI_COMPAT_OUTPUT_TOKENS,
     extract_openai_text,
+    json_mode_rejection,
+    mark_request_dispatched,
     openai_total_tokens,
     transport_failure,
 )
@@ -60,13 +63,14 @@ class OpenRouterProvider:
                 {"role": "system", "content": request.system_prompt},
                 {"role": "user", "content": request.user_prompt},
             ],
-            "max_tokens": request.max_output_tokens,
+            "max_tokens": max(request.max_output_tokens, MIN_OPENAI_COMPAT_OUTPUT_TOKENS),
             "temperature": request.temperature,
         }
         if request.json_object:
             payload["response_format"] = {"type": "json_object"}
 
         try:
+            mark_request_dispatched()
             async with httpx.AsyncClient(timeout=timeout_seconds) as client:
                 response = await client.post(
                     _CHAT_COMPLETIONS_URL,
@@ -80,7 +84,10 @@ class OpenRouterProvider:
         except ValueError:
             data = None
         if not response.is_success:
-            raise self.classify_error(response.status_code, data, response.headers)
+            raise json_mode_rejection(
+                request,
+                self.classify_error(response.status_code, data, response.headers),
+            )
         if isinstance(data, dict) and isinstance(data.get("error"), dict):
             error = data["error"]
             code = error.get("code")

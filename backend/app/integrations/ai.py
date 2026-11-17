@@ -11,6 +11,7 @@ import re
 import time
 import uuid
 from collections.abc import Callable
+from datetime import UTC, datetime
 
 from ..config import Settings, get_settings
 from .ai_types import (
@@ -19,6 +20,8 @@ from .ai_types import (
     GenerationRequest,
     ProviderFailure,
     ResponseValidator,
+    begin_dispatch_tracking,
+    end_dispatch_tracking,
 )
 from .cloudflare_ai import CloudflareAIProvider
 from .gemini import GeminiProvider
@@ -57,6 +60,13 @@ _DEFINITE_NO_CHARGE_FAILURES = frozenset(
     }
 )
 _CHARS_PER_TOKEN = 4
+# A rejected key does not heal by itself; stop spending 12 s + a doomed request on it
+# for every call and let the chain go straight to the next provider.
+_CREDENTIAL_BLOCK_SECONDS = 6 * 3600
+_CREDENTIAL_FAILURES = frozenset({ErrorCategory.AUTHENTICATION, ErrorCategory.PERMISSION})
+
+# provider name -> (category value, unix time) of its most recent outcome.
+_last_outcome: dict[str, tuple[str, float]] = {}
 _PROMPT_OVERHEAD_TOKENS = 40
 
 
@@ -138,6 +148,36 @@ def _ai_chain_semaphore() -> asyncio.Semaphore:
     return _chain_semaphore
 
 
+def last_provider_outcome(provider: str) -> tuple[str, float] | None:
+    """(category, unix time) of the provider's most recent attempt, if any this process."""
+    return _last_outcome.get(provider)
+
+
+def _last_outcome_fields(provider: str) -> dict[str, object]:
+    outcome = _last_outcome.get(provider)
+    if outcome is None:
+        return {"last_outcome": None, "last_outcome_at": None}
+    category, at = outcome
+    return {
+        "last_outcome": category,
+        "last_outcome_at": datetime.fromtimestamp(at, tz=UTC).isoformat(),
+    }
+
+
+def provider_health(provider: str, configured: bool) -> str:
+    """'unconfigured', 'degraded' (last attempt failed) or 'ready'.
+
+    A key being present says nothing about whether it works: a rejected key used to
+    show as ready for as long as the process lived.
+    """
+    if not configured:
+        return "unconfigured"
+    outcome = _last_outcome.get(provider)
+    if outcome is not None and outcome[0] != "ok":
+        return "degraded"
+    return "ready"
+
+
 def provider_statuses(cfg: Settings | None = None) -> list[dict[str, object]]:
     settings = cfg or get_settings()
     configured = {
@@ -158,6 +198,8 @@ def provider_statuses(cfg: Settings | None = None) -> list[dict[str, object]]:
             "model": models[name],
             "configured": configured[name],
             "position": position,
+            "health": provider_health(name, configured[name]),
+            **_last_outcome_fields(name),
         }
         for position, name in enumerate(settings.AI_PROVIDER_ORDER, start=1)
     ]
@@ -198,8 +240,14 @@ async def _run_chain(request: GenerationRequest, deadline_seconds: float) -> str
                 )
                 return None
 
-            attempt_started = time.monotonic()
             source = _PROVIDER_BUDGET_SOURCES[provider.name]
+            # Pace providers that need spacing between calls BEFORE reserving budget and
+            # before the per-call timeout starts. The outer chain deadline still bounds it.
+            await _await_provider_slot(provider, source)
+            attempt_started = time.monotonic()
+            remaining = deadline_at - attempt_started
+            if remaining <= 0:
+                return None
             reserved = estimate_tokens(request)
             try:
                 acquired = await get_rate_limiter().acquire(
@@ -219,6 +267,7 @@ async def _run_chain(request: GenerationRequest, deadline_seconds: float) -> str
             if not acquired:
                 failure = ProviderFailure(ErrorCategory.BUDGET_EXHAUSTED)
             else:
+                dispatched, tracking_token = begin_dispatch_tracking()
                 try:
                     timeout = min(get_settings().AI_PROVIDER_TIMEOUT_SECONDS, remaining)
                     result = await asyncio.wait_for(
@@ -234,10 +283,15 @@ async def _run_chain(request: GenerationRequest, deadline_seconds: float) -> str
                     text = _validate_response(result.text, request)
                 except TimeoutError:
                     failure = ProviderFailure(ErrorCategory.TIMEOUT, retryable=True)
+                    if not dispatched[0]:
+                        # Nothing left the process, so nothing can have been charged.
+                        get_rate_limiter().settle_tokens(source, reserved, 0)
                 except ProviderFailure as exc:
                     failure = exc
-                    if exc.category in _DEFINITE_NO_CHARGE_FAILURES:
+                    if exc.category in _DEFINITE_NO_CHARGE_FAILURES or exc.status_code == 400:
                         get_rate_limiter().settle_tokens(source, reserved, 0)
+                    if exc.category in _CREDENTIAL_FAILURES:
+                        _block_rejected_credentials(provider, source, exc)
                 except Exception:
                     _log_failure(
                         request_id=request_id,
@@ -251,6 +305,7 @@ async def _run_chain(request: GenerationRequest, deadline_seconds: float) -> str
                     )
                     return None
                 else:
+                    _last_outcome[provider.name] = ("ok", time.time())
                     log.info(
                         "ai_request request_id=%s provider=%s model=%s attempt=%d "
                         "duration_ms=%d success=true status=200 category=ok fallback=%s",
@@ -262,7 +317,11 @@ async def _run_chain(request: GenerationRequest, deadline_seconds: float) -> str
                         str(provider_index > 0).lower(),
                     )
                     return text
+                finally:
+                    end_dispatch_tracking(tracking_token)
 
+            if acquired:
+                _last_outcome[provider.name] = (failure.category.value, time.time())
             has_next = provider_index < len(configured) - 1
             will_retry = failure.retryable and attempt < _MAX_ATTEMPTS
             delay = 0.0
@@ -300,6 +359,33 @@ async def _run_chain(request: GenerationRequest, deadline_seconds: float) -> str
         _elapsed_ms(started),
     )
     return None
+
+
+async def _await_provider_slot(provider: AIProvider, source: str) -> None:
+    wait = getattr(provider, "wait_for_slot", None)
+    if wait is None:
+        return
+    is_blocked = getattr(get_rate_limiter(), "is_blocked", None)
+    if is_blocked is not None and is_blocked(source):
+        return  # acquire() will refuse immediately; do not sleep for a provider we skip
+    await wait()
+
+
+def _block_rejected_credentials(
+    provider: AIProvider,
+    source: str,
+    failure: ProviderFailure,
+) -> None:
+    """Stop calling a provider whose key was rejected (401/403) for six hours."""
+    get_rate_limiter().block(source, _CREDENTIAL_BLOCK_SECONDS)
+    log.error(
+        "ai_provider_blocked provider=%s model=%s status=%s hours=%d "
+        "reason=credentials_rejected; fix the key or drop it from AI_PROVIDER_ORDER",
+        _log_value(provider.name),
+        _log_value(provider.model),
+        failure.status_code if failure.status_code is not None else "none",
+        _CREDENTIAL_BLOCK_SECONDS // 3600,
+    )
 
 
 def estimate_tokens(request: GenerationRequest) -> int:
