@@ -29,6 +29,9 @@ let state = {
 }
 let lastMerge = null
 let delayedCatalogPage = null
+// Every catalog request the API saw, so tests can assert on what the loader and
+// the browser actually asked for (and whether the browser gave up on it).
+let catalogLog = []
 
 const game = {
   id: 1,
@@ -162,6 +165,10 @@ async function body(request) {
 const server = http.createServer(async (request, response) => {
   const url = new URL(request.url ?? '/', 'http://127.0.0.1:8001')
   if (url.pathname === '/__test/merge') return json(response, 200, lastMerge ?? {})
+  if (url.pathname === '/__test/catalog-log') {
+    if (request.method === 'DELETE') catalogLog = []
+    return json(response, 200, catalogLog)
+  }
   if (url.pathname === '/__test/catalog-delay' && request.method === 'POST') {
     const payload = await body(request)
     delayedCatalogPage = {
@@ -223,6 +230,9 @@ const server = http.createServer(async (request, response) => {
       'Set-Cookie': ['gm_session=; Path=/; Max-Age=0', 'gm_csrf=; Path=/; Max-Age=0'],
     })
   }
+  if (url.pathname === '/api/seo/genres') {
+    return json(response, 200, { genres: [{ slug: 'rpg', name: 'RPG', count: 12 }] })
+  }
   if (url.pathname === '/api/seo/curated/home' || url.pathname.startsWith('/api/seo/curated/')) {
     return json(response, 200, { games: [catalogProjection(game, true)], total: 400 })
   }
@@ -232,7 +242,20 @@ const server = http.createServer(async (request, response) => {
   ) {
     return json(response, 503, { detail: 'Catalog temporarily unavailable.' })
   }
+  if (
+    url.pathname === '/api/catalog/games'
+    && url.searchParams.get('developer') === '__catalog_rate_limited__'
+  ) {
+    return json(response, 429, { detail: 'Too many requests.' }, { 'Retry-After': '7' })
+  }
   if (url.pathname === '/api/catalog/games' || url.pathname === '/api/games') {
+    const query = url.searchParams.get('q') ?? ''
+    const logEntry = { query: url.search, q: query, aborted: false }
+    if (url.pathname === '/api/catalog/games') catalogLog.push(logEntry)
+    // A request the client cancelled closes before the response is written.
+    response.on('close', () => { if (!response.writableEnded) logEntry.aborted = true })
+    if (query.startsWith('slow')) await new Promise((resolveDelay) => setTimeout(resolveDelay, 1500))
+    if (query.startsWith('nothing')) return json(response, 200, { games: [], total: 0 })
     const offset = Math.max(0, Number(url.searchParams.get('offset') ?? 0))
     const limit = Math.max(1, Number(url.searchParams.get('limit') ?? 24))
     if (delayedCatalogPage?.offset === offset) {
@@ -267,20 +290,24 @@ const server = http.createServer(async (request, response) => {
     })
     return json(response, 200, { games, total: games.length })
   }
-  if (url.pathname === '/api/facets') return json(response, 200, { genres: ['RPG'], years: [2024], platforms: ['PC', 'Linux'] })
+  if (url.pathname === '/api/facets') return json(response, 200, { genres: ['RPG'], years: [2024], platforms: ['PC', 'Linux'], developers: ['Fixture Studio'] })
   if (url.pathname === '/api/integrations/status') return json(response, 200, [
     { source: 'Steam', status: 'ok', detail: 'Fixture provider' },
   ])
   if (url.pathname === '/api/games/complete-test-game/similar') return json(response, 200, { games: [], total: 0 })
   if (url.pathname === '/api/games/complete-test-game/series') return json(response, 200, { series_key: '', games: [], total: 0 })
-  if (url.pathname === '/api/games/complete-test-game/trailer') return json(response, 200, { video_id: null, watch_url: null })
+  if (url.pathname === '/api/games/complete-test-game/trailer') {
+    // Deliberately slow: the trailer-race test opens another game's trailer meanwhile.
+    await new Promise((resolveDelay) => setTimeout(resolveDelay, 800))
+    return json(response, 200, { video_id: 'slowvideo01', watch_url: null })
+  }
   if (url.pathname === '/api/games/complete-test-game') return json(response, 200, game)
   const catalogDetailMatch = url.pathname.match(/^\/api\/games\/(catalog-test-game-(\d+))(?:\/(similar|series|trailer))?$/)
   if (catalogDetailMatch) {
     const [, slug, id, related] = catalogDetailMatch
     if (related === 'similar') return json(response, 200, { games: [], total: 0 })
     if (related === 'series') return json(response, 200, { series_key: '', games: [], total: 0 })
-    if (related === 'trailer') return json(response, 200, { video_id: null, watch_url: null })
+    if (related === 'trailer') return json(response, 200, { video_id: `fastvideo${id}`, watch_url: null })
     return json(response, 200, {
       ...game,
       id: Number(id),
