@@ -65,31 +65,34 @@ def upgrade() -> None:
     op.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm")
     op.execute("CREATE EXTENSION IF NOT EXISTS unaccent")
 
-    op.add_column("games", sa.Column("title_normalized", sa.Text(), nullable=False, server_default=""))
-    op.add_column("games", sa.Column("steam_app_id_verified_at", sa.DateTime(timezone=True), nullable=True))
-    op.add_column("games", sa.Column("proton_refreshed_at", sa.DateTime(timezone=True), nullable=True))
+    # IF NOT EXISTS throughout: the baseline revision runs create_all from the current
+    # models, so on a database built from scratch these objects can already exist.
+    op.execute("ALTER TABLE games ADD COLUMN IF NOT EXISTS title_normalized TEXT NOT NULL DEFAULT ''")
+    op.execute("ALTER TABLE games ADD COLUMN IF NOT EXISTS steam_app_id_verified_at TIMESTAMPTZ")
+    op.execute("ALTER TABLE games ADD COLUMN IF NOT EXISTS proton_refreshed_at TIMESTAMPTZ")
     op.execute(f"UPDATE games SET title_normalized = {_NORMALIZE_SQL}")
     op.execute(
         "CREATE INDEX IF NOT EXISTS ix_games_title_normalized_trgm "
         "ON games USING gin (title_normalized gin_trgm_ops)"
     )
 
-    op.create_table(
-        "slug_redirects",
-        sa.Column("old_slug", sa.String(180), primary_key=True),
-        sa.Column("game_id", sa.Integer(), sa.ForeignKey("games.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
+    op.execute(
+        "CREATE TABLE IF NOT EXISTS slug_redirects ("
+        "old_slug VARCHAR(180) PRIMARY KEY, "
+        "game_id INTEGER NOT NULL REFERENCES games(id) ON DELETE CASCADE, "
+        "created_at TIMESTAMPTZ NOT NULL DEFAULT now())"
     )
-    op.create_index("ix_slug_redirects_game_id", "slug_redirects", ["game_id"])
+    op.execute("CREATE INDEX IF NOT EXISTS ix_slug_redirects_game_id ON slug_redirects (game_id)")
 
-    op.create_table(
-        "game_search_aliases",
-        sa.Column("id", sa.Integer(), primary_key=True),
-        sa.Column("alias", sa.String(80), nullable=False),
-        sa.Column("game_id", sa.Integer(), sa.ForeignKey("games.id", ondelete="CASCADE"), nullable=False),
+    op.execute(
+        "CREATE TABLE IF NOT EXISTS game_search_aliases ("
+        "id SERIAL PRIMARY KEY, "
+        "alias VARCHAR(80) NOT NULL, "
+        "game_id INTEGER NOT NULL REFERENCES games(id) ON DELETE CASCADE)"
     )
-    op.create_index("ix_game_search_aliases_alias", "game_search_aliases", ["alias"])
-    op.create_index("ix_game_search_aliases_game_id", "game_search_aliases", ["game_id"])
+    op.execute("CREATE INDEX IF NOT EXISTS ix_game_search_aliases_alias ON game_search_aliases (alias)")
+    op.execute("CREATE INDEX IF NOT EXISTS ix_game_search_aliases_game_id ON game_search_aliases (game_id)")
+    op.execute("DELETE FROM game_search_aliases")
 
     connection = op.get_bind()
     for alias, normalized_title in _ALIASES.items():
@@ -104,9 +107,9 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_table("game_search_aliases")
-    op.drop_table("slug_redirects")
+    op.execute("DROP TABLE IF EXISTS game_search_aliases")
+    op.execute("DROP TABLE IF EXISTS slug_redirects")
     op.execute("DROP INDEX IF EXISTS ix_games_title_normalized_trgm")
-    op.drop_column("games", "proton_refreshed_at")
-    op.drop_column("games", "steam_app_id_verified_at")
-    op.drop_column("games", "title_normalized")
+    op.execute("ALTER TABLE games DROP COLUMN IF EXISTS proton_refreshed_at")
+    op.execute("ALTER TABLE games DROP COLUMN IF EXISTS steam_app_id_verified_at")
+    op.execute("ALTER TABLE games DROP COLUMN IF EXISTS title_normalized")
