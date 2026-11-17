@@ -1,3 +1,5 @@
+import ipaddress
+
 from fastapi import Request
 from slowapi import Limiter
 
@@ -14,7 +16,22 @@ def get_client_ip(request: Request) -> str:
     Re-parsing them here would restore the spoof: anyone able to reach the app
     could set their own key and get unlimited attempts against the auth endpoints.
     """
-    return request.client.host if request.client else "unknown"
+    host = request.client.host if request.client else "unknown"
+    return _bucket_ipv6(host)
+
+
+def _bucket_ipv6(host: str) -> str:
+    """Collapse an IPv6 address to its /64: one subscriber owns the whole /64, so a
+    per-address key would hand an attacker 2**64 fresh buckets."""
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        return host
+    if address.version == 4:
+        return host
+    if address.ipv4_mapped is not None:
+        return str(address.ipv4_mapped)
+    return str(ipaddress.ip_network(f"{host}/64", strict=False))
 
 
 limiter = Limiter(

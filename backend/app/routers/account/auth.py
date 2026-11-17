@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response, status
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
@@ -26,11 +26,16 @@ from ...account_security import (
     verify_password_async,
 )
 from ...config import get_settings
-from ...database import get_db
+from ...database import SessionLocal, get_db
 from ...models import AnalyticsEvent, User, VisitEvent
 from ...rate_limit import limiter
 from ...services.account_email import email_delivery_ready
 from ...services.account_state import account_payload, get_or_create_preference
+from ...services.login_throttle import (
+    clear_login_failures,
+    ensure_login_allowed,
+    record_login_failure,
+)
 from ...services.account_tokens import (
     consume_token,
     send_password_reset_email,
@@ -67,6 +72,7 @@ def _reject_email_derived_password(email: str, password: str) -> None:
 async def register(
     request: Request,
     payload: RegisterPayload,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
 ) -> MessageResponse:
     require_same_origin(request)
@@ -78,43 +84,59 @@ async def register(
     password_hash = await hash_password_async(payload.password)
 
     existing = db.scalar(select(User).where(User.email == email))
+    # Sending mail (SMTP) takes seconds; doing it before answering made "new address"
+    # visibly slower than "already registered", which enumerates accounts by timing.
+    # Both paths now answer after the same cheap database work, and mail goes out after.
     if existing is not None:
-        await _replace_pending_registration(db, existing, payload, password_hash)
+        if _replace_pending_registration(db, existing, payload, password_hash):
+            background_tasks.add_task(_send_verification_in_background, existing.id)
         return MessageResponse(message=_CHECK_EMAIL_MESSAGE)
 
     user = _create_pending_user(db, email, payload.display_name, password_hash)
-    try:
-        await send_verification_email(db, user)
-    except Exception as exc:
-        log.exception("Could not send account verification")
-        raise HTTPException(
-            status_code=503,
-            detail="Verification email could not be sent. Try again shortly.",
-        ) from exc
+    background_tasks.add_task(_send_verification_in_background, user.id)
     return MessageResponse(message=_CHECK_EMAIL_MESSAGE)
 
 
-async def _replace_pending_registration(
+async def _send_verification_in_background(user_id: str) -> None:
+    """Own session: the request's session is closed by the time this runs."""
+    try:
+        with SessionLocal() as db:
+            user = db.get(User, user_id)
+            if user is not None and user.email_verified_at is None:
+                await send_verification_email(db, user)
+    except Exception:
+        log.exception("Could not send account verification")
+
+
+async def _send_password_reset_in_background(user_id: str) -> None:
+    try:
+        with SessionLocal() as db:
+            user = db.get(User, user_id)
+            if user is not None and user.is_active and user.password_hash:
+                await send_password_reset_email(db, user)
+    except Exception:
+        log.exception("Could not send password reset email")
+
+
+def _replace_pending_registration(
     db: Session,
     existing: User,
     payload: RegisterPayload,
     password_hash: str,
-) -> None:
+) -> bool:
     """A new registration for an unverified address replaces the pending credentials.
 
     Only the mailbox owner can complete verification, so an attacker cannot
     permanently reserve a victim's email/password.
     """
     if existing.email_verified_at is not None or not existing.is_active:
-        return
+        return False
     existing.display_name = payload.display_name
     existing.password_hash = password_hash
     existing.updated_at = utcnow()
     revoke_user_sessions(db, existing.id)
-    try:
-        await send_verification_email(db, existing)
-    except Exception:
-        log.exception("Could not resend account verification")
+    db.commit()
+    return True
 
 
 def _create_pending_user(db: Session, email: str, display_name: str, password_hash: str) -> User:
@@ -166,13 +188,17 @@ async def login(
     db: Session = Depends(get_db),
 ) -> dict:
     require_same_origin(request)
-    user = db.scalar(select(User).where(User.email == normalize_email(str(payload.email))))
+    email = normalize_email(str(payload.email))
+    ensure_login_allowed(email)
+    user = db.scalar(select(User).where(User.email == email))
     password_matches = await verify_password_async(
         payload.password,
         user.password_hash if user else None,
     )
     if user is None or not user.is_active or not password_matches:
+        record_login_failure(email)
         raise HTTPException(status_code=401, detail="Invalid email or password.")
+    clear_login_failures(email)
     if user.email_verified_at is None:
         raise HTTPException(status_code=403, detail="Verify your email before logging in.")
 
@@ -216,6 +242,7 @@ def account_session(
 async def forgot_password(
     request: Request,
     payload: ForgotPasswordPayload,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
 ) -> MessageResponse:
     require_same_origin(request)
@@ -226,10 +253,7 @@ async def forgot_password(
         )
     )
     if user is not None and user.password_hash and email_delivery_ready():
-        try:
-            await send_password_reset_email(db, user)
-        except Exception:
-            log.exception("Could not send password reset email")
+        background_tasks.add_task(_send_password_reset_in_background, user.id)
     return MessageResponse(message="If that account exists, a reset email has been sent.")
 
 
