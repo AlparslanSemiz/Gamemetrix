@@ -28,7 +28,7 @@ from ..heavy_jobs import HEAVY_JOB_LOCK
 from ..models import Game, VisitEvent
 from ..integrations.hltb import backfill_hltb_playtimes
 from ..integrations.sync import game_needs_rating_refresh, refresh_game_sources
-from ..integrations.steam import extract_steam_app_id, get_steam_release_dates
+from ..integrations.steam import get_steam_release_dates, resolve_steam_app_id
 from .endless import backfill_endless_batch
 from .job_heartbeat import record_job_run
 from .metadata import fix_game_year
@@ -248,7 +248,7 @@ async def _fix_steam_dates(db: Session, games: list[Game]) -> tuple[int, int]:
     games_by_app_id = {
         app_id: game
         for game in games
-        if (app_id := extract_steam_app_id(game.slug, game.cover_url)) is not None
+        if (app_id := resolve_steam_app_id(game)) is not None
     }
     steam_dates = await get_steam_release_dates(list(games_by_app_id.keys()))
     fixed = 0

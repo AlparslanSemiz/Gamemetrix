@@ -16,13 +16,19 @@ from ...integrations.igdb_service import igdb_service
 from ...integrations.gamebrain_service import gamebrain_service
 from ...integrations.rate_limiter import get_rate_limiter
 from ...integrations.rawg import enrich_rawg_game_detail
-from ...integrations.steam import extract_steam_app_id
+from ...integrations.steam import resolve_steam_app_id
 from ...integrations.steam_service import steam_service
 from ...integrations.wikidata_service import wikidata_service
 from ...models import ExternalId, Game
 from .apply import apply_normalized_game
 from .gaps import field_gaps, metadata_gap_score
 from .persistence import has_external_id, store_source_snapshot, upsert_external_id
+from ..steam_identity import (
+    apply_steam_product_type,
+    claim_steam_app_id,
+    identity_from_result,
+    queue_steam_review,
+)
 from .sanitize import is_missing_cover, steam_cover_should_update, titles_match_game
 
 RefreshResult = tuple[bool, bool]
@@ -91,21 +97,23 @@ async def refresh_steam_metadata(db: Session, game: Game, skipped: set[str]) -> 
     result = await steam_service.get_app_details(app_id)
     if not result:
         return True, False
-    if not trusted_app_id and not titles_match_game(game, result):
+    identity = identity_from_result(game, result)
+    if identity.name_matches and apply_steam_product_type(game, identity):
+        claim_steam_app_id(db, game, app_id, verified=True)
+        return True, True
+    if not identity.ok:
+        # appdetails describes a different product (DLC, sequel, "(Retired)" twin):
+        # do not merge its metadata and do not persist the id.
+        if game.steam_app_id == app_id:
+            queue_steam_review(db, game, f"Steam app {app_id} rejected: {identity.reason}")
         return True, False
 
     prefer_cover = is_missing_cover(game.cover_url) or steam_cover_should_update(
         game.cover_url, app_id, result.cover_url
     )
     changed = apply_normalized_game(game, result, trusted=True, prefer_cover=prefer_cover)
-    if game.steam_app_id != app_id:
-        # Persist the resolved id so later refreshes skip the title-search round-trip.
-        game.steam_app_id = app_id
-        changed = True
-    upsert_external_id(
-        db, game.id, "Steam", str(app_id),
-        url=steam_service.store_url(app_id), confidence=_STEAM_CONFIDENCE,
-    )
+    # appdetails just agreed with the row, so this id is verified.
+    changed = claim_steam_app_id(db, game, app_id, verified=True) or changed
     store_source_snapshot(db, game, result, "metadata-backfill/appdetails")
     return True, changed
 
@@ -119,9 +127,9 @@ def _resolve_steam_app_id(db: Session, game: Game) -> int | None:
             ExternalId.source == "Steam",
         )
     )
-    if external and external.external_id.isdigit():
-        return int(external.external_id)
-    return extract_steam_app_id(game.slug, game.cover_url, game.image_url)
+    return resolve_steam_app_id(
+        game, {"Steam": external.external_id} if external else None
+    )
 
 
 def _wikidata_identity(db: Session, game: Game) -> tuple[int | None, str | None]:
@@ -171,18 +179,11 @@ async def refresh_igdb_metadata(db: Session, game: Game, skipped: set[str]) -> R
     if (
         isinstance(raw_steam_id, int)
         and raw_steam_id > 0
-        and game.steam_app_id != raw_steam_id
+        and game.steam_app_id is None
+        and claim_steam_app_id(db, game, raw_steam_id, verified=False)
     ):
-        game.steam_app_id = raw_steam_id
+        # IGDB only fills a missing id; an existing (let alone verified) one is kept.
         changed = True
-        upsert_external_id(
-            db,
-            game.id,
-            "Steam",
-            str(raw_steam_id),
-            url=steam_service.store_url(raw_steam_id),
-            confidence=_IGDB_TRUSTED_CONFIDENCE,
-        )
     store_source_snapshot(db, game, result, "metadata-backfill/search")
     return True, changed
 

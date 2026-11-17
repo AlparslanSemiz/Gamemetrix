@@ -131,8 +131,29 @@ _RAWG_DLC_TYPES = frozenset({"dlc", "expansion", "addon", "update"})
 _SUBTITLE_SEPARATORS = (" – ", " — ", " - ")
 
 
-def infer_content_type(game: Game, rawg_game_type: str | None = None) -> str:
-    # RAWG explicitly tells us the type — trust it
+# Steam appdetails `type` -> catalog content_type. Anything else (game, ...) is not mapped.
+_STEAM_TYPE_CONTENT_TYPES = {
+    "dlc": "dlc",
+    "music": "soundtrack",
+    "demo": "demo",
+    "mod": "mod",
+}
+
+
+def content_type_from_steam_type(steam_type: str | None) -> str | None:
+    """The non-game content_type Steam's own `type` implies, or None for a plain game."""
+    return _STEAM_TYPE_CONTENT_TYPES.get((steam_type or "").lower())
+
+
+def infer_content_type(
+    game: Game,
+    rawg_game_type: str | None = None,
+    steam_type: str | None = None,
+) -> str:
+    # The stores explicitly tell us the type; trust them over title heuristics.
+    steam_content_type = content_type_from_steam_type(steam_type)
+    if steam_content_type:
+        return steam_content_type
     if rawg_game_type and rawg_game_type.lower() in _RAWG_DLC_TYPES:
         return "dlc"
 

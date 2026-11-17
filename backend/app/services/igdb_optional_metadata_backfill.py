@@ -11,19 +11,17 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Session
 
 from ..database import SessionLocal
-from ..integrations.igdb_optional_metadata import get_igdb_optional_metadata
+from ..integrations.igdb_optional_metadata import get_igdb_optional_metadata, pick_steam_app_id
 from ..integrations.igdb_playtime import MAX_IGDB_PLAYTIME_BATCH
 from ..integrations.rate_limiter import get_rate_limiter
-from ..integrations.steam_service import steam_service
 from ..models import ExternalId, Game, SourceSnapshot
-from .metadata_backfill.persistence import upsert_external_id
 from .metadata_backfill.sanitize import website_needs_repair
+from .steam_identity import claim_steam_app_id
 
 log = logging.getLogger(__name__)
 
 _SNAPSHOT_ENDPOINT = "metadata-backfill/igdb-optional-bulk-v2"
 _RETRY_AFTER = timedelta(days=30)
-_STEAM_ID_CONFIDENCE = 0.98
 _PC_PLATFORM_NAMES = ("PC", "Steam", "Windows", "Microsoft Windows", "PC Windows")
 _PROVIDER_WEBSITE_PATTERNS = (
     "%://igdb.com/%",
@@ -104,7 +102,16 @@ def _store_batch(
             changed = False
             website = values.get("website")
             modes = values.get("game_modes")
-            steam_app_id = values.get("steam_app_id")
+            steam_candidates = values.get("steam_candidates")
+            steam_app_id = (
+                pick_steam_app_id(
+                    steam_candidates,
+                    game.title,
+                    game.release_year if game.release_year > 1970 else None,
+                )
+                if game is not None and isinstance(steam_candidates, list)
+                else None
+            )
             if (
                 game is not None
                 and isinstance(website, str)
@@ -121,17 +128,9 @@ def _store_batch(
                 game is not None
                 and isinstance(steam_app_id, int)
                 and steam_app_id > 0
-                and game.steam_app_id != steam_app_id
+                and game.steam_app_id is None
+                and claim_steam_app_id(db, game, steam_app_id, verified=False)
             ):
-                game.steam_app_id = steam_app_id
-                upsert_external_id(
-                    db,
-                    game.id,
-                    "Steam",
-                    str(steam_app_id),
-                    url=steam_service.store_url(steam_app_id),
-                    confidence=_STEAM_ID_CONFIDENCE,
-                )
                 steam_ids_filled += 1
                 changed = True
             if game is not None and changed:

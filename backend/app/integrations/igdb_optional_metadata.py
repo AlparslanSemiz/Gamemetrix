@@ -11,6 +11,7 @@ from ..config import get_settings
 from .http_retry import DEFAULT_HEADERS, request_with_retry
 from .igdb import _get_access_token
 from .igdb_playtime import MAX_IGDB_PLAYTIME_BATCH
+from .steam.identity import steam_identity_verdict
 from .igdb_websites import extract_official_website
 from .types import normalize_game_modes
 
@@ -32,12 +33,14 @@ def build_igdb_optional_metadata_query(igdb_ids: list[int]) -> str:
     return (
         "fields id,game_modes.name,websites.url,websites.type,websites.trusted,"
         "external_games.category,external_games.external_game_source,"
-        "external_games.uid,external_games.url; "
+        "external_games.uid,external_games.url,external_games.name,external_games.year; "
         f"where id = ({joined_ids}); limit {len(valid_ids)};"
     )
 
 
-def extract_steam_app_id(raw: dict) -> int | None:
+def steam_candidates(raw: dict) -> list[dict[str, object]]:
+    """Every Steam cross-reference IGDB lists for a game: app id, product name, year."""
+    found: list[dict[str, object]] = []
     for external in raw.get("external_games") or []:
         if not isinstance(external, dict):
             continue
@@ -49,8 +52,53 @@ def extract_steam_app_id(raw: dict) -> int | None:
         uid = str(external.get("uid") or "").strip()
         candidate = uid if uid.isdigit() else (url_match.group(1) if url_match else "")
         if candidate.isdigit() and int(candidate) > 0:
-            return int(candidate)
+            year = external.get("year")
+            found.append({
+                "app_id": int(candidate),
+                "name": str(external.get("name") or ""),
+                "year": year if isinstance(year, int) else None,
+            })
+    return found
+
+
+def pick_steam_app_id(
+    candidates: list[dict[str, object]],
+    title: str | None,
+    release_year: int | None,
+) -> int | None:
+    """First candidate whose product is this game.
+
+    IGDB lists DLC, soundtracks and sibling products ("Nightreign", "(Retired)")
+    as Steam cross-references too. With a title, a named candidate must pass the
+    same identity test appdetails would; an unnamed one is accepted and left to
+    the Steam id audit.
+    """
+    for candidate in candidates:
+        app_id = candidate["app_id"]
+        if not isinstance(app_id, int):
+            continue
+        name = str(candidate.get("name") or "")
+        if not title or not name:
+            return app_id
+        year = candidate.get("year")
+        verdict = steam_identity_verdict(
+            title,
+            release_year,
+            steam_name=name,
+            steam_year=year if isinstance(year, int) else None,
+        )
+        if verdict.ok:
+            return app_id
     return None
+
+
+def extract_steam_app_id(
+    raw: dict,
+    *,
+    title: str | None = None,
+    release_year: int | None = None,
+) -> int | None:
+    return pick_steam_app_id(steam_candidates(raw), title, release_year)
 
 
 def parse_igdb_optional_metadata(rows: object) -> dict[int, dict[str, object]]:
@@ -74,7 +122,7 @@ def parse_igdb_optional_metadata(rows: object) -> dict[int, dict[str, object]]:
         parsed[igdb_id] = {
             "website": extract_official_website(row),
             "game_modes": modes,
-            "steam_app_id": extract_steam_app_id(row),
+            "steam_candidates": steam_candidates(row),
         }
     return parsed
 

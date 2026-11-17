@@ -49,6 +49,10 @@ _PAREN_QUALIFIER_RE = re.compile(
     re.IGNORECASE,
 )
 
+_DISTINCT_QUALIFIER_RE = re.compile(
+    r"\(\s*(\d{4}|retired|open beta|beta|playtest)(?:[^)]*)\)", re.IGNORECASE
+)
+
 _ROMAN_TO_ARABIC = {
     "ii": "2", "iii": "3", "iv": "4", "vi": "6", "vii": "7", "viii": "8",
     "ix": "9", "xi": "11", "xii": "12",
@@ -88,3 +92,18 @@ def slug_key(slug: str) -> str:
     """Slug stem normalized like a title, so everquest-ii and everquest-2 compare equal."""
     stem = _TRAILING_SLUG_INDEX_RE.sub("", slug.lower())
     return normalized_title(stem)
+
+
+@lru_cache(maxsize=_TITLE_CACHE_SIZE)
+def title_qualifiers(value: str) -> frozenset[str]:
+    """Product-distinguishing parentheses: a year, or Retired / Beta / Playtest.
+
+    "(Classic)" and "(2010 Edition)" are cosmetic and not returned here.
+    """
+    found = set()
+    for match in _DISTINCT_QUALIFIER_RE.finditer(value):
+        token = match.group(1).casefold()
+        if token.isdigit() and re.search(r"\d{4}\s+edition", match.group(0), re.IGNORECASE):
+            continue
+        found.add(token)
+    return frozenset(found)

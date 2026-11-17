@@ -13,13 +13,13 @@ the store search endpoint is public.
 """
 
 import logging
-import re
 import time
 from datetime import date
 
 import httpx
 
 from .rate_limiter import get_rate_limiter
+from .steam.identity import appdetails_product_type
 from .steam.parsing import clean_requirement_block, parse_release_date
 from .steam.reviews import lookup_steam_app_id
 from .steam_quota import stop_steam_requests_if_rate_limited
@@ -31,7 +31,6 @@ STORE_SEARCH = "https://store.steampowered.com/api/storesearch/"
 APP_DETAILS = "https://store.steampowered.com/api/appdetails"
 SMOKE_TEST_TITLES = [("portal-2", "Portal 2", 620)]
 
-_STEAM_APP_ID_RE = re.compile(r"(?:steam/apps/|/app/|^|[-_])(\d{3,})(?:/|$)")
 
 
 def _release_date(raw: dict) -> date | None:
@@ -160,14 +159,8 @@ class SteamService:
 
     async def lookup_app_id(self, slug: str, title: str) -> int | None:
         # Callers should pass games.steam_app_id when it is set; this resolves the
-        # id for rows that do not have one yet.
-        # 1. Parse it out of the slug if it embeds one (zero-cost)
-        for value in (slug,):
-            m = _STEAM_APP_ID_RE.search(value)
-            if m:
-                return int(m.group(1))
-
-        # 3. Store search API
+        # id for rows that do not have one yet. The slug is never parsed: its numeric
+        # suffix is a RAWG/IGDB id, not a Steam app id.
         if not await get_rate_limiter().acquire("Steam"):
             return None
         try:
@@ -221,6 +214,7 @@ class SteamService:
             cover_url=str(raw["header_image"])[:500] if raw.get("header_image") else None,
             raw={
                 "steam_app_id": app_id,
+                "steam_type": appdetails_product_type(raw),
                 "required_age": raw.get("required_age"),
                 "is_free": raw.get("is_free"),
                 "categories": _descriptions(raw, "categories"),

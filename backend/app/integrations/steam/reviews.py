@@ -9,12 +9,12 @@ from ..rate_limiter import get_rate_limiter
 from ..steam_quota import stop_steam_requests_if_rate_limited
 from ..title_matching import title_match_quality
 from ..types import ExternalScore
+from .identity import steam_title_plausible
 from .client import (
     APP_REVIEWS_URL,
     STORE_SEARCH_URL,
     TIMEOUT_REVIEWS,
     TIMEOUT_SEARCH,
-    extract_steam_app_id,
 )
 
 log = logging.getLogger(__name__)
@@ -40,6 +40,15 @@ async def lookup_steam_app_id(title: str, client: httpx.AsyncClient) -> int | No
         ]
         if not candidates:
             return None
+        # Store search returns DLC, soundtracks and "(Retired)" listings next to the
+        # game; only hits whose qualifiers agree with ours are even considered.
+        candidates = [
+            item for item in candidates
+            if (item.get("type") in (None, "app", "game"))
+            and steam_title_plausible(title, str(item.get("name") or ""))
+        ]
+        if not candidates:
+            return None
         best = max(candidates, key=lambda item: title_match_quality(title, str(item.get("name") or "")))
         if title_match_quality(title, str(best.get("name") or "")) > 0:
             return int(best["id"])
@@ -53,7 +62,7 @@ async def get_steam_score(
     title: str | None = None,
     steam_app_id: int | None = None,
 ) -> ExternalScore:
-    app_id = steam_app_id or extract_steam_app_id(slug)
+    app_id = steam_app_id
     lookup_used = False
 
     async with httpx.AsyncClient(timeout=TIMEOUT_REVIEWS, headers=DEFAULT_HEADERS) as client:

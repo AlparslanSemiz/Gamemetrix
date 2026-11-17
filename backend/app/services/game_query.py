@@ -38,7 +38,8 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.sql.expression import TableValuedAlias
 
 from ..integrations.source_registry import CRITIC_SOURCES, PC_PLATFORM_KEYS, PRIMARY_SOURCES
-from ..models import Game, PriceSnapshot
+from ..models import Game, GameSearchAlias, PriceSnapshot
+from ..search_text import fuzzy_search_allowed, normalize_search_text
 from .like_escape import LIKE_ESCAPE_CHAR, escape_like
 
 _DEAL_FRESHNESS_HOURS = 24
@@ -54,6 +55,8 @@ _PLAYER_MODE_GENRE_ALIASES: dict[str, frozenset[str]] = {
     "coop": frozenset({"co-op", "coop", "online co-op", "local co-op"}),
     "singleplayer": frozenset({"single player", "singleplayer"}),
 }
+
+_PROTON_PLAYABLE_TIERS = ("platinum", "gold", "silver")
 
 _SOURCE_SORT_COLUMNS: dict[str, str] = {
     "metacritic_score": "Metacritic",
@@ -132,7 +135,7 @@ def _apply_base_filters(
     if content_type != "all":
         query = query.where(Game.content_type == content_type)
     if q:
-        query = query.where(Game.title.ilike(f"%{escape_like(q)}%", escape=LIKE_ESCAPE_CHAR))
+        query = query.where(title_search_condition(q))
     if year_min is not None:
         query = query.where(Game.release_year >= year_min)
     if year_max is not None:
@@ -142,6 +145,29 @@ def _apply_base_filters(
     if max_score is not None:
         query = query.where(Game.metrix_score <= max_score)
     return _apply_deal_filter(query, deal)
+
+
+def title_search_condition(q: str) -> ColumnElement[bool]:
+    """Title search: literal substring, normalized substring, alias, then trigram fallback.
+
+    The normalized column makes "spider man", "Marvel's Spider-Man" and "pokemon"
+    find "Pokémon" alike; the alias table covers "gta 5" / "bg3"; the pg_trgm `%`
+    operator (GIN-indexed) rescues small typos.
+    """
+    conditions: list[ColumnElement[bool]] = [
+        Game.title.ilike(f"%{escape_like(q)}%", escape=LIKE_ESCAPE_CHAR)
+    ]
+    normalized = normalize_search_text(q)
+    if normalized:
+        conditions.append(
+            Game.title_normalized.like(f"%{escape_like(normalized)}%", escape=LIKE_ESCAPE_CHAR)
+        )
+        conditions.append(
+            Game.id.in_(select(GameSearchAlias.game_id).where(GameSearchAlias.alias == normalized))
+        )
+        if fuzzy_search_allowed(normalized):
+            conditions.append(Game.title_normalized.op("%")(normalized))
+    return or_(*conditions)
 
 
 def _apply_deal_filter(query: Select, deal: str) -> Select:
@@ -216,21 +242,29 @@ def apply_advanced_filters(query: Select, filters: CatalogFilters) -> Select:
         terms = {filters.platform.lower()}
         if filters.platform.lower() == "steam":
             terms.add("pc")
-        query = query.where(_json_array_match(Game.platforms, terms, substring=True))
+        platform_match = _json_array_match(Game.platforms, terms, substring=True)
+        if filters.platform.lower() == "linux":
+            # Playable through Proton counts as Linux support alongside native builds.
+            platform_match = or_(platform_match, Game.proton_tier.in_(_PROTON_PLAYABLE_TIERS))
+        query = query.where(platform_match)
     if filters.player_mode:
         query = query.where(or_(
             _json_array_match(Game.game_modes, {filters.player_mode}),
             _json_array_match(Game.genres, _PLAYER_MODE_GENRE_ALIASES[filters.player_mode]),
         ))
     if filters.playtime_min_hours is not None:
+        playtime = _effective_playtime_minutes()
         query = query.where(
-            Game.playtime_minutes > 0,
-            Game.playtime_minutes >= filters.playtime_min_hours * _MINUTES_PER_HOUR,
+            playtime > 0,
+            Game.is_endless.is_(False),
+            playtime >= filters.playtime_min_hours * _MINUTES_PER_HOUR,
         )
     if filters.playtime_max_hours is not None:
+        playtime = _effective_playtime_minutes()
         query = query.where(
-            Game.playtime_minutes > 0,
-            Game.playtime_minutes <= filters.playtime_max_hours * _MINUTES_PER_HOUR,
+            playtime > 0,
+            Game.is_endless.is_(False),
+            playtime <= filters.playtime_max_hours * _MINUTES_PER_HOUR,
         )
     if filters.min_ratings is not None:
         query = query.where(_review_count_expression(require_live_score=True) >= filters.min_ratings)
@@ -243,6 +277,16 @@ def apply_advanced_filters(query: Select, filters: CatalogFilters) -> Select:
     if filters.require_critic:
         query = query.where(_has_live_critic_expression())
     return query
+
+
+def _effective_playtime_minutes() -> ColumnElement:
+    """HowLongToBeat main story when known, else the provider playtime estimate.
+
+    HLTB is the figure the card shows, so the filter has to use it; the raw
+    provider value (RDR2: 100 h) disagreed with it (51 h). Zero counts as unknown.
+    Endless games show "no fixed time" on the card, so the filters skip them too.
+    """
+    return func.coalesce(func.nullif(Game.hltb_main_story_minutes, 0), Game.playtime_minutes)
 
 
 def _json_array_match(

@@ -5,6 +5,7 @@ nothing — so the request/unwrap dance lives here once.
 """
 
 import re
+from collections.abc import Mapping
 
 import httpx
 
@@ -20,7 +21,10 @@ TIMEOUT_REVIEWS = 12
 TIMEOUT_DETAILS = 12
 TIMEOUT_BULK_DETAILS = 20
 
-STEAM_APP_ID_RE = re.compile(r"(?:steam/apps/|/app/|^|[-_])(\d{3,})(?:/|$)")
+# Only URLs that explicitly name a Steam app. A bare trailing number in a slug
+# ("year-walk-730") is a RAWG/IGDB id, never a Steam id; the old pattern also
+# accepted a trailing "-123" and attached the wrong store page to those games.
+STEAM_APP_ID_RE = re.compile(r"(?:steam/apps/|/app/)(\d{3,})(?:/|$)")
 
 
 def store_page_url(app_id: int) -> str:
@@ -28,10 +32,10 @@ def store_page_url(app_id: int) -> str:
 
 
 def extract_steam_app_id(*values: str | None) -> int | None:
-    """Last-resort recovery of an app id from a slug or CDN URL.
+    """Last-resort recovery of an app id from a Steam store/CDN URL.
 
-    Prefer games.steam_app_id — this only guesses from strings that happen to
-    embed the id, which fails whenever the cover art does not come from Steam.
+    Prefer `resolve_steam_app_id` (games.steam_app_id first). Slugs are never a
+    source: their numeric suffix is a RAWG/IGDB id.
     """
     for value in values:
         if not value:
@@ -40,6 +44,28 @@ def extract_steam_app_id(*values: str | None) -> int | None:
         if match:
             return int(match.group(1))
     return None
+
+
+def resolve_steam_app_id(
+    game: object,
+    external_ids: Mapping[str, str] | None = None,
+) -> int | None:
+    """The one place that decides which Steam app a game is.
+
+    Order: the stored `games.steam_app_id` (verified or not, it is the id the rest
+    of the catalog already agrees on), then a trusted Steam external id, then a
+    Steam URL in the artwork. Never the slug. Scores, prices, links and metadata
+    all call this so they can no longer disagree about the app.
+    """
+    stored = getattr(game, "steam_app_id", None)
+    if isinstance(stored, int) and stored > 0:
+        return stored
+    external = (external_ids or {}).get("Steam", "")
+    if external.isdigit() and int(external) > 0:
+        return int(external)
+    return extract_steam_app_id(
+        getattr(game, "cover_url", None), getattr(game, "image_url", None)
+    )
 
 
 async def fetch_app_data(

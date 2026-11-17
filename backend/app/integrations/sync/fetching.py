@@ -14,7 +14,7 @@ from ..igdb import get_igdb_score
 from ..opencritic import get_opencritic_score
 from ..rate_limiter import get_rate_limiter
 from ..rawg_score import get_rawg_metacritic_score, get_rawg_rating_score
-from ..steam import extract_steam_app_id, get_steam_score
+from ..steam import get_steam_score, resolve_steam_app_id
 from ..steamspy import get_steamspy_score
 from ..types import ExternalScore
 from .cache import cached_score
@@ -160,9 +160,7 @@ def _steam_fetch_tasks(
     if not game.is_pc_applicable and requested is None:
         return []
 
-    app_id = _numeric_external_id(external_ids, "Steam") or extract_steam_app_id(
-        game.slug, game.cover_url, game.image_url
-    )
+    app_id = resolve_steam_app_id(game, external_ids)
     tasks = [resolve_score(
         "Steam",
         _fetch_cached_score(game, "Steam", force=force, live_only=live_only_cache),

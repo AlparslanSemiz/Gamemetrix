@@ -21,7 +21,15 @@ from .accounts import (
     UserPreference,
 )
 from .analytics import AnalyticsEvent, VisitEvent
-from .catalog import ExternalId, Game, PriceSnapshot, RatingSnapshot, SourceSnapshot
+from .catalog import (
+    ExternalId,
+    Game,
+    GameSearchAlias,
+    PriceSnapshot,
+    RatingSnapshot,
+    SlugRedirect,
+    SourceSnapshot,
+)
 from .ops import (
     AdminAuditLog,
     AiCatalogChange,
@@ -45,6 +53,8 @@ __all__ = [
     "CatalogSyncState",
     "DataFillRun",
     "ExternalId",
+    "GameSearchAlias",
+    "SlugRedirect",
     "Game",
     "JobRun",
     "NotificationDelivery",

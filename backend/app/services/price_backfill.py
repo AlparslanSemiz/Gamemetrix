@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session, selectinload
 from ..integrations.cheapshark_service import cheapshark_service
 from ..integrations.itad_service import itad_service
 from ..integrations.rate_limiter import RateLimiter, get_rate_limiter
-from ..integrations.steam import extract_steam_app_id, fetch_steam_price
+from ..integrations.steam import fetch_steam_price, resolve_steam_app_id
 from ..integrations.types import bounded_float
 from ..models import Game, PriceSnapshot
 
@@ -59,7 +59,7 @@ def price_snapshots_need_refresh(game: Game) -> bool:
             if refreshed_at >= datetime.datetime.now(datetime.UTC) - PRICE_REFRESH_MAX_AGE:
                 return False
         return True
-    app_id = extract_steam_app_id(game.cover_url, game.image_url, game.slug)
+    app_id = resolve_steam_app_id(game)
     has_price = any(
         snapshot.is_free
         or snapshot.sale_price is not None
@@ -73,19 +73,32 @@ def price_snapshots_need_refresh(game: Game) -> bool:
     return not any(_snapshot_is_recent(snapshot) for snapshot in snapshots)
 
 
+def _price_refresh_counts(
+    *, rows: bool, aggregator_attempted: bool
+) -> bool:
+    """Whether a pass earned a fresh `prices_refreshed_at`.
+
+    Stored prices always count. With nothing stored, only an ITAD/CheapShark
+    request that actually spent budget counts as "looked and found nothing"; a
+    lone Steam call that returned nothing is indistinguishable from an outage, and
+    stamping it would hide a still-unpriced game behind a fresh timestamp.
+    """
+    return rows or aggregator_attempted
+
+
 async def fetch_and_store_prices(
     db: Session,
     game: Game,
 ) -> int:
     now = datetime.datetime.now(datetime.UTC)
-    app_id = extract_steam_app_id(game.cover_url, game.image_url, game.slug)
+    app_id = resolve_steam_app_id(game)
 
     if not price_snapshots_need_refresh(game):
         return 0
 
     limiter = get_rate_limiter()
     rows: list[PriceSnapshot] = []
-    steam_row, steam_attempted = await _fetch_steam_snapshot(game, app_id, now, limiter)
+    steam_row, _steam_attempted = await _fetch_steam_snapshot(game, app_id, now, limiter)
     if steam_row:
         rows.append(steam_row)
     itad_row, itad_attempted = await _fetch_itad_snapshot(game, app_id, now, limiter)
@@ -102,8 +115,10 @@ async def fetch_and_store_prices(
 
     if rows:
         _replace_price_snapshots(db, game, rows)
-    attempted = steam_attempted or itad_attempted or cheapshark_attempted
-    if not attempted:
+    if not _price_refresh_counts(
+        rows=bool(rows),
+        aggregator_attempted=itad_attempted or cheapshark_attempted,
+    ):
         return 0
     game.prices_refreshed_at = now
     db.add(game)
