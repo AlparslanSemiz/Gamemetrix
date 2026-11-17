@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import hmac
 import threading
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -25,6 +27,8 @@ from .models import AccountSession, User
 SESSION_COOKIE = "gm_session"
 CSRF_COOKIE = "gm_csrf"
 OAUTH_COOKIE = "gm_oauth"
+_DEVICE_COOKIE = "gm_device"
+_DEVICE_COOKIE_DAYS = 90
 MIN_SIGNING_SECRET_LENGTH = 32
 LINK_SIGNING_ALGORITHM = "HS256"
 _PASSWORD_HASHER = PasswordHasher(time_cost=3, memory_cost=65536, parallelism=2)
@@ -164,6 +168,40 @@ def set_account_cookies(response: Response, session_token: str, csrf_token: str)
         max_age=max_age,
         httponly=False,
         secure=cfg.is_production,
+        samesite="lax",
+        path="/",
+    )
+
+
+def device_cookie_name() -> str:
+    # __Host- needs Secure, so it is production-only (dev runs over plain http).
+    return f"__Host-{_DEVICE_COOKIE}" if get_settings().is_production else _DEVICE_COOKIE
+
+
+def _device_key() -> bytes:
+    """HKDF-SHA256 (RFC 5869) of JWT_SECRET_KEY for this one purpose, so the device cookie
+    key is not the signing key itself."""
+    prk = hmac.new(b"gamemetrix-hkdf-salt", get_settings().JWT_SECRET_KEY.encode(), sha256).digest()
+    return hmac.new(prk, b"gamemetrix device cookie v1\x01", sha256).digest()
+
+
+def _device_value(email: str) -> str:
+    return hmac.new(_device_key(), f"device:{email}".encode(), hashlib.sha256).hexdigest()
+
+
+def device_cookie_valid(request: Request, email: str) -> bool:
+    """True when the request carries the signed device cookie issued for this e-mail."""
+    presented = request.cookies.get(device_cookie_name(), "")
+    return bool(presented) and compare_digest(presented, _device_value(email))
+
+
+def set_device_cookie(response: Response, email: str) -> None:
+    response.set_cookie(
+        device_cookie_name(),
+        _device_value(email),
+        max_age=_DEVICE_COOKIE_DAYS * 24 * 60 * 60,
+        httponly=True,
+        secure=get_settings().is_production,
         samesite="lax",
         path="/",
     )

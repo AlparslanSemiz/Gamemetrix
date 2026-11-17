@@ -26,28 +26,32 @@ def test_pair_limit_blocks_only_the_attacking_client() -> None:
     with pytest.raises(HTTPException) as blocked:
         login_throttle.reserve_login_attempt("v@example.com", "6.6.6.6", now=20.0)
     assert blocked.value.status_code == 429 and int(blocked.value.headers["Retry-After"]) > 800
-    # The real owner, from another address, is not locked out.
-    login_throttle.reserve_login_attempt("v@example.com", "1.2.3.4", now=20.0)
+    login_throttle.reserve_login_attempt("v@example.com", "1.2.3.4", now=20.0)  # the owner
     login_throttle.reserve_login_attempt("v@example.com", "6.6.6.6", now=20.0 + login_throttle.WINDOW_SECONDS)
+    # A valid device cookie always passes.
+    assert login_throttle.reserve_login_attempt("v@example.com", "6.6.6.6", device_trusted=True) == (None, 0.0)
 
 
 def test_success_releases_the_reservation() -> None:
     for _ in range(30):
-        token = login_throttle.reserve_login_attempt("a@example.com", "1.1.1.1", now=1.0)
-        login_throttle.release_login_attempt("a@example.com", "1.1.1.1", token, now=1.0)
+        token, _delay = login_throttle.reserve_login_attempt("a@example.com", "1.1.1.1", now=1.0)
+        login_throttle.release_login_attempt("a@example.com", "1.1.1.1", token)
     assert login_throttle._pairs == {} and login_throttle._emails == {}
 
 
-def test_email_soft_limit_spares_a_familiar_pair() -> None:
+def test_email_limit_delays_with_backoff_and_never_refuses() -> None:
     email = "soft@example.com"
-    token = login_throttle.reserve_login_attempt(email, "9.9.9.9", now=0.0)
-    login_throttle.release_login_attempt(email, "9.9.9.9", token, now=0.0)
     for n in range(login_throttle.MAX_EMAIL_ATTEMPTS):  # distributed guessing, many addresses
-        login_throttle.reserve_login_attempt(email, f"10.0.{n // 200}.{n % 200}", now=1.0 + n)
-    with pytest.raises(HTTPException):
-        login_throttle.reserve_login_attempt(email, "7.7.7.7", now=100.0)
-    # The owner's known network (no failures of its own) still gets through.
-    login_throttle.reserve_login_attempt(email, "9.9.9.9", now=100.0)
+        _token, delay = login_throttle.reserve_login_attempt(email, f"10.0.0.{n}", now=1.0 + n)
+        assert delay == 0
+    delays = [
+        login_throttle.reserve_login_attempt(email, f"11.0.0.{n}", now=100.0 + n)[1] for n in range(7)
+    ]
+    assert delays == [1.0, 2.0, 4.0, 8.0, 15.0, 15.0, 15.0]
+    # A device-cookie holder is not delayed at all.
+    assert login_throttle.reserve_login_attempt(email, "9.9.9.9", device_trusted=True, now=101.0) == (None, 0.0)
+    # The window passing resets the delay.
+    assert login_throttle.reserve_login_attempt(email, "8.8.8.8", now=100.0 + login_throttle.WINDOW_SECONDS + 60)[1] == 0
 
 
 def test_concurrent_attempts_cannot_exceed_the_limit() -> None:
@@ -70,26 +74,49 @@ def test_concurrent_attempts_cannot_exceed_the_limit() -> None:
     assert len(passed) == login_throttle.MAX_PAIR_ATTEMPTS
 
 
-def test_full_map_never_evicts_live_counters(monkeypatch) -> None:
+def test_full_map_neither_refuses_new_keys_nor_evicts_live_counters(monkeypatch) -> None:
     monkeypatch.setattr(login_throttle, "MAX_TRACKED_KEYS", 6)
-    monkeypatch.setattr(login_throttle, "FULL_MAP_NEW_KEYS_PER_MINUTE", 2)
     _fail("victim@example.com", "6.6.6.6", login_throttle.MAX_PAIR_ATTEMPTS)
     for n in range(2):
         login_throttle.reserve_login_attempt(f"filler{n}@example.com", "2.2.2.2", now=5.0)
-    # Maps are full of live entries; a flood of new keys hits the global brake...
-    outcomes = []
-    for n in range(5):
-        try:
-            login_throttle.reserve_login_attempt(f"new{n}@example.com", "3.3.3.3", now=6.0)
-            outcomes.append(True)
-        except HTTPException:
-            outcomes.append(False)
-    assert outcomes.count(True) == 2 and False in outcomes
-    # ...and the live counter for the victim's pair is intact.
-    with pytest.raises(HTTPException):
+    # Full of live entries: a flood of new keys is let through untracked, never refused.
+    for n in range(500):
+        token, delay = login_throttle.reserve_login_attempt(f"new{n}@example.com", "3.3.3.3", now=6.0)
+        assert token is None and delay == 0
+    assert len(login_throttle._pairs) + len(login_throttle._emails) == 6
+    with pytest.raises(HTTPException):  # the victim's attacker is still blocked
         login_throttle.reserve_login_attempt("victim@example.com", "6.6.6.6", now=7.0)
-    # Expired entries are what gets dropped.
-    login_throttle.reserve_login_attempt("late@example.com", "4.4.4.4", now=7.0 + login_throttle.WINDOW_SECONDS)
+    token, _ = login_throttle.reserve_login_attempt(
+        "late@example.com", "4.4.4.4", now=7.0 + login_throttle.WINDOW_SECONDS
+    )
+    assert token is not None  # expired entries were what made room
+
+
+def test_device_cookie_is_signed_per_email_and_prefixed_in_production(monkeypatch) -> None:
+    from fastapi import Response
+
+    from app import account_security as sec
+
+    response = Response()
+    sec.set_device_cookie(response, "me@example.com")
+    cookie = response.headers["set-cookie"]
+    assert cookie.startswith("gm_device=") and "HttpOnly" in cookie
+    value = cookie.split(";")[0].split("=", 1)[1]
+
+    def request_with(name: str, val: str) -> Request:
+        return Request({"type": "http", "method": "POST", "path": "/", "client": ("1.1.1.1", 1),
+                        "headers": [(b"cookie", f"{name}={val}".encode())]})
+
+    assert sec.device_cookie_valid(request_with("gm_device", value), "me@example.com")
+    assert not sec.device_cookie_valid(request_with("gm_device", value), "other@example.com")
+    assert not sec.device_cookie_valid(request_with("gm_device", "0" * 64), "me@example.com")
+    assert not sec.device_cookie_valid(request_with("gm_device", ""), "me@example.com")
+
+    monkeypatch.setattr(sec, "get_settings", lambda: type("S", (), {"is_production": True, "JWT_SECRET_KEY": "x" * 40})())
+    assert sec.device_cookie_name() == "__Host-gm_device"
+    prod = Response()
+    sec.set_device_cookie(prod, "me@example.com")
+    assert "Secure" in prod.headers["set-cookie"] and prod.headers["set-cookie"].startswith("__Host-gm_device=")
 
 
 def _request(peer: str) -> Request:

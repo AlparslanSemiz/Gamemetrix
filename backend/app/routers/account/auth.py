@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from uuid import uuid4
 
@@ -13,6 +14,7 @@ from ...account_security import (
     AccountPrincipal,
     clear_account_cookies,
     create_account_session,
+    device_cookie_valid,
     hash_password_async,
     normalize_email,
     optional_account_principal,
@@ -22,6 +24,7 @@ from ...account_security import (
     require_same_origin,
     revoke_user_sessions,
     set_account_cookies,
+    set_device_cookie,
     utcnow,
     verify_password_async,
 )
@@ -187,7 +190,11 @@ async def login(
     email = normalize_email(str(payload.email))
     client = get_client_ip(request)
     # Reserved before the password check (atomic with the limit test); handed back on success.
-    reservation = reserve_login_attempt(email, client)
+    reservation, delay = reserve_login_attempt(
+        email, client, device_trusted=device_cookie_valid(request, email)
+    )
+    if delay:
+        await asyncio.sleep(delay)  # slows distributed guessing without ever locking the owner out
     user = db.scalar(select(User).where(User.email == email))
     password_matches = await verify_password_async(
         payload.password,
@@ -203,6 +210,7 @@ async def login(
         user.password_hash = await hash_password_async(payload.password)
     session_token, csrf_token = create_account_session(db, user, request)
     set_account_cookies(response, session_token, csrf_token)
+    set_device_cookie(response, email)
     return {"account": account_payload(user)}
 
 
