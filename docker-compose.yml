@@ -35,9 +35,9 @@ services:
       retries: 12
     # With the bounded server settings above, 160m covers connection/autovacuum
     # bursts without letting a runaway query eat the whole 1GB host.
-    mem_limit: 160m
+    mem_limit: 224m
     mem_reservation: 64m
-    memswap_limit: 224m # mem_limit + 64m swap cushion (not unbounded swap use)
+    memswap_limit: 352m # mem_limit + 128m swap cushion (160m OOM-killed on 2026-11-17) (not unbounded swap use)
     cpus: 0.5
     logging:
       driver: json-file
