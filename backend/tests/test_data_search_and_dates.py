@@ -3,9 +3,6 @@
 import asyncio
 from datetime import date
 
-import pytest
-from sqlalchemy import select
-
 from app.content_type import content_type_from_steam_type, infer_content_type
 from app.integrations.steam.client import AppdetailsOutcome
 from app.models import Game, GameSearchAlias
