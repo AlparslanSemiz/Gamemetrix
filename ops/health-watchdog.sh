@@ -22,7 +22,12 @@ LOG_FILE="${LOG_FILE:-/var/log/gamemetrix-watchdog.log}"
 UNHEALTHY_LIMIT="${UNHEALTHY_LIMIT:-3}"
 SERVICES=(db backend frontend nginx)
 
+notify="$(dirname "$(readlink -f "$0")")/notify.sh"
+problems=0
+
 log() { echo "[gamemetrix-watchdog] $(date '+%Y-%m-%d %H:%M:%S') $*"; }
+# Something was wrong (even if we fixed it): log, tell the operator, withhold the ping.
+problem() { problems=$((problems + 1)); log "$*"; "$notify" "watchdog: $*" || true; }
 
 # A deploy is recreating containers on purpose; stay out of its way.
 exec 8>/tmp/gamemetrix-production-deploy.lock
@@ -51,8 +56,8 @@ for svc in "${SERVICES[@]}"; do
   counter="$STATE_DIR/$svc.unhealthy"
 
   if [[ "$status" != "running" ]]; then
-    log "$name is $status, starting it"
-    "${compose[@]}" up -d --no-build "$svc" >/dev/null 2>&1 || log "$name: compose up failed"
+    problem "$name is $status, starting it"
+    "${compose[@]}" up -d --no-build "$svc" >/dev/null 2>&1 || problem "$name: compose up failed"
     rm -f "$counter"
     continue
   fi
@@ -61,11 +66,14 @@ for svc in "${SERVICES[@]}"; do
     n=$(( $(cat "$counter" 2>/dev/null || echo 0) + 1 ))
     echo "$n" > "$counter"
     if (( n >= UNHEALTHY_LIMIT )); then
-      log "$name unhealthy for $n checks, restarting it"
-      docker restart "$name" >/dev/null || log "$name: restart failed"
+      problem "$name unhealthy for $n checks, restarting it"
+      docker restart "$name" >/dev/null || problem "$name: restart failed"
       rm -f "$counter"
     fi
   else
     rm -f "$counter"
   fi
 done
+
+# Dead-man's switch: a missing ping means the host, cron or this script is down.
+(( problems == 0 )) && "$notify" --ping watchdog || true

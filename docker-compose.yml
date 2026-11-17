@@ -28,6 +28,12 @@ services:
       - maintenance_work_mem=32MB
       - -c
       - max_connections=40
+      # The planner assumed 4GB of cache inside a 224MB container; keep it honest and
+      # cost random reads like the SSD they are so index scans win over seq scans.
+      - -c
+      - effective_cache_size=96MB
+      - -c
+      - random_page_cost=1.1
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 5s
@@ -48,8 +54,9 @@ services:
   # --- 2. BACKEND (FastAPI) ---
   backend:
     # Production pulls the image CI built (GAMEMETRIX_IMAGE_PREFIX=ghcr.io/<owner>/gamemetrix,
-    # GAMEMETRIX_TAG=sha-<commit>); without those variables this builds locally as before.
-    image: ${GAMEMETRIX_IMAGE_PREFIX:-gamemetrix}-backend:${GAMEMETRIX_TAG:-latest}
+    # GAMEMETRIX_TAG=sha-<commit>, written by ops/deploy-production.sh). Without them this
+    # builds locally as gamemetrix-backend:local. There is no :latest anywhere on purpose.
+    image: ${GAMEMETRIX_IMAGE_PREFIX:-gamemetrix}-backend:${GAMEMETRIX_TAG:-local}
     build:
       context: ./backend
       dockerfile: Dockerfile
@@ -88,7 +95,7 @@ services:
         - CMD
         - python
         - -c
-        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=4)"
       interval: 15s
       timeout: 5s
       retries: 5
@@ -100,7 +107,7 @@ services:
 
   # --- 3. FRONTEND (React / Vite) ---
   frontend:
-    image: ${GAMEMETRIX_IMAGE_PREFIX:-gamemetrix}-frontend:${GAMEMETRIX_TAG:-latest}
+    image: ${GAMEMETRIX_IMAGE_PREFIX:-gamemetrix}-frontend:${GAMEMETRIX_TAG:-local}
     build:
       context: ./frontend
       dockerfile: Dockerfile

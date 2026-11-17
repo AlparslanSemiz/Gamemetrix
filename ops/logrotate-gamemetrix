@@ -1,0 +1,14 @@
+# Weekly rotation for the ops scripts' log files (the cron jobs append to these).
+# Install (root):
+#   sudo install -o root -g root -m 644 ops/logrotate-gamemetrix /etc/logrotate.d/gamemetrix
+#   sudo logrotate --debug /etc/logrotate.d/gamemetrix     # dry run
+# copytruncate: the cron redirections keep their file handle open between runs.
+/var/log/gamemetrix-*.log {
+    weekly
+    rotate 4
+    compress
+    delaycompress
+    missingok
+    notifempty
+    copytruncate
+}

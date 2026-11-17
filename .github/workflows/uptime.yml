@@ -1,6 +1,7 @@
 name: uptime
 
-# Checks the live site from outside every 10 minutes. A failed run means the
+# Checks the live site from outside every 10 minutes. The API check hits /health/ready
+# (database answers and the catalog is not empty), not just the process. A failed run means the
 # site or the API was unreachable three times in a row, and GitHub emails the
 # repository owner about failed scheduled runs.
 on:
@@ -28,5 +29,5 @@ jobs:
           }
           ok=0
           check https://gamemetrix.me/ || ok=1
-          check https://api.gamemetrix.me/health || ok=1
+          check https://api.gamemetrix.me/health/ready || ok=1
           exit $ok

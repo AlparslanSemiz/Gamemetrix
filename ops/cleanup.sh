@@ -2,6 +2,7 @@
 # GameMetrix disk/cache cleanup — meant to run daily via cron on the 1GB/30GB VM.
 #
 # Safe-by-default policy:
+#   - Application images beyond the newest two sha tags are removed (rollback window).
 #   - Things that are purely reconstructable (docker build cache, dangling
 #     images/containers, journal logs) are deleted automatically.
 #
@@ -42,6 +43,24 @@ log "=== starting cleanup ==="
 #    and the build cache. None of this touches named volumes (pgdata is
 #    safe) or images currently used by a running container. ─────────────────
 if command -v docker >/dev/null 2>&1; then
+  # Every deploy leaves the previous sha-<commit> images behind (~500 MB each on a 30 GB
+  # disk). Keep the newest KEEP_IMAGES per application repository for rollback and remove
+  # the rest. `docker image ls` lists newest first; an image still used by a container
+  # cannot be removed and is skipped by the failure handling below.
+  KEEP_IMAGES="${KEEP_IMAGES:-2}"
+  image_prefix="$(sed -n 's/^GAMEMETRIX_IMAGE_PREFIX=//p' "$PROJECT_DIR/.env" 2>/dev/null | tail -1 || true)"
+  repos=(gamemetrix-backend gamemetrix-frontend)
+  if [ -n "$image_prefix" ]; then
+    repos+=("$image_prefix-backend" "$image_prefix-frontend")
+  fi
+  for repo in "${repos[@]}"; do
+    docker image ls "$repo" --format '{{.Repository}}:{{.Tag}}' 2>/dev/null \
+      | grep -v ':<none>$' | tail -n +"$((KEEP_IMAGES + 1))" | while read -r image; do
+      log "removing old application image $image"
+      docker rmi "$image" >/dev/null 2>&1 || log "kept $image (in use)"
+    done
+  done
+
   log "docker system prune (dangling images/containers/networks)"
   docker system prune -f --filter "until=24h" || log "docker system prune failed (continuing)"
 

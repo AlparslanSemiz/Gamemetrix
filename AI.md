@@ -39,11 +39,11 @@ and review volume shrink a thin score toward a neutral baseline.
 | Frontend | React Router **Framework Mode** (SSR), React + TypeScript strict, Vite |
 | Proxy | nginx (`nginx.conf`) in front of both, Cloudflare in front of that |
 | Deploy | `docker-compose.yml` — services: `db`, `backend`, `frontend`, `nginx`; volume `pgdata` |
-| Images | `.github/workflows/images.yml` builds both images for amd64 + arm64 on every push to main → `ghcr.io/alparslansemiz/gamemetrix-{backend,frontend}:sha-<commit>` and `:latest`. Production pulls them (`GAMEMETRIX_IMAGE_PREFIX` in `.env`); root cron `ops/auto-deploy.sh` deploys a new main within ~5 min of its images appearing |
+| Images | `.github/workflows/images.yml` builds both images for amd64 + arm64 after the CI workflow succeeds for a main commit (`workflow_run`) → `ghcr.io/alparslansemiz/gamemetrix-{backend,frontend}:sha-<commit>` (no `:latest`). Production pulls them (`GAMEMETRIX_IMAGE_PREFIX` in `.env`, tag written by `deploy-production.sh`); root cron `ops/auto-deploy.sh` deploys a new main within ~5 min of its images appearing, tracks success in `.deployed-sha`, and reports failures through `ops/notify.sh` |
 | Host constraint | 1 GB RAM production host. This drives several designs — see §9. |
 | Host | bwCloud (Karlsruhe) `p1.nano`, IPv6 only, 4 GB swap; Cloudflare proxies IPv4 visitors (SSL mode Flexible) |
-| Self-healing | `restart: always`, plus root cron `ops/health-watchdog.sh` every minute (restarts missing/stopped containers, restarts ones unhealthy for 3 checks); nightly `ops/backup-db.sh` |
-| Outside check | `.github/workflows/uptime.yml` pings the site and `api.gamemetrix.me/health` every 10 minutes |
+| Self-healing | `restart: always`, plus root cron `ops/health-watchdog.sh` every minute (restarts missing/stopped containers, restarts ones unhealthy for 3 checks); nightly `ops/backup-db.sh`; `ops/restore-test.sh` proves a dump restores; scripts ping/notify via `ops/notify.sh` (`/etc/gamemetrix/notify.env`); `ops/logrotate-gamemetrix`; rebuild guide `docs/disaster-recovery.md` |
+| Outside check | `.github/workflows/uptime.yml` pings the site and `api.gamemetrix.me/health/ready` (DB answers + catalog not empty) every 10 minutes |
 
 Ports in development: backend `127.0.0.1:8000`, SSR frontend `127.0.0.1:5173`. The Vite dev
 server proxies `/api` and `/admin/*` to 8000 so account cookies behave like production.
@@ -73,7 +73,8 @@ docker-compose.yml  full stack; docker-compose.production.yml layers prod overri
 ```
 main.py
   App bootstrap only: settings validation, CORS, rate limiting, cache-control
-  and admin-audit middleware, router mounting, /health, and the lifespan that
+  and admin-audit middleware, router mounting, /health and /health/ready, 503 handlers
+  (pool exhaustion, statement timeout), and the lifespan that
   seeds the DB and starts the background loops. No business logic.
 
 routers/            HTTP surface. Orchestrate services, return schemas. No business logic.
@@ -125,10 +126,14 @@ content_type.py     Classifies a row as game / dlc / soundtrack / demo / mod / u
 schemas.py          Pydantic API schemas only.
 config.py           Every os.getenv call lives here. No other file may read the environment.
 config_validation.py Settings validation; reads no environment itself.
-database.py         Engine + session factory only.
+database.py         Engines + session factories only. Request engine: pool 8+4, 5 s pool timeout, 8 s
+                    statement_timeout. `BackgroundSessionLocal`/`get_long_db`: separate small pool with a
+                    15 min timeout for full-catalog scans (SEO refresh, completeness sweep, rating plan).
 security.py         Admin JWT (require_admin_user).
 account_security.py Normal-account auth (Argon2id passwords, hashed opaque sessions).
-rate_limit.py       slowapi HTTP rate limiting (distinct from integrations/rate_limiter.py).
+rate_limit.py       slowapi HTTP rate limiting (distinct from integrations/rate_limiter.py); keys IPv6 by /64.
+services/login_throttle.py  per-e-mail failed-login limit (10 / 15 min, in process memory).
+services/count_cache.py     5-minute bounded cache for catalog COUNT(*) totals.
 heavy_jobs.py       HEAVY_JOB_LOCK + peak-hour gate shared by all bulk jobs.
 ```
 
@@ -349,7 +354,11 @@ Groq is the default first hop (it is *Groq*, not "Grok"). `ai.py` owns retry pol
 in-flight deduplication, JSON-fence stripping, response validation, and token accounting against
 the rate limiter. Providers raise a sanitized `ProviderFailure` with an `ErrorCategory` — raw
 response bodies never cross that boundary. Failure categories that definitely did not consume
-quota (rate-limited, auth, invalid model, not configured) do not charge the budget.
+quota (rate-limited, auth, invalid model, not configured) do not charge the budget; neither does a
+timeout that fires before the request was dispatched. A 401/403 blocks that provider for 6 hours
+(one `log.error`); a 400 on a `json_object` request counts as `INVALID_RESPONSE` and falls back.
+Providers may define `wait_for_slot()` (Groq's 12 s spacing) — the chain awaits it before reserving
+budget, outside the per-call timeout. `provider_statuses()` carries each provider's last outcome.
 
 Consumers: `services/summarizer/`, `services/catalog_quality/`, `services/endless.py`,
 `services/similarity/ai_rerank.py`. AI work is gated behind deterministic checks first — the AI
@@ -373,7 +382,7 @@ The production host has **1 GB RAM**. Several designs exist only because of it:
 - The single shared `HEAVY_JOB_LOCK`.
 - `STARTUP_CATALOG_MAINTENANCE_ENABLED=false` by default.
 - Compose PostgreSQL is tuned below its 160 MiB cgroup limit (`shared_buffers=64MB`,
-  `work_mem=2MB`, `maintenance_work_mem=32MB`, `max_connections=40`). Keep these aligned with the
+  `work_mem=2MB`, `maintenance_work_mem=32MB`, `max_connections=40`, `effective_cache_size=96MB`, `random_page_cost=1.1`). Keep these aligned with the
   container memory limit if deployment resources change.
 
 ---
@@ -457,7 +466,7 @@ GET  /api/games/{slug}/similar       /series       /trailer
 GET  /api/integrations/status        GET /api/score-weights
 GET  /api/seo/genres                 GET /api/seo/curated/{collection}
 GET  /sitemap.xml  /sitemap-games-{chunk}.xml  /sitemap-static.xml
-POST /api/analytics/page-view  /api/analytics/event                GET /health
+POST /api/analytics/page-view  /api/analytics/event                GET /health  /health/ready
 ```
 
 Accounts (`/api/account`, gated by `require_account_enabled`):
@@ -581,6 +590,7 @@ A new rule never goes in AI.md; a new module never goes in AI_Guidelines.md.
 
 One line per session that changed the architecture. Newest first. Skip purely cosmetic work.
 
+- **2026-11-18** — Backend/ops audit round 2: full-catalog scans run via `anyio.to_thread` on a separate long-timeout pool; request pool 8+4 with 8 s statement timeout and 503 on exhaustion; catalog offset <= 2400 and cached totals; genre filter via GIN containment, `lower(developer|publisher)` indexes (revision 0018); `/health/ready`; AI chain fixes (slot wait, settle, credential block); e-mail sends in BackgroundTasks and per-account login limit; images build only after CI succeeds and without `:latest`; `.deployed-sha`, `ops/notify.sh`, `ops/restore-test.sh`, logrotate, Dependabot, `docs/disaster-recovery.md`.
 - **2026-11-17** — Audit fixes: public `/impressum`, `/privacy`, `/datenschutz` routes (noindex) and `SiteLegalFooter`; `GET /api/account/session` now reports `google_login`; SSR maps backend 429/5xx to 429/503 with `Retry-After`; nginx rate-limits `/game/` (429); sitemaps keep a process-local last-good copy; `/api/integrations/status` is source+status only.
 - **2026-11-16** — Added Cloudflare Web Analytics (cookieless beacon in `root.tsx`, enabled by the `VITE_CF_BEACON_TOKEN` repo variable in production images only; CSP in `nginx.conf`); `deploy-production.sh` now restarts nginx when `nginx.conf` changed (single-file bind mounts go stale after `git pull`).
 - **2026-11-14** — Removed dead code: the in-memory catalog filters (`game_filter.py`, `deduplication/in_memory.py`; filtering is SQL-only in `game_query.py`), the unused `integrations/itad.py` facade; `escape_like` moved to `services/like_escape.py`.

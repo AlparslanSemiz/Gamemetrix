@@ -1,0 +1,53 @@
+# Weekly dependency update PRs, grouped so one ecosystem is one PR instead of a dozen.
+# CI (including pip-audit / npm audit) runs on each; nothing merges itself.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      github-actions:
+        patterns: ["*"]
+
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      npm-minor-and-patch:
+        update-types: [minor, patch]
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: pip
+    directory: /backend
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      pip-minor-and-patch:
+        update-types: [minor, patch]
+    open-pull-requests-limit: 5
+
+  # Dockerfile base images (digest-pinned), one entry per directory that has one.
+  - package-ecosystem: docker
+    directories: [/backend, /frontend]
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      docker-base-images:
+        patterns: ["*"]
+
+  # Image digests in docker-compose.yml (postgres, nginx). The CI postgres service
+  # in .github/workflows/ci.yml is pinned to the same digest by hand: bump both together.
+  - package-ecosystem: docker-compose
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      compose-images:
+        patterns: ["*"]

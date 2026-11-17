@@ -22,9 +22,11 @@ BACKUP_DIR="${BACKUP_DIR:-/var/backups/gamemetrix}"
 KEEP_DAYS="${KEEP_DAYS:-14}"
 BACKUP_REMOTE="${BACKUP_REMOTE:-}"
 LOG_TAG="[gamemetrix-backup]"
+notify="$(dirname "$(readlink -f "$0")")/notify.sh"
 
 log() { echo "$LOG_TAG $(date '+%Y-%m-%d %H:%M:%S') $*"; }
-trap 'log "FAILED at line $LINENO"' ERR
+fail() { log "FAILED: $*"; "$notify" "backup FAILED: $*" || true; exit 1; }
+trap 'log "FAILED at line $LINENO"; "$notify" "backup FAILED at line $LINENO; see /var/log/gamemetrix-backup.log" || true' ERR
 
 exec 9>/tmp/gamemetrix-backup.lock
 if ! flock -n 9; then
@@ -42,14 +44,12 @@ docker exec "$DB_CONTAINER" sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB"
 
 # A truncated or empty dump must never replace a good one.
 if [[ ! -s "$tmp" ]]; then
-  log "dump is empty"
   rm -f "$tmp"
-  exit 1
+  fail "dump is empty"
 fi
 tables=$(docker exec -i "$DB_CONTAINER" pg_restore --list < "$tmp" | grep -c ' TABLE DATA ' || true)
 if [[ "$tables" -lt 1 ]]; then
-  log "dump has no table data, keeping it as $tmp for inspection"
-  exit 1
+  fail "dump has no table data, kept as $tmp for inspection"
 fi
 mv "$tmp" "$file"
 log "wrote $file ($(du -h "$file" | cut -f1), $tables tables)"
@@ -62,3 +62,4 @@ if [[ -n "$BACKUP_REMOTE" ]]; then
 fi
 
 log "done"
+"$notify" --ping backup || true
