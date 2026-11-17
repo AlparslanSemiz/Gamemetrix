@@ -47,6 +47,9 @@ _MAX_REVIEW_COUNT = 2_000_000_000
 _MAX_VALID_SCORE = 100
 _MINUTES_PER_HOUR = 60
 
+# ProtonDB tiers that count as playable on Linux (kept in step with routers/seo.py).
+_LINUX_PLAYABLE_PROTON_TIERS = frozenset({"native", "platinum", "gold", "silver", "bronze"})
+
 # Catalogs that predate the game_modes column still carry the signal in their
 # genre tags, so a mode filter also accepts these equivalents.
 _PLAYER_MODE_GENRE_ALIASES: dict[str, frozenset[str]] = {
@@ -216,7 +219,12 @@ def apply_advanced_filters(query: Select, filters: CatalogFilters) -> Select:
         terms = {filters.platform.lower()}
         if filters.platform.lower() == "steam":
             terms.add("pc")
-        query = query.where(_json_array_match(Game.platforms, terms, substring=True))
+        platform_match = _json_array_match(Game.platforms, terms, substring=True)
+        if filters.platform.lower() == "linux":
+            # "Runs on Linux" means native builds and Proton-playable games, the
+            # same set the /best/linux-games page lists.
+            platform_match = or_(platform_match, Game.proton_tier.in_(_LINUX_PLAYABLE_PROTON_TIERS))
+        query = query.where(platform_match)
     if filters.player_mode:
         query = query.where(or_(
             _json_array_match(Game.game_modes, {filters.player_mode}),

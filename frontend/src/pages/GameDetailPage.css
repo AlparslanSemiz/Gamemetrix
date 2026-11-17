@@ -330,7 +330,7 @@
 
 .dp-score-stats {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
 }
 .dp-score-stats div {
@@ -1650,3 +1650,25 @@
 .dp-related-lazy {
   min-height: 1px;
 }
+
+/* ─── Score: "how is this calculated" disclosure ─────────────────────────── */
+.dp-score-how {
+  margin-top: 10px;
+  color: #9aa3b5;
+  font-size: 0.8rem;
+}
+.dp-score-how summary {
+  cursor: pointer;
+  font-weight: 700;
+  color: #b4bccb;
+}
+.dp-score-how dl {
+  display: flex;
+  gap: 18px;
+  margin: 10px 0 6px;
+}
+.dp-score-how dl div { display: grid; gap: 2px; }
+.dp-score-how dt { font-size: 0.66rem; font-weight: 800; text-transform: uppercase; color: #697386; }
+.dp-score-how dd { margin: 0; color: #eef2ff; font-weight: 800; }
+.dp-score-how p { margin: 6px 0 0; line-height: 1.5; }
+.dp-score-how a { color: #a78bfa; text-decoration: underline; }
