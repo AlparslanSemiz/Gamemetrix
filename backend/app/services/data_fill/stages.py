@@ -24,7 +24,8 @@ from ...integrations.rate_limiter import get_rate_limiter
 from ...integrations.rawg import import_catalog_to_size
 from ...integrations.steamspy import import_steamspy_games
 from ...integrations.steam_catalog import import_steam_official_catalog
-from ...integrations.sync import game_needs_rating_refresh, refresh_game_sources
+from ...integrations.sync import refresh_game_sources
+from ...integrations.sync.priority import top_refresh_candidates
 from ...models import Game
 from ..catalog_quality import catalog_quality_batch, catalog_repair_batch
 from ..endless import backfill_endless_batch
@@ -159,33 +160,32 @@ def _rating_refresh_candidates(force: bool, limit: int) -> list[int]:
                 .limit(limit)
             ).all())
 
-        # Only the ids survive this scan, so the rows are streamed and detached as
-        # they are checked. Materialising the whole catalog here held every Game
+        # Only (priority, id) pairs survive this scan, so rows are streamed and detached
+        # as they are scored. Materialising the whole catalog here held every Game
         # object in the identity map at once and helped OOM the backend container.
-        now = datetime.now(UTC)
-        game_ids: list[int] = []
-        for game in db.scalars(
-            select(Game)
-            .where(Game.content_type == "game")
-            .options(
-                load_only(
-                    Game.id,
-                    Game.platforms,
-                    Game.source_scores,
-                    Game.ratings_refreshed_at,
-                    Game.data_complete,
-                ),
-                noload(Game.price_snapshots),
-            )
-            .order_by(desc(Game.rank_score), desc(Game.metrix_score))
-            .execution_options(yield_per=RATING_SCAN_CHUNK)
-        ):
-            if game_needs_rating_refresh(game, now):
-                game_ids.append(game.id)
-            db.expunge(game)
-            if len(game_ids) >= limit:
-                break
-        return game_ids
+        # The budget goes to popularity x recency x missing sources first.
+        return top_refresh_candidates(
+            db.scalars(
+                select(Game)
+                .where(Game.content_type == "game")
+                .options(
+                    load_only(
+                        Game.id,
+                        Game.metrix_score,
+                        Game.rank_score,
+                        Game.platforms,
+                        Game.source_scores,
+                        Game.release_date,
+                        Game.ratings_refreshed_at,
+                        Game.data_complete,
+                    ),
+                    noload(Game.price_snapshots),
+                )
+                .execution_options(yield_per=RATING_SCAN_CHUNK)
+            ),
+            limit=limit,
+            release=db.expunge,
+        )
 
 
 async def fill_ratings(*, force: bool) -> dict[str, int]:

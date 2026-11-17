@@ -19,7 +19,7 @@ import asyncio
 import logging
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import asc, desc, select, update
+from sqlalchemy import asc, desc, func, select, update
 from sqlalchemy.orm import Session, load_only, noload
 
 from ..config import get_settings
@@ -28,6 +28,7 @@ from ..heavy_jobs import HEAVY_JOB_LOCK
 from ..models import Game, VisitEvent
 from ..integrations.hltb import backfill_hltb_playtimes
 from ..integrations.sync import game_needs_rating_refresh, refresh_game_sources
+from ..integrations.sync.priority import top_refresh_candidates
 from ..integrations.steam import get_steam_release_dates, resolve_steam_app_id
 from .endless import backfill_endless_batch
 from .job_heartbeat import record_job_run
@@ -43,37 +44,34 @@ _RETENTION_INTERVAL_SECONDS = 6 * 60 * 60
 _CATALOG_SCAN_CHUNK = 500
 
 
+_PRIORITY_COLUMNS = (
+    Game.id,
+    Game.metrix_score,
+    Game.rank_score,
+    Game.platforms,
+    Game.source_scores,
+    Game.release_date,
+    Game.ratings_refreshed_at,
+    Game.data_complete,
+)
+
+
 def rating_refresh_candidates(db: Session, *, limit: int | None = None) -> list[Game]:
-    """Return stale games in refresh priority order using a bounded DB stream."""
-    now = datetime.now(UTC)
-    stale: list[Game] = []
-    games = db.scalars(
-        select(Game)
-        .order_by(
-            Game.ratings_refreshed_at.asc().nulls_first(),
-            Game.metrix_score.desc(),
-        )
-        .execution_options(yield_per=_CATALOG_SCAN_CHUNK)
+    """Return stale games in budget-priority order (see integrations/sync/priority.py)."""
+    ids = top_refresh_candidates(
+        db.scalars(
+            select(Game)
+            .where(Game.content_type == "game")
+            .options(load_only(*_PRIORITY_COLUMNS), noload(Game.price_snapshots))
+            .execution_options(yield_per=_CATALOG_SCAN_CHUNK)
+        ),
+        limit=limit,
+        release=db.expunge,
     )
-    for game in games:
-        if game_needs_rating_refresh(game, now):
-            stale.append(game)
-            if limit is not None and len(stale) >= limit:
-                break
-    return stale
-
-
-def _refresh_priority_key(game: Game) -> tuple[int, float, float]:
-    return (game.ratings_refreshed_at is not None, _refreshed_timestamp(game), -game.metrix_score)
-
-
-def _refreshed_timestamp(game: Game) -> float:
-    if game.ratings_refreshed_at is None:
-        return 0.0
-    ts = game.ratings_refreshed_at
-    if ts.tzinfo is None:
-        ts = ts.replace(tzinfo=UTC)
-    return ts.timestamp()
+    if not ids:
+        return []
+    by_id = {game.id: game for game in db.scalars(select(Game).where(Game.id.in_(ids))).all()}
+    return [by_id[game_id] for game_id in ids if game_id in by_id]
 
 
 def _rating_refresh_plan(force: bool) -> tuple[list[int], int]:
@@ -89,33 +87,18 @@ def _rating_refresh_plan(force: bool) -> tuple[list[int], int]:
             )
             return ids, len(ids)
 
-        now = datetime.now(UTC)
-        candidates: list[tuple[tuple[int, float, float], int]] = []
-        total = 0
-        games = db.scalars(
-            select(Game)
-            .where(Game.content_type == "game")
-            .options(
-                load_only(
-                    Game.id,
-                    Game.metrix_score,
-                    Game.platforms,
-                    Game.source_scores,
-                    Game.ratings_refreshed_at,
-                    Game.data_complete,
-                ),
-                noload(Game.price_snapshots),
-            )
-            .execution_options(yield_per=_CATALOG_SCAN_CHUNK)
+        total = db.scalar(select(func.count()).select_from(Game).where(Game.content_type == "game")) or 0
+        ids = top_refresh_candidates(
+            db.scalars(
+                select(Game)
+                .where(Game.content_type == "game")
+                .options(load_only(*_PRIORITY_COLUMNS), noload(Game.price_snapshots))
+                .execution_options(yield_per=_CATALOG_SCAN_CHUNK)
+            ),
+            limit=None,
+            release=db.expunge,
         )
-        for game in games:
-            total += 1
-            if game_needs_rating_refresh(game, now):
-                candidates.append((_refresh_priority_key(game), game.id))
-            db.expunge(game)
-
-    candidates.sort(key=lambda row: row[0])
-    return [game_id for _priority, game_id in candidates], total
+    return ids, total
 
 
 # Shared with app/routers/imports.py — see app/heavy_jobs.py. Ensures an

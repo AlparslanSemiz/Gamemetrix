@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from ...models import ExternalId, Game
 from .fetching import build_fetch_tasks
 from .persistence import persist_source_records
+from .priority import refresh_counts
 from .ranking import update_derived_scores
 from .scoring import calculate_metrix_score
 from .serialization import merge_source_scores
@@ -59,7 +60,10 @@ async def refresh_game_sources(
 
     game.source_scores = merge_source_scores(game.source_scores, fresh_scores)
     game.metrix_score = calculate_metrix_score(game.source_scores)
-    game.ratings_refreshed_at = datetime.now(UTC)
+    if refresh_counts(fresh_scores):
+        # Budget exhaustion / missing config / transport errors are not an answer:
+        # stamping them would hide a still-unscored game until the TTL expires.
+        game.ratings_refreshed_at = datetime.now(UTC)
     update_derived_scores(game, fresh_scores)
     persist_source_records(db, game, fresh_scores)
 
