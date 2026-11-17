@@ -11,11 +11,13 @@ Public API:
   build_catalog_count_query(...)          -> Select[tuple[int]]
   apply_advanced_filters(query, filters)  -> Select
   apply_sort(query, sort, direction)      -> Select[tuple[Game]]
+  resolve_genre(db, raw)                  -> stored spelling of a genre filter
   json_array_values_statement(column)     -> Select[tuple[str]]
   build_platform_filters(platforms)       -> set[str]
 """
 
 import datetime
+import time
 from dataclasses import dataclass
 
 from sqlalchemy import (
@@ -23,6 +25,7 @@ from sqlalchemy import (
     ColumnElement,
     Float,
     Select,
+    Text,
     and_,
     asc,
     case,
@@ -35,6 +38,7 @@ from sqlalchemy import (
     true,
 )
 from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.orm import Session
 from sqlalchemy.sql.expression import TableValuedAlias
 
 from ..integrations.source_registry import CRITIC_SOURCES, PC_PLATFORM_KEYS, PRIMARY_SOURCES
@@ -207,7 +211,13 @@ def apply_sort(query: Select[tuple[Game]], sort: str, direction: str) -> Select[
 
 def apply_advanced_filters(query: Select, filters: CatalogFilters) -> Select:
     if filters.genre:
-        query = query.where(_json_array_match(Game.genres, {filters.genre.strip().lower()}))
+        # Containment on the cast expression is served by ix_games_genres_gin; the
+        # caller passes the canonical stored spelling (see resolve_genre).
+        query = query.where(
+            cast(Game.genres, JSONB).op("@>")(
+                func.jsonb_build_array(cast(filters.genre.strip(), Text))
+            )
+        )
     if filters.developer:
         query = query.where(func.lower(Game.developer) == filters.developer.lower())
     if filters.publisher:
@@ -321,6 +331,35 @@ def _has_live_critic_expression() -> ColumnElement[bool]:
     return exists(
         select(1).select_from(rows).where(and_(valid, item["source"].astext.in_(CRITIC_SOURCES)))
     ).correlate(Game)
+
+
+_GENRE_LOOKUP_TTL = 300.0
+_GENRE_LOOKUP_MISS_REFRESH = 60.0
+_genre_lookup: dict[str, str] = {}
+_genre_lookup_at = 0.0
+
+
+def resolve_genre(db: Session, raw: str | None) -> str | None:
+    """Map a user-typed genre to the stored spelling so the GIN containment index applies.
+
+    The stored values keep their original case ("FPS", "Role-Playing"), while filters
+    arrive in any case. Unknown genres are returned unchanged and simply match nothing.
+    """
+    global _genre_lookup, _genre_lookup_at
+    if not raw or not raw.strip():
+        return raw
+    now = time.monotonic()
+    wanted = raw.strip()
+    age = now - _genre_lookup_at
+    # Rebuild when stale, and also on a miss once the map is at least a minute old, so a
+    # brand-new genre does not stay unfilterable for the whole TTL.
+    if not _genre_lookup or age > _GENRE_LOOKUP_TTL or (
+        wanted.lower() not in _genre_lookup and age > _GENRE_LOOKUP_MISS_REFRESH
+    ):
+        values = db.scalars(json_array_values_statement(Game.genres)).all()
+        _genre_lookup = {value.lower(): value for value in values}
+        _genre_lookup_at = now
+    return _genre_lookup.get(wanted.lower(), wanted)
 
 
 def json_array_values_statement(column: ColumnElement) -> Select[tuple[str]]:

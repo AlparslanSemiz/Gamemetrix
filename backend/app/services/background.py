@@ -15,6 +15,7 @@ Public API:
   raw_analytics_retention_loop()               -> Awaitable[None]  (runs forever; cancel to stop)
 """
 
+import anyio
 import asyncio
 import logging
 from datetime import UTC, datetime, timedelta
@@ -23,7 +24,7 @@ from sqlalchemy import asc, desc, select, update
 from sqlalchemy.orm import Session, load_only, noload
 
 from ..config import get_settings
-from ..database import SessionLocal
+from ..database import BackgroundSessionLocal, SessionLocal
 from ..heavy_jobs import HEAVY_JOB_LOCK
 from ..models import Game, VisitEvent
 from ..integrations.hltb import backfill_hltb_playtimes
@@ -76,9 +77,22 @@ def _refreshed_timestamp(game: Game) -> float:
     return ts.timestamp()
 
 
+def _refresh_seo_states(db: Session | None = None) -> None:
+    """Full-catalog SEO pass; blocking, so callers run it off the event loop."""
+    from .seo import refresh_catalog_seo_states
+
+    if db is not None:
+        refresh_catalog_seo_states(db)
+        db.commit()
+        return
+    with BackgroundSessionLocal() as own_db:
+        refresh_catalog_seo_states(own_db)
+        own_db.commit()
+
+
 def _rating_refresh_plan(force: bool) -> tuple[list[int], int]:
     """Return ordered candidate ids without retaining the full catalog in memory."""
-    with SessionLocal() as db:
+    with BackgroundSessionLocal() as db:
         if force:
             ids = list(
                 db.scalars(
@@ -141,7 +155,7 @@ async def refresh_all_games(
         return {"enriched": 0, "skipped": 0, "status": "already_running"}  # type: ignore[return-value]
 
     async with _REFRESH_ALL_LOCK:
-        game_ids, total_games = _rating_refresh_plan(force)
+        game_ids, total_games = await anyio.to_thread.run_sync(_rating_refresh_plan, force)
         game_id_iterator = iter(game_ids)
         now = datetime.now(UTC)
 
@@ -184,10 +198,7 @@ async def refresh_all_games(
         skipped = total_games - enriched
 
         if enriched:
-            with SessionLocal() as db:
-                from .seo import refresh_catalog_seo_states
-                refresh_catalog_seo_states(db)
-                db.commit()
+            await anyio.to_thread.run_sync(_refresh_seo_states)
 
         log.info("refresh_all_games done: %d refreshed, %d skipped", enriched, skipped)
         return {"enriched": enriched, "skipped": skipped}
@@ -209,9 +220,7 @@ async def refresh_rating_batch(limit: int) -> dict[str, int]:
             )
             enriched += 1
         if enriched:
-            from .seo import refresh_catalog_seo_states
-            refresh_catalog_seo_states(db)
-            db.commit()
+            await anyio.to_thread.run_sync(_refresh_seo_states, db)
     return {"enriched": enriched, "skipped": skipped}
 
 

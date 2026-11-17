@@ -95,8 +95,18 @@ async def get_similar_games(
     pool_size = max(limit, cfg.SIMILARITY_AI_POOL) if cfg.SIMILARITY_USE_AI else limit
     ranked_slugs = await cached_similar_slugs(game.slug, pool_size)
     candidates = await run_in_threadpool(games_by_slugs, db, ranked_slugs)
+    # The AI re-rank can wait seconds on a provider. Do not hold a pooled connection
+    # for that long: release it now and re-select the final slugs in a short session.
+    db.close()
     similar = await rerank_with_ai(game, candidates, limit)
-    return SimilarGamesResponse(games=similar, total=len(similar))
+    final_slugs = [item.slug for item in similar]
+    return await run_in_threadpool(_similar_response, final_slugs)
+
+
+def _similar_response(slugs: list[str]) -> SimilarGamesResponse:
+    with SessionLocal() as short_db:
+        games = games_by_slugs(short_db, slugs)
+        return SimilarGamesResponse(games=games, total=len(games))
 
 
 @router.get("/api/games/{slug}/series", response_model=SeriesResponse)
@@ -125,8 +135,10 @@ async def get_trailer(
     slug: SlugPath,
     db: Session = Depends(get_db),
 ) -> dict[str, str | None]:
-    game = get_game_or_404(db, slug)
-    video_id = await cached_trailer_video_id(game.slug, game.title)
+    game = await run_in_threadpool(get_game_or_404, db, slug)
+    game_slug, game_title = game.slug, game.title
+    db.close()
+    video_id = await cached_trailer_video_id(game_slug, game_title)
     return {
         "video_id": video_id,
         "watch_url": f"{_YOUTUBE_WATCH_URL}{video_id}" if video_id else None,

@@ -4,15 +4,18 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, Response
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 from slowapi import _rate_limit_exceeded_handler
-from sqlalchemy import select
+from sqlalchemy import exists, select, text
+from sqlalchemy.exc import DBAPIError
+from sqlalchemy.exc import TimeoutError as PoolTimeoutError
 
 from sqlalchemy.orm import Session
 from .config import get_settings
-from .database import SessionLocal
+from .database import BackgroundSessionLocal, SessionLocal
 from .rate_limit import limiter
 from .integrations.sync import calculate_metrix_score, compute_rank_fields
 from .content_type import infer_content_type_with_parent
@@ -111,7 +114,7 @@ async def _background_startup() -> None:
     loop = asyncio.get_event_loop()
     try:
         def _classify() -> None:
-            with SessionLocal() as db:
+            with BackgroundSessionLocal() as db:
                 _seed_and_classify(db)
         await loop.run_in_executor(None, _classify)
     except Exception:
@@ -187,6 +190,32 @@ def _rate_limited(request: Request, exc: RateLimitExceeded) -> Response:
 
 
 app.add_exception_handler(RateLimitExceeded, _rate_limited)
+
+_BUSY_RETRY_AFTER = "5"
+
+
+def _busy_response() -> JSONResponse:
+    return JSONResponse(
+        status_code=503,
+        content={"detail": "The database is busy. Please retry shortly."},
+        headers={"Retry-After": _BUSY_RETRY_AFTER},
+    )
+
+
+@app.exception_handler(PoolTimeoutError)
+async def _pool_exhausted(_request: Request, exc: PoolTimeoutError) -> JSONResponse:
+    """Every pooled connection is busy: shed load with a retryable 503, not a 500."""
+    log.warning("Connection pool exhausted: %s", exc)
+    return _busy_response()
+
+
+@app.exception_handler(DBAPIError)
+async def _statement_timeout(_request: Request, exc: DBAPIError) -> JSONResponse:
+    """A statement hit statement_timeout (SQLSTATE 57014): also a retryable 503."""
+    if getattr(exc.orig, "sqlstate", None) == "57014":
+        log.warning("Statement timeout: %s", str(exc.statement)[:200])
+        return _busy_response()
+    raise exc
 app.add_middleware(SlowAPIMiddleware)
 
 app.add_middleware(
@@ -221,3 +250,18 @@ app.include_router(admin.router)
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/health/ready")
+def health_ready() -> JSONResponse:
+    """Readiness: the database answers and the catalog is not empty."""
+    try:
+        with SessionLocal() as db:
+            db.execute(text("SELECT 1"))
+            has_games = bool(db.scalar(select(exists().where(Game.id.is_not(None)))))
+    except Exception:
+        log.exception("Readiness check failed")
+        return JSONResponse(status_code=503, content={"status": "unavailable", "database": False})
+    if not has_games:
+        return JSONResponse(status_code=503, content={"status": "empty-catalog", "database": True})
+    return JSONResponse(content={"status": "ok", "database": True})

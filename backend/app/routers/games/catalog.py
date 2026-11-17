@@ -19,6 +19,7 @@ from ...schemas import (
     GameSort,
     SortDirection,
 )
+from ...services.count_cache import cached_count, count_cache_key
 from ...services.game_query import (
     CatalogFilters,
     apply_advanced_filters,
@@ -26,11 +27,16 @@ from ...services.game_query import (
     build_catalog_query,
     build_platform_filters,
     json_array_values_statement,
+    resolve_genre,
 )
 from ._common import ContentTypeFilter, DealFilter, PlayerModeFilter
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+# Deep offsets cost seconds on 50k rows; nobody pages 2400 deep. Crawlers get a 422.
+MAX_CATALOG_OFFSET = 2400
+MAX_GAMES_LIMIT = 50
 
 _FACETS_TTL = 300.0  # 5 minutes
 # Studio dropdown stays usable — the long tail of one-game developers is not offered.
@@ -66,11 +72,11 @@ def list_games(
     deal: DealFilter = Query(default="all"),
     sort: GameSort = "rank_score",
     direction: SortDirection = "desc",
-    limit: int = Query(default=120, ge=1, le=500),
-    offset: int = Query(default=0, ge=0, le=1_000_000),
+    limit: int = Query(default=50, ge=1, le=MAX_GAMES_LIMIT),
+    offset: int = Query(default=0, ge=0, le=MAX_CATALOG_OFFSET),
 ) -> GameListResponse:
     advanced = CatalogFilters(
-        genre=genre,
+        genre=resolve_genre(db, genre),
         developer=developer,
         publisher=publisher,
         platform=platform,
@@ -97,7 +103,10 @@ def list_games(
         selectinload(Game.price_snapshots) if deal != "all" else noload(Game.price_snapshots)
     )
 
-    total = db.scalar(count_q) or 0
+    total = cached_count(
+        count_cache_key("games", request.query_params.multi_items()),
+        lambda: db.scalar(count_q) or 0,
+    )
     page_q = base_q.options(price_options).offset(offset).limit(limit)
     return GameListResponse(games=list(db.scalars(page_q).all()), total=total)
 

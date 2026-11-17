@@ -5,7 +5,9 @@ from __future__ import annotations
 import asyncio
 import logging
 
-from ...database import SessionLocal
+import anyio
+
+from ...database import BackgroundSessionLocal, SessionLocal
 from ...heavy_jobs import HEAVY_JOB_LOCK
 from ...models import Game
 from ..seo import refresh_catalog_seo_states
@@ -64,9 +66,19 @@ class _BatchTally:
             self.budget_skipped[source] = self.budget_skipped.get(source, 0) + 1
 
 
-async def _run_batch(*, limit: int, inter_game_delay: float, refresh_seo: bool) -> dict[str, object]:
+def _candidate_ids(limit: int) -> list[int]:
     with SessionLocal() as db:
-        candidate_ids = [game.id for game in metadata_backfill_candidates(db, limit=limit)]
+        return [game.id for game in metadata_backfill_candidates(db, limit=limit)]
+
+
+def _refresh_seo_states() -> None:
+    with BackgroundSessionLocal() as db:
+        refresh_catalog_seo_states(db)
+        db.commit()
+
+
+async def _run_batch(*, limit: int, inter_game_delay: float, refresh_seo: bool) -> dict[str, object]:
+    candidate_ids = await anyio.to_thread.run_sync(_candidate_ids, limit)
 
     tally = _BatchTally()
     for game_id in candidate_ids:
@@ -75,9 +87,7 @@ async def _run_batch(*, limit: int, inter_game_delay: float, refresh_seo: bool) 
         await _process_candidate(game_id, tally)
 
     if tally.changed and refresh_seo:
-        with SessionLocal() as db:
-            refresh_catalog_seo_states(db)
-            db.commit()
+        await anyio.to_thread.run_sync(_refresh_seo_states)
 
     log.info(
         "metadata_backfill_batch done: %d enriched, %d changed, %d skipped, %d failed",

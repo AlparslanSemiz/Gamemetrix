@@ -16,15 +16,19 @@ from ...schemas import (
     SortDirection,
 )
 from ...services.catalog_projection import catalog_load_options
+from ...services.count_cache import cached_count, count_cache_key
 from ...services.game_query import (
     CatalogFilters,
+    resolve_genre,
     apply_advanced_filters,
     build_catalog_count_query,
     build_catalog_query,
 )
 from ._common import ContentTypeFilter, DealFilter, PlayerModeFilter
+from .catalog import MAX_CATALOG_OFFSET
 
 router = APIRouter()
+MAX_CATALOG_LIMIT = 100
 
 
 @router.get("/api/catalog/games", response_model=CatalogGameListResponse)
@@ -53,11 +57,11 @@ def list_catalog_games(
     deal: DealFilter = Query(default="all"),
     sort: GameSort = "rank_score",
     direction: SortDirection = "desc",
-    limit: int = Query(default=24, ge=1, le=500),
-    offset: int = Query(default=0, ge=0, le=1_000_000),
+    limit: int = Query(default=24, ge=1, le=MAX_CATALOG_LIMIT),
+    offset: int = Query(default=0, ge=0, le=MAX_CATALOG_OFFSET),
 ) -> CatalogGameListResponse:
     advanced = CatalogFilters(
-        genre=genre,
+        genre=resolve_genre(db, genre),
         developer=developer,
         publisher=publisher,
         platform=platform,
@@ -106,7 +110,10 @@ def list_catalog_games(
     )
     return CatalogGameListResponse(
         games=[CatalogGameRead.model_validate(game) for game in games],
-        total=db.scalar(count_query) or 0,
+        total=cached_count(
+            count_cache_key("catalog", request.query_params.multi_items()),
+            lambda: db.scalar(count_query) or 0,
+        ),
     )
 
 

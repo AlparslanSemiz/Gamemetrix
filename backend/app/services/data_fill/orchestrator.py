@@ -1,10 +1,11 @@
 """Runs every fill stage in order under the heavy-job lock, recording the result."""
 
+import anyio
 import asyncio
 import logging
 
 from ...config import get_settings
-from ...database import SessionLocal
+from ...database import BackgroundSessionLocal, SessionLocal
 from ...heavy_jobs import HEAVY_JOB_LOCK
 from ..job_heartbeat import record_job_run
 from ..seo import refresh_catalog_seo_states
@@ -132,9 +133,9 @@ async def _run_all_stages(
     result["prices"] = await fill_prices()
     save_run_progress(run_id, result)
 
-    result["completeness"] = _sweep_completeness()
+    result["completeness"] = await anyio.to_thread.run_sync(_sweep_completeness)
     save_run_progress(run_id, result)
-    result["seo"] = _refresh_seo()
+    result["seo"] = await anyio.to_thread.run_sync(_refresh_seo)
     save_run_progress(run_id, result)
     result["external_ids"] = _external_id_summary(before_missing)
     save_run_progress(run_id, result)
@@ -143,12 +144,12 @@ async def _run_all_stages(
 def _sweep_completeness() -> dict[str, object]:
     from ..completeness import sweep_data_complete
 
-    with SessionLocal() as db:
+    with BackgroundSessionLocal() as db:
         return sweep_data_complete(db)
 
 
 def _refresh_seo() -> dict[str, object]:
-    with SessionLocal() as db:
+    with BackgroundSessionLocal() as db:
         summary = refresh_catalog_seo_states(db)
         db.commit()
         return summary

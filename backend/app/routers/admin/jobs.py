@@ -4,13 +4,15 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+import anyio
+
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ...config import Settings, get_settings
 from ...content_type import infer_content_type_with_parent
-from ...database import SessionLocal, get_db
+from ...database import BackgroundSessionLocal, SessionLocal, get_db, get_long_db
 from ...heavy_jobs import HEAVY_JOB_LOCK
 from ...integrations.ai import provider_statuses
 from ...models import Game
@@ -151,15 +153,19 @@ async def _execute_primary_scores_run(*, force: bool, limit: int) -> None:
             inter_game_delay=cfg.DATA_FILL_INTER_GAME_DELAY,
         )
         if int(result.get("refreshed_games", 0)):
-            with SessionLocal() as db:
-                refresh_catalog_seo_states(db)
-                db.commit()
+            await anyio.to_thread.run_sync(_refresh_seo_states)
+
+
+def _refresh_seo_states() -> None:
+    with BackgroundSessionLocal() as db:
+        refresh_catalog_seo_states(db)
+        db.commit()
 
 
 @router.post("/consolidate")
 def admin_consolidate(
     dry_run: bool = Query(default=False, description="Report what would merge without writing."),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_long_db),
 ) -> dict:
     """Reclassify games by inferred content_type, then merge duplicate rows."""
     if dry_run:
