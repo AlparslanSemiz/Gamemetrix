@@ -36,7 +36,9 @@ from .services.background import (
     summary_audit_loop,
 )
 from .services.data_fill import data_fill_loop, recover_interrupted_runs
+from .services.data_maintenance import duplicate_consolidation_loop
 from .services.deduplication import consolidate_duplicate_games
+from .services.protondb_refresh import protondb_refresh_loop
 from .services.seo import refresh_catalog_seo_states
 from .services.notification_digest import notification_digest_loop
 from .services.job_heartbeat import recover_interrupted_job_runs
@@ -142,6 +144,8 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     data_fill_task = asyncio.create_task(data_fill_loop())
     notification_task = asyncio.create_task(notification_digest_loop())
     retention_task = asyncio.create_task(raw_analytics_retention_loop())
+    duplicate_task = asyncio.create_task(duplicate_consolidation_loop())
+    proton_task = asyncio.create_task(protondb_refresh_loop())
     try:
         yield
     finally:
@@ -154,9 +158,12 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         data_fill_task.cancel()
         notification_task.cancel()
         retention_task.cancel()
+        duplicate_task.cancel()
+        proton_task.cancel()
         for task in (
             startup_task, refresh_task, metadata_task, hltb_task,
             summary_task, endless_task, data_fill_task, notification_task, retention_task,
+            duplicate_task, proton_task,
         ):
             try:
                 await task

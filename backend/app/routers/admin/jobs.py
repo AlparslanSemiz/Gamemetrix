@@ -36,6 +36,8 @@ def _job_schedule(cfg: Settings) -> dict[str, int]:
         "hltb_backfill": int(cfg.HLTB_BACKFILL_INTERVAL_MINUTES * 60),
         "summary_backfill": int(cfg.SUMMARY_SHORTEN_INTERVAL_MINUTES * 60),
         "endless_backfill": int(cfg.ENDLESS_BACKFILL_INTERVAL_MINUTES * 60),
+        "duplicate_consolidation": int(cfg.DUPLICATE_CONSOLIDATION_INTERVAL_HOURS * 3600),
+        "protondb_refresh": int(min(cfg.PROTONDB_REFRESH_INTERVAL_HOURS, 24) * 3600),
     }
 
 

@@ -4,9 +4,10 @@ from collections import defaultdict
 from typing import Protocol
 
 from sqlalchemy import delete, select, update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
-from ...models import ExternalId, Game, PriceSnapshot, RatingSnapshot
+from ...models import ExternalId, Game, PriceSnapshot, RatingSnapshot, SlugRedirect
 from .matching import duplicate_key, duplicate_quality_key, games_are_duplicates
 from .merge import merge_game_data
 
@@ -173,14 +174,37 @@ def _describe(game: Game) -> dict[str, object]:
     }
 
 
-def consolidate_duplicate_games(db: Session) -> dict[str, int]:
+def duplicate_group_game_ids(db: Session) -> list[int]:
+    """Every game id that sits in a duplicate group (used to verify Steam ids first)."""
+    return [game.id for group in find_duplicate_groups(db) for game in group]
+
+
+def consolidate_duplicate_games(db: Session, *, dry_run: bool = False) -> dict[str, object]:
+    """Merge duplicate groups into their best row, leaving 301 redirects behind.
+
+    `dry_run=True` changes nothing and returns the groups it would merge. Steam ids
+    only travel from a duplicate to the keeper when they are verified; callers that
+    want ids verified before merging run `audit_steam_ids` on `duplicate_group_game_ids`.
+    """
+    groups = find_duplicate_groups(db)
+    if dry_run:
+        previews = [_preview_group(group) for group in groups]
+        return {
+            "dry_run": True,
+            "merged_groups": len(previews),
+            "removed": sum(len(item["duplicates"]) for item in previews),  # type: ignore[arg-type]
+            "groups": previews,
+        }
+
     removed = 0
     merged_groups = 0
-    for group in find_duplicate_groups(db):
+    for group in groups:
         keeper = max(group, key=duplicate_quality_key)
         for duplicate in (item for item in group if item.id != keeper.id):
             merge_game_data(keeper, duplicate)
+            _inherit_verified_steam_id(db, keeper, duplicate)
             _reassign_related_rows(db, keeper.id, duplicate.id)
+            _record_slug_redirect(db, keeper, duplicate)
             # The session runs with autoflush=False, so the ExternalId re-parenting
             # above is still pending here. Flush it before the Core DELETE — its
             # ON DELETE CASCADE would otherwise remove those rows first and the
@@ -192,17 +216,56 @@ def consolidate_duplicate_games(db: Session) -> dict[str, int]:
         merged_groups += 1
 
     db.commit()
-    return {"merged_groups": merged_groups, "removed": removed}
+    return {"dry_run": False, "merged_groups": merged_groups, "removed": removed}
+
+
+def _preview_group(group: list[Game]) -> dict[str, object]:
+    keeper = max(group, key=duplicate_quality_key)
+    return {
+        "keeper": _describe(keeper),
+        "duplicates": [_describe(item) for item in group if item.id != keeper.id],
+    }
+
+
+def _inherit_verified_steam_id(db: Session, keeper: Game, duplicate: Game) -> None:
+    """Carry the duplicate's Steam id over only when appdetails verified it."""
+    if keeper.steam_app_id is None and duplicate.steam_app_id is not None and duplicate.steam_app_id_verified_at:
+        keeper.steam_app_id = duplicate.steam_app_id
+        keeper.steam_app_id_verified_at = duplicate.steam_app_id_verified_at
+
+
+def _record_slug_redirect(db: Session, keeper: Game, duplicate: Game) -> None:
+    """Old slug -> keeper (301), and re-point redirects that already led to the duplicate."""
+    db.execute(update(SlugRedirect).where(SlugRedirect.game_id == duplicate.id).values(game_id=keeper.id))
+    if duplicate.slug and duplicate.slug != keeper.slug:
+        db.execute(
+            pg_insert(SlugRedirect)
+            .values(old_slug=duplicate.slug, game_id=keeper.id)
+            .on_conflict_do_update(index_elements=[SlugRedirect.old_slug], set_={"game_id": keeper.id})
+        )
 
 
 def _reassign_related_rows(db: Session, keeper_id: int, duplicate_id: int) -> None:
     # ExternalId: skip rows where (game_id=keeper, source, external_id) already exists
+    keeper = db.get(Game, keeper_id)
     existing_ext = db.scalars(select(ExternalId).where(ExternalId.game_id == keeper_id)).all()
     existing_keys = {(e.source, e.external_id) for e in existing_ext}
     for ext in db.scalars(select(ExternalId).where(ExternalId.game_id == duplicate_id)).all():
         if (ext.source, ext.external_id) in existing_keys:
             db.delete(ext)
+        elif ext.source == "Steam" and not _steam_external_id_may_move(keeper, ext):
+            # An unverified (or conflicting) Steam id must not be re-parented onto the keeper.
+            db.delete(ext)
         else:
             ext.game_id = keeper_id
     for model in (RatingSnapshot, PriceSnapshot):
         db.execute(update(model).where(model.game_id == duplicate_id).values(game_id=keeper_id))
+
+
+def _steam_external_id_may_move(keeper: Game | None, ext: ExternalId) -> bool:
+    return (
+        keeper is not None
+        and keeper.steam_app_id is not None
+        and keeper.steam_app_id_verified_at is not None
+        and str(keeper.steam_app_id) == ext.external_id
+    )

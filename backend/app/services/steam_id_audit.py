@@ -7,7 +7,7 @@ and the game lands on the admin review queue. Outages never count as refutation.
 """
 
 import asyncio
-from collections.abc import Awaitable, Callable, Iterator
+from collections.abc import Awaitable, Callable, Collection, Iterator
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
@@ -63,8 +63,17 @@ class AuditReport:
             self.findings.append(finding)
 
 
-def _candidates(db: Session, *, limit: int | None, after_id: int, reverify_days: int | None) -> Iterator[Game]:
+def _candidates(
+    db: Session,
+    *,
+    limit: int | None,
+    after_id: int,
+    reverify_days: int | None,
+    game_ids: Collection[int] | None = None,
+) -> Iterator[Game]:
     stmt = select(Game).where(Game.steam_app_id.is_not(None), Game.id > after_id)
+    if game_ids is not None:
+        stmt = stmt.where(Game.id.in_(list(game_ids)))
     if reverify_days is not None:
         cutoff = datetime.now(UTC) - timedelta(days=reverify_days)
         stmt = stmt.where(
@@ -130,6 +139,7 @@ async def audit_steam_ids(
     reverify_days: int | None = DEFAULT_REVERIFY_DAYS,
     fetcher: Fetcher | None = None,
     commit_every: int = 25,
+    game_ids: Collection[int] | None = None,
 ) -> AuditReport:
     report = AuditReport(apply=apply)
     owned: httpx.AsyncClient | None = None
@@ -142,7 +152,9 @@ async def audit_steam_ids(
 
     consecutive_errors = 0
     try:
-        for index, game in enumerate(_candidates(db, limit=limit, after_id=after_id, reverify_days=reverify_days)):
+        for index, game in enumerate(_candidates(
+            db, limit=limit, after_id=after_id, reverify_days=reverify_days, game_ids=game_ids
+        )):
             if index and delay_seconds > 0:
                 await asyncio.sleep(delay_seconds)
             app_id = int(game.steam_app_id or 0)

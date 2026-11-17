@@ -56,7 +56,7 @@ _PLAYER_MODE_GENRE_ALIASES: dict[str, frozenset[str]] = {
     "singleplayer": frozenset({"single player", "singleplayer"}),
 }
 
-_PROTON_PLAYABLE_TIERS = ("platinum", "gold", "silver")
+_PROTON_PLAYABLE_TIERS = ("native", "platinum", "gold", "silver")
 
 _SOURCE_SORT_COLUMNS: dict[str, str] = {
     "metacritic_score": "Metacritic",

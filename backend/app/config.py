@@ -296,6 +296,16 @@ class Settings:
         self.HLTB_BACKFILL_INTERVAL_MINUTES: float = _env_float("HLTB_BACKFILL_INTERVAL_MINUTES", 60)
         self.HLTB_BACKFILL_BATCH_SIZE: int = _env_int("HLTB_BACKFILL_BATCH_SIZE", 50)
         self.HLTB_BACKFILL_INTER_GAME_DELAY: float = _env_float("HLTB_BACKFILL_INTER_GAME_DELAY", 1.0)
+        # ── Duplicate consolidation (daily; independent of the startup flag) ──
+        self.DUPLICATE_CONSOLIDATION_ENABLED: bool = _env_bool("DUPLICATE_CONSOLIDATION_ENABLED", True)
+        self.DUPLICATE_CONSOLIDATION_INTERVAL_HOURS: float = _env_float(
+            "DUPLICATE_CONSOLIDATION_INTERVAL_HOURS", 24
+        )
+        # ── ProtonDB tier refresh (weekly; protondb.com summaries, <= 1 req/s) ─
+        self.PROTONDB_REFRESH_ENABLED: bool = _env_bool("PROTONDB_REFRESH_ENABLED", True)
+        self.PROTONDB_REFRESH_INTERVAL_HOURS: float = _env_float("PROTONDB_REFRESH_INTERVAL_HOURS", 24 * 7)
+        self.PROTONDB_REFRESH_BATCH_SIZE: int = _env_int("PROTONDB_REFRESH_BATCH_SIZE", 4000)
+        self.PROTONDB_REQUEST_DELAY_SECONDS: float = _env_float("PROTONDB_REQUEST_DELAY_SECONDS", 1.1)
         # ── Description audit + shortening backfill ──────────────────────────
         # Each cycle re-checks a slice of the catalog: deterministic clean-up is
         # free, so the batch can be wide, while AI calls are capped per batch.
