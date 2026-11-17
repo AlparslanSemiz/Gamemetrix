@@ -9,28 +9,87 @@ from app.services import login_throttle
 from tests.test_tur2_catalog_limits import needs_postgres, pg_client  # noqa: F401
 
 
-def test_login_throttle_blocks_after_ten_failures_and_recovers() -> None:
-    login_throttle._failures.clear()
-    email = "victim@example.com"
-    for second in range(10):
-        login_throttle.ensure_login_allowed(email, now=float(second))
-        login_throttle.record_login_failure(email, now=float(second))
+@pytest.fixture(autouse=True)
+def _fresh_throttle():
+    login_throttle.reset()
+    yield
+    login_throttle.reset()
+
+
+def _fail(email, client, times, start=0.0):
+    for n in range(times):
+        login_throttle.reserve_login_attempt(email, client, now=start + n)
+
+
+def test_pair_limit_blocks_only_the_attacking_client() -> None:
+    _fail("v@example.com", "6.6.6.6", login_throttle.MAX_PAIR_ATTEMPTS)
     with pytest.raises(HTTPException) as blocked:
-        login_throttle.ensure_login_allowed(email, now=20.0)
-    assert blocked.value.status_code == 429
-    assert int(blocked.value.headers["Retry-After"]) > 800
-    login_throttle.ensure_login_allowed("other@example.com", now=20.0)
-    login_throttle.ensure_login_allowed(email, now=20.0 + login_throttle.WINDOW_SECONDS)
+        login_throttle.reserve_login_attempt("v@example.com", "6.6.6.6", now=20.0)
+    assert blocked.value.status_code == 429 and int(blocked.value.headers["Retry-After"]) > 800
+    # The real owner, from another address, is not locked out.
+    login_throttle.reserve_login_attempt("v@example.com", "1.2.3.4", now=20.0)
+    login_throttle.reserve_login_attempt("v@example.com", "6.6.6.6", now=20.0 + login_throttle.WINDOW_SECONDS)
 
 
-def test_login_throttle_success_clears_failures() -> None:
-    login_throttle._failures.clear()
-    for _ in range(9):
-        login_throttle.record_login_failure("a@example.com")
-    login_throttle.clear_login_failures("a@example.com")
-    for _ in range(9):
-        login_throttle.record_login_failure("a@example.com")
-    login_throttle.ensure_login_allowed("a@example.com")
+def test_success_releases_the_reservation() -> None:
+    for _ in range(30):
+        token = login_throttle.reserve_login_attempt("a@example.com", "1.1.1.1", now=1.0)
+        login_throttle.release_login_attempt("a@example.com", "1.1.1.1", token, now=1.0)
+    assert login_throttle._pairs == {} and login_throttle._emails == {}
+
+
+def test_email_soft_limit_spares_a_familiar_pair() -> None:
+    email = "soft@example.com"
+    token = login_throttle.reserve_login_attempt(email, "9.9.9.9", now=0.0)
+    login_throttle.release_login_attempt(email, "9.9.9.9", token, now=0.0)
+    for n in range(login_throttle.MAX_EMAIL_ATTEMPTS):  # distributed guessing, many addresses
+        login_throttle.reserve_login_attempt(email, f"10.0.{n // 200}.{n % 200}", now=1.0 + n)
+    with pytest.raises(HTTPException):
+        login_throttle.reserve_login_attempt(email, "7.7.7.7", now=100.0)
+    # The owner's known network (no failures of its own) still gets through.
+    login_throttle.reserve_login_attempt(email, "9.9.9.9", now=100.0)
+
+
+def test_concurrent_attempts_cannot_exceed_the_limit() -> None:
+    import threading
+
+    passed: list[int] = []
+
+    def attempt() -> None:
+        try:
+            login_throttle.reserve_login_attempt("race@example.com", "5.5.5.5", now=1.0)
+            passed.append(1)
+        except HTTPException:
+            pass
+
+    threads = [threading.Thread(target=attempt) for _ in range(60)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert len(passed) == login_throttle.MAX_PAIR_ATTEMPTS
+
+
+def test_full_map_never_evicts_live_counters(monkeypatch) -> None:
+    monkeypatch.setattr(login_throttle, "MAX_TRACKED_KEYS", 6)
+    monkeypatch.setattr(login_throttle, "FULL_MAP_NEW_KEYS_PER_MINUTE", 2)
+    _fail("victim@example.com", "6.6.6.6", login_throttle.MAX_PAIR_ATTEMPTS)
+    for n in range(2):
+        login_throttle.reserve_login_attempt(f"filler{n}@example.com", "2.2.2.2", now=5.0)
+    # Maps are full of live entries; a flood of new keys hits the global brake...
+    outcomes = []
+    for n in range(5):
+        try:
+            login_throttle.reserve_login_attempt(f"new{n}@example.com", "3.3.3.3", now=6.0)
+            outcomes.append(True)
+        except HTTPException:
+            outcomes.append(False)
+    assert outcomes.count(True) == 2 and False in outcomes
+    # ...and the live counter for the victim's pair is intact.
+    with pytest.raises(HTTPException):
+        login_throttle.reserve_login_attempt("victim@example.com", "6.6.6.6", now=7.0)
+    # Expired entries are what gets dropped.
+    login_throttle.reserve_login_attempt("late@example.com", "4.4.4.4", now=7.0 + login_throttle.WINDOW_SECONDS)
 
 
 def _request(peer: str) -> Request:
@@ -93,11 +152,11 @@ def test_forgot_and_register_send_mail_after_the_response(pg_client, monkeypatch
 @needs_postgres
 def test_login_is_locked_per_account_after_repeated_failures(pg_client) -> None:
     client, _sessions = pg_client
-    login_throttle._failures.clear()
+    login_throttle.reset()
     origin = {"Origin": "http://localhost:5173"}
     body = {"email": "grind@example.com", "password": "wrong password value"}
     codes = [client.post("/api/account/login", headers=origin, json=body).status_code for _ in range(11)]
     assert codes[:10] == [401] * 10
     assert codes[10] == 429
-    login_throttle._failures.clear()
+    login_throttle.reset()
 

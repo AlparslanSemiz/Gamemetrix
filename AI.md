@@ -132,7 +132,7 @@ database.py         Engines + session factories only. Request engine: pool 8+4, 
 security.py         Admin JWT (require_admin_user).
 account_security.py Normal-account auth (Argon2id passwords, hashed opaque sessions).
 rate_limit.py       slowapi HTTP rate limiting (distinct from integrations/rate_limiter.py); keys IPv6 by /64.
-services/login_throttle.py  per-e-mail failed-login limit (10 / 15 min, in process memory).
+services/login_throttle.py  failed-login limits: hard per (e-mail, IP/64) 10 per 15 min, soft per e-mail 50, atomic reservation, in process memory.
 services/count_cache.py     5-minute bounded cache for catalog COUNT(*) totals.
 heavy_jobs.py       HEAVY_JOB_LOCK + peak-hour gate shared by all bulk jobs.
 ```

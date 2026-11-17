@@ -28,14 +28,10 @@ from ...account_security import (
 from ...config import get_settings
 from ...database import SessionLocal, get_db
 from ...models import AnalyticsEvent, User, VisitEvent
-from ...rate_limit import limiter
+from ...rate_limit import get_client_ip, limiter
 from ...services.account_email import email_delivery_ready
 from ...services.account_state import account_payload, get_or_create_preference
-from ...services.login_throttle import (
-    clear_login_failures,
-    ensure_login_allowed,
-    record_login_failure,
-)
+from ...services.login_throttle import release_login_attempt, reserve_login_attempt
 from ...services.account_tokens import (
     consume_token,
     send_password_reset_email,
@@ -189,16 +185,17 @@ async def login(
 ) -> dict:
     require_same_origin(request)
     email = normalize_email(str(payload.email))
-    ensure_login_allowed(email)
+    client = get_client_ip(request)
+    # Reserved before the password check (atomic with the limit test); handed back on success.
+    reservation = reserve_login_attempt(email, client)
     user = db.scalar(select(User).where(User.email == email))
     password_matches = await verify_password_async(
         payload.password,
         user.password_hash if user else None,
     )
     if user is None or not user.is_active or not password_matches:
-        record_login_failure(email)
         raise HTTPException(status_code=401, detail="Invalid email or password.")
-    clear_login_failures(email)
+    release_login_attempt(email, client, reservation)
     if user.email_verified_at is None:
         raise HTTPException(status_code=403, detail="Verify your email before logging in.")
 

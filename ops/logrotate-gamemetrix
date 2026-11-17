@@ -4,6 +4,8 @@
 #   sudo logrotate --debug /etc/logrotate.d/gamemetrix     # dry run
 # copytruncate: the cron redirections keep their file handle open between runs.
 /var/log/gamemetrix-*.log {
+    # Ubuntu's /var/log is root:syslog 775; without this logrotate skips the files as unsafe.
+    su root syslog
     weekly
     rotate 4
     compress
