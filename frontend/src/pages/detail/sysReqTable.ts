@@ -1,4 +1,4 @@
-export interface SysReqRow {
+interface SysReqRow {
   label: string
   value: string
 }

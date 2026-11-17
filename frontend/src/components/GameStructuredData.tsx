@@ -10,7 +10,7 @@ function jsonForScript(value: unknown): string {
   return JSON.stringify(value).replace(/</g, '\\u003c')
 }
 
-export function GameStructuredData({ game }: { game: Game }) {
+export function GameStructuredData({ game, now }: { game: Game; now: number }) {
   const canonical = `https://gamemetrix.me/game/${encodeURIComponent(game.slug)}`
   const structuredRating = ['Steam', 'IGDB']
     .map((source) => game.source_scores.find((score) => score.source === source))
@@ -22,7 +22,7 @@ export function GameStructuredData({ game }: { game: Game }) {
       && Number.isInteger(score.review_count ?? 0)
       && (score.review_count ?? 0) > 0
     ))
-  const price = currentPriceSnapshots(game.price_snapshots ?? [], ACTIONABLE_PRICE_MAX_AGE_MS)
+  const price = currentPriceSnapshots(game.price_snapshots ?? [], ACTIONABLE_PRICE_MAX_AGE_MS, now)
     .filter((entry) => entry.is_free || entry.sale_price != null || entry.list_price != null)
     .sort((left, right) => Number(left.sale_price ?? left.list_price ?? Infinity) - Number(right.sale_price ?? right.list_price ?? Infinity))[0]
   const offerPrice = price?.is_free ? 0 : price?.sale_price ?? price?.list_price

@@ -1,7 +1,8 @@
 import type { LoaderFunctionArgs, MetaFunction } from 'react-router'
 import { CuratedPage, type CuratedPageData } from '../pages/CuratedPage'
-import { fetchBackend } from '../server-api.server'
+import { clientForwardHeaders, fetchBackend, loadTopGenres, type RankingGenre } from '../server-api.server'
 import type { CatalogGameListResponse } from '../types/game'
+import { sharedCacheHeaders } from '../utils/cacheHeaders'
 import { curatedMetaTags } from '../utils/curatedMeta'
 import { latestContentUpdate } from '../utils/seo'
 
@@ -14,9 +15,9 @@ const PAGES = {
   },
   'steam-deck-games': {
     api: 'steam-deck',
-    label: 'Steam Deck',
-    title: 'Best Steam Deck Games',
-    description: 'Strong games with a usable Proton compatibility signal for Steam Deck and Linux players.',
+    label: 'Runs well on Linux / Steam Deck',
+    title: 'Runs Well on Linux & Steam Deck (ProtonDB)',
+    description: 'Top-ranked games that ProtonDB players report as running well on Linux (native, Platinum, Gold or Silver). This is community ProtonDB data, not Valve\'s Deck Verified status, which GameMetrix does not track. Check the Steam page before you buy.',
   },
   'free-pc-games': {
     api: 'free',
@@ -35,17 +36,18 @@ interface SeoGenre {
 }
 
 /** Genre landing pages are derived from live catalogue data, not a hand-written list. */
-async function loadGenrePage(collection: string): Promise<CuratedPageData | null> {
+async function loadGenrePage(collection: string, init: RequestInit, related: RankingGenre[]): Promise<CuratedPageData | null> {
   if (!collection.endsWith(GENRE_SUFFIX)) return null
   const slug = collection.slice(0, -GENRE_SUFFIX.length)
   if (!slug) return null
 
-  const { genres } = await fetchBackend<{ genres: SeoGenre[] }>('/api/seo/genres')
+  const { genres } = await fetchBackend<{ genres: SeoGenre[] }>('/api/seo/genres', init)
   const genre = genres.find((entry) => entry.slug === slug)
   if (!genre) return null
 
   const result = await fetchBackend<CatalogGameListResponse>(
     `/api/seo/curated/genre?genre=${encodeURIComponent(slug)}&limit=100`,
+    init,
   )
   return {
     ...result,
@@ -54,18 +56,22 @@ async function loadGenrePage(collection: string): Promise<CuratedPageData | null
     description: `The highest-rated ${genre.name} games, ranked by a reliability-weighted score across Metacritic, OpenCritic, IGDB and Steam — with Linux compatibility and playtime alongside.`,
     canonical: `https://gamemetrix.me/best/${collection}`,
     updatedAt: latestContentUpdate(result.games),
+    renderedAt: Date.now(),
+    genres: related,
   }
 }
 
-export async function loader({ params }: LoaderFunctionArgs): Promise<CuratedPageData> {
+export async function loader({ params, request }: LoaderFunctionArgs): Promise<CuratedPageData> {
+  const init: RequestInit = { signal: request.signal, headers: clientForwardHeaders(request) }
   const key = params.collection as keyof typeof PAGES
   const page = PAGES[key]
+  const genres = await loadTopGenres(init)
   if (page) {
-    const result = await fetchBackend<CatalogGameListResponse>(`/api/seo/curated/${page.api}?limit=100`)
-    return { ...result, ...page, canonical: `https://gamemetrix.me/best/${key}`, updatedAt: latestContentUpdate(result.games) }
+    const result = await fetchBackend<CatalogGameListResponse>(`/api/seo/curated/${page.api}?limit=100`, init)
+    return { ...result, ...page, canonical: `https://gamemetrix.me/best/${key}`, updatedAt: latestContentUpdate(result.games), renderedAt: Date.now(), genres }
   }
 
-  const genrePage = await loadGenrePage(String(params.collection ?? ''))
+  const genrePage = await loadGenrePage(String(params.collection ?? ''), init, genres)
   if (!genrePage) throw new Response('Not Found', { status: 404 })
   return genrePage
 }
@@ -74,5 +80,5 @@ export const meta: MetaFunction<typeof loader> = ({ loaderData, location }) => l
   ? curatedMetaTags(loaderData, location.search, `${loaderData.title} | GameMetrix`)
   : []
 
-export const headers = () => ({ 'Cache-Control': 'public, max-age=60, s-maxage=900, stale-while-revalidate=3600' })
+export const headers = sharedCacheHeaders
 export default function CuratedRoute({ loaderData }: { loaderData: CuratedPageData }) { return <CuratedPage data={loaderData} /> }

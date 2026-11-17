@@ -1,6 +1,7 @@
 import type { CSSProperties } from 'react'
 import type { Game, PriceSnapshot } from '../../types/game'
 import { bestCoverUrl } from '../../utils/coverImage'
+import { formatIsoDate } from '../../utils/format'
 import { isEndlessGame } from '../../utils/playtime'
 import {
   PROTON_TIER_LABELS,
@@ -13,7 +14,7 @@ import { steamAppIdFromGame } from '../../utils/steam'
 import { safeExternalUrl } from '../../utils/url'
 import { formatDate } from './format'
 
-export interface PlaytimeDetail {
+interface PlaytimeDetail {
   detailRows: [string, number][]
   endless: boolean
   hasData: boolean
@@ -29,6 +30,7 @@ export interface GameDetailModel {
   gameModes: string[]
   playtime: PlaytimeDetail
   priceSnapshots: PriceSnapshot[]
+  renderedAt: number
   primaryReleaseLabel: string
   protonText: string | null
   protonUrl: string
@@ -36,14 +38,8 @@ export interface GameDetailModel {
   websiteUrl: string | null
 }
 
-export function buildGameDetailModel(game: Game): GameDetailModel {
-  const releaseLabel = game.release_year > 1970
-    ? new Date(game.release_date).toLocaleDateString('en-US', {
-        month: 'short',
-        day: 'numeric',
-        year: 'numeric',
-      })
-    : 'Unknown'
+export function buildGameDetailModel(game: Game, now: number): GameDetailModel {
+  const releaseLabel = (game.release_year > 1970 ? formatIsoDate(game.release_date) : null) ?? 'Unknown'
   const earlyAccessLabel = formatDate(game.early_access_date)
   const officialReleaseLabel = formatDate(
     game.official_release_date ?? game.release_date,
@@ -70,7 +66,8 @@ export function buildGameDetailModel(game: Game): GameDetailModel {
     earlyAccessSuffix,
     gameModes: (game.game_modes ?? []).filter(Boolean),
     playtime: playtimeDetail(game),
-    priceSnapshots: currentPriceSnapshots(game.price_snapshots ?? [], PANEL_PRICE_MAX_AGE_MS),
+    renderedAt: now,
+    priceSnapshots: currentPriceSnapshots(game.price_snapshots ?? [], PANEL_PRICE_MAX_AGE_MS, now),
     primaryReleaseLabel,
     protonText: protonLabel(game),
     protonUrl: steamAppId

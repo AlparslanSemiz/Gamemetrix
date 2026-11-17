@@ -10,10 +10,10 @@ const MS_PER_DAY = 24 * MS_PER_HOUR
 
 // Snapshots up to a week old are shown rather than hidden, so the panel has to
 // say how current they are.
-function freshnessLabel(prices: PriceSnapshot[]): string | null {
+function freshnessLabel(prices: PriceSnapshot[], now: number): string | null {
   const newest = newestFetchedAt(prices)
   if (newest === null) return null
-  const age = Date.now() - newest
+  const age = Math.max(0, now - newest)
   if (age < MS_PER_HOUR) return 'Updated just now'
   if (age < MS_PER_DAY) return `Updated ${Math.floor(age / MS_PER_HOUR)}h ago`
   const days = Math.floor(age / MS_PER_DAY)
@@ -103,7 +103,7 @@ function buildStoreOffers(prices: PriceSnapshot[], game: Game): StoreOffer[] {
   return [...byStore.values()].sort((a, b) => (a.amount ?? Number.POSITIVE_INFINITY) - (b.amount ?? Number.POSITIVE_INFINITY))
 }
 
-function buildPricePanelModel(prices: PriceSnapshot[], game: Game) {
+function buildPricePanelModel(prices: PriceSnapshot[], game: Game, now: number) {
   const ordered = sortedPrices(prices)
   const offers = buildStoreOffers(prices, game)
   if (offers.length === 0) return null
@@ -130,7 +130,7 @@ function buildPricePanelModel(prices: PriceSnapshot[], game: Game) {
     chartItems,
     chartMax,
     current: bestOffer?.priceLabel ?? 'N/A',
-    freshness: freshnessLabel(prices),
+    freshness: freshnessLabel(prices, now),
     hasDiscount: Boolean(best?.discount_percent && best.discount_percent > 0),
     historicalLow,
     offers,
@@ -227,8 +227,8 @@ function StoreOfferList({ gameSlug, offers }: { gameSlug: string; offers: StoreO
   )
 }
 
-export function PricePanel({ prices, game }: { prices: PriceSnapshot[]; game: Game }) {
-  const model = buildPricePanelModel(prices, game)
+export function PricePanel({ prices, game, now }: { prices: PriceSnapshot[]; game: Game; now: number }) {
+  const model = buildPricePanelModel(prices, game, now)
   if (!model) return null
   return (
     <div className="dp-price-panel">

@@ -1,9 +1,9 @@
 import type { CatalogGame } from '../types/game'
 import { thumbnailUrl } from './coverImage'
 
-export const DEFAULT_SOCIAL_IMAGE = 'https://gamemetrix.me/og/home.png'
+const DEFAULT_SOCIAL_IMAGE = 'https://gamemetrix.me/og/home.png'
 
-export function trimDescription(value: string, max = 155): string {
+function trimDescription(value: string, max = 155): string {
   const clean = value.replace(/\s+/g, ' ').trim()
   if (clean.length <= max) return clean
   const cut = clean.slice(0, max - 1)
@@ -11,7 +11,7 @@ export function trimDescription(value: string, max = 155): string {
 }
 
 // First game's thumbnail when it is an absolute https URL, else the brand image.
-export function curatedSocialImage(games: CatalogGame[]): string {
+function curatedSocialImage(games: CatalogGame[]): string {
   const url = games[0]?.cover_url || games[0]?.image_url || ''
   return /^https:\/\//.test(url) ? thumbnailUrl(url) : DEFAULT_SOCIAL_IMAGE
 }

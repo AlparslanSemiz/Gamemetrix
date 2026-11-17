@@ -4,6 +4,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router'
 import { AccountApiError, deleteAccountData, exportAccountData } from '../services/account'
 import { trackProductEvent } from '../services/analytics'
 import { useAccount } from '../state/useAccount'
+import { clientNow } from '../utils/clock'
 import './AccountPage.css'
 
 function useAccountOperations(
@@ -40,7 +41,7 @@ function useAccountOperations(
     const url = URL.createObjectURL(blob)
     const anchor = document.createElement('a')
     anchor.href = url
-    anchor.download = `gamemetrix-account-${new Date().toISOString().slice(0, 10)}.json`
+    anchor.download = `gamemetrix-account-${new Date(clientNow()).toISOString().slice(0, 10)}.json`
     anchor.click()
     URL.revokeObjectURL(url)
   })
