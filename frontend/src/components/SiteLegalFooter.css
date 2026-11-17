@@ -1,0 +1,39 @@
+.skip-link {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 1000;
+  padding: 10px 14px;
+  border-radius: 6px;
+  background: #f2f3f6;
+  color: #111;
+  font-weight: 700;
+  transform: translateY(-200%);
+}
+
+.skip-link:focus {
+  transform: none;
+}
+
+.site-legal-footer {
+  padding: 18px 20px calc(20px + env(safe-area-inset-bottom));
+  background: #121212;
+  text-align: center;
+  font-size: 14px;
+}
+
+.site-legal-footer nav {
+  display: flex;
+  justify-content: center;
+  gap: 18px;
+}
+
+.site-legal-footer a {
+  display: inline-block;
+  min-height: 24px;
+  color: #b8bcc7;
+}
+
+body:has(.catalog-attribution) .site-legal-footer {
+  display: none;
+}

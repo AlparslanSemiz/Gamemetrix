@@ -28,6 +28,7 @@ export function MobileTabBar({
         <button
           type="button"
           className={activePage === id && (id !== 'catalog' || activePreset === null) ? 'is-active' : ''}
+          aria-current={activePage === id && (id !== 'catalog' || activePreset === null) ? 'page' : undefined}
           key={id}
           onClick={() => {
             if (id === 'alerts') onOpenUtilityPage(id)

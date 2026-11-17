@@ -20,7 +20,8 @@ export function CatalogWorkspace(props: CatalogWorkspaceProps) {
       : props.pageTitle
 
   return (
-    <section
+    <main
+      id="main-content"
       className={`workspace ${props.mastheadVisible ? 'masthead-open' : 'masthead-collapsed'}`}
     >
       <CatalogMasthead
@@ -54,7 +55,7 @@ export function CatalogWorkspace(props: CatalogWorkspaceProps) {
       ) : (
         <CatalogBody {...props} headingTitle={headingTitle} isCuratedView={isCuratedView} />
       )}
-    </section>
+    </main>
   )
 }
 

@@ -65,7 +65,7 @@ function itemListJson(data: CuratedPageData) {
 export function CuratedPage({ data }: { data: CuratedPageData }) {
   const { account } = useAccount()
   return (
-    <main className="curated-shell">
+    <main id="main-content" className="curated-shell">
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: itemListJson(data) }} />
       <header className="curated-topbar">
         <a href="/" className="curated-brand">Game<span>Metrix</span></a>

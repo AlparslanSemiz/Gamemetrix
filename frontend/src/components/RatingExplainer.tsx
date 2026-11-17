@@ -24,7 +24,7 @@ const SOURCE_GROUPS = [
 function RatingSources() {
   return (
     <div className="about-block">
-      <h3>Rating sources</h3>
+      <h2>Rating sources</h2>
       <div className="about-source-list">
         {SOURCE_GROUPS.map((group) => (
           <div className="about-source-row" key={group.sources.join('-')}>
@@ -46,7 +46,7 @@ function RatingSources() {
 function ScoreExplanation() {
   return (
     <div className="about-block">
-      <h3>GameMetrix Score</h3>
+      <h2>GameMetrix Score</h2>
       <p>
         Up to four named primary sources are combined. Missing primary scores remain visibly missing;
         RAWG and support providers never substitute for them.
@@ -74,7 +74,7 @@ function ScoreExplanation() {
 function RankExplanation() {
   return (
     <div className="about-block">
-      <h3>GameMetrix Rank <span className="about-tag">Default sort</span></h3>
+      <h2>GameMetrix Rank <span className="about-tag">Default sort</span></h2>
       <p>
         A game showing 96 from one source shouldn't outrank Elden Ring with four.
         Rank shrinks the score toward a neutral baseline (70) based on how much
@@ -127,7 +127,7 @@ export function RatingExplainer() {
         GameMetrix. Here is exactly how the comparison works.
       </p>
       <div className="about-block">
-        <h3>What GameMetrix is</h3>
+        <h2>What GameMetrix is</h2>
         <p>
           The catalog is designed to help people compare a game&apos;s critical reception,
           player reception, Linux and Steam Deck compatibility, estimated playtime and
@@ -135,11 +135,14 @@ export function RatingExplainer() {
           publisher, store or substitute for the linked source pages.
         </p>
       </div>
+      <p className="about-byline">
+        Built by <a href="https://alparslansemiz.com/" rel="noopener">Alparslan Semiz</a>.
+      </p>
       <RatingSources />
       <ScoreExplanation />
       <RankExplanation />
       <div className="about-block">
-        <h3>Platform fairness</h3>
+        <h2>Platform fairness</h2>
         <p>
           Steam is only counted for PC games. A Nintendo exclusive missing Steam is not penalized —
           its applicable sources are Metacritic, OpenCritic, and IGDB, and full coverage across
@@ -147,7 +150,7 @@ export function RatingExplainer() {
         </p>
       </div>
       <div className="about-block">
-        <h3>How data is processed</h3>
+        <h2>How data is processed</h2>
         <p>
           Automated imports normalize provider identifiers, score scales and catalog
           metadata. Every primary score stays attached to its named source; a missing
@@ -156,7 +159,7 @@ export function RatingExplainer() {
         </p>
       </div>
       <div className="about-block">
-        <h3>Limitations and updates</h3>
+        <h2>Limitations and updates</h2>
         <p>
           Provider data can be delayed, incomplete or changed after an import. Compatibility,
           prices and playtime are snapshots rather than guarantees. Each game page names and

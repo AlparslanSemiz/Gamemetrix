@@ -101,10 +101,10 @@ export function AccountPage() {
     navigate(next.size ? `/account?${next.toString()}` : '/account', { replace: true })
   }, [account, navigate, searchParams])
 
-  if (isLoading || !account) return <main className="account-page"><p>Loading account...</p></main>
+  if (isLoading || !account) return <main id="main-content" className="account-page"><p>Loading account...</p></main>
 
   return (
-    <main className="account-page">
+    <main id="main-content" className="account-page">
       <header className="account-page-head">
         <Link to="/" aria-label="Back to catalog"><ArrowLeft size={18} /></Link>
         <a href="/" className="account-page-brand">Game<span>Metrix</span></a>

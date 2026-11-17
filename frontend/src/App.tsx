@@ -241,7 +241,7 @@ export function AppContent({
   const filterActions = useCatalogFilterActions(setActivePage, setFilters)
 
   return (
-    <main className="app-shell">
+    <div className="app-shell">
       <SideRail
         activePage={activePage}
         activePreset={activePreset}
@@ -313,6 +313,8 @@ export function AppContent({
           <a href="/best/linux-games">Best Linux games</a>
           <a href="/best/steam-deck-games">Steam Deck games</a>
           <a href="/deals">PC game deals</a>
+          <a href="/impressum">Impressum</a>
+          <a href="/privacy">Privacy</a>
         </nav>
         <span>
           Supplementary catalog metadata and imagery may be provided by{' '}
@@ -331,6 +333,6 @@ export function AppContent({
           onClose={trailer.close}
         />
       ) : null}
-    </main>
+    </div>
   )
 }

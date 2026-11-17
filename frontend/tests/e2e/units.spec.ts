@@ -51,3 +51,17 @@ test('OpenCritic links use the working search URL in every context', () => {
       .toBe('https://opencritic.com/search?q=Hades%20II')
   }
 })
+
+test('legal pages are noindex and every page links to them', async ({ page }) => {
+  for (const path of ['/impressum', '/privacy', '/datenschutz']) {
+    await page.goto(path)
+    await expect(page.locator('meta[name="robots"]')).toHaveAttribute('content', /noindex/)
+    await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
+  }
+  await page.goto('/impressum')
+  await expect(page.locator('a[href="https://alparslansemiz.com/de/impressum/"]')).toBeVisible()
+  await page.goto('/')
+  await expect(page.locator('footer a[href="/impressum"]')).toBeVisible()
+  await expect(page.locator('footer a[href="/privacy"]')).toBeVisible()
+  await expect(page.locator('meta[property="og:image"]')).toHaveAttribute('content', /og\/home\.png$/)
+})

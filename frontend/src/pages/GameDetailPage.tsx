@@ -62,7 +62,7 @@ export function GameDetailPage({ initialGame }: { initialGame?: Game }) {
   const model = buildGameDetailModel(game)
 
   return (
-    <main className="dp-shell" style={model.detailStyle}>
+    <main id="main-content" className="dp-shell" style={model.detailStyle}>
       {model.backgroundImage ? (
         <div
           className="dp-bg"

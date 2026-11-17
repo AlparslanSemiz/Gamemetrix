@@ -20,6 +20,14 @@ export async function loader({ params, request }: LoaderFunctionArgs): Promise<G
   }
 }
 
+// Titles longer than ~60 characters get cut in search results.
+function gameTitle(title: string): string {
+  const full = `${title}: Scores, Linux & Playtime | GameMetrix`
+  if (full.length <= 60) return full
+  const short = `${title} Scores | GameMetrix`
+  return short.length <= 60 ? short : `${title} | GameMetrix`
+}
+
 function summary(value: string): string {
   const clean = value.replace(/\s+/g, ' ').trim()
   return clean.length > 158 ? `${clean.slice(0, 155).trimEnd()}...` : clean
@@ -31,7 +39,7 @@ export const meta: MetaFunction<typeof loader> = ({ loaderData, location }) => {
   const description = summary(loaderData.summary)
   const image = loaderData.cover_url || loaderData.image_url || undefined
   return [
-    { title: `${loaderData.title} Scores, Linux Compatibility and Playtime | GameMetrix` },
+    { title: gameTitle(loaderData.title) },
     { name: 'description', content: description },
     { name: 'robots', content: loaderData.seo_indexable && !location.search ? 'index,follow,max-image-preview:large' : 'noindex,follow' },
     { tagName: 'link', rel: 'canonical', href: canonical },

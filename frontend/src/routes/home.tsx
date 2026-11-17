@@ -9,7 +9,8 @@ import { readCatalogSnapshot, type CatalogSnapshot } from '../catalog/snapshot'
 import { fetchBackend } from '../server-api.server'
 import type { CatalogGameListResponse } from '../types/game'
 
-const SOCIAL_IMAGE = 'https://gamemetrix.me/icons.svg'
+const SOCIAL_IMAGE = 'https://gamemetrix.me/og/home.png'
+const LOGO_IMAGE = 'https://gamemetrix.me/logo-512.png'
 
 interface HomeLoaderData extends CatalogGameListResponse {
   snapshot: CatalogSnapshot | null
@@ -132,7 +133,7 @@ function homeStructuredData(data: CatalogGameListResponse): string {
         name: 'GameMetrix',
         alternateName: ['Game Metrix', 'gamemetrix.me'],
         url: 'https://gamemetrix.me/',
-        logo: SOCIAL_IMAGE,
+        logo: LOGO_IMAGE,
       },
       {
         '@type': 'WebSite',

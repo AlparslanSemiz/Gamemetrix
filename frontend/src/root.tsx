@@ -10,6 +10,7 @@ import {
 import type { ReactNode } from 'react'
 import { AnalyticsConsentBanner } from './components/AnalyticsConsentBanner'
 import { PageViewTracker } from './components/PageViewTracker'
+import { SiteLegalFooter } from './components/SiteLegalFooter'
 import { AccountProvider } from './state/AccountProvider'
 import { CollectionsProvider } from './state/CollectionsProvider'
 import './index.css'
@@ -26,6 +27,7 @@ export function Layout({ children }: { children: ReactNode }) {
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <meta name="theme-color" content="#0f1014" />
         <link rel="icon" href="/favicon.svg" />
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
         <Meta />
         <Links />
         {/* Cloudflare Web Analytics: cookieless page-view counts, no consent needed. */}
@@ -38,6 +40,7 @@ export function Layout({ children }: { children: ReactNode }) {
         )}
       </head>
       <body>
+        <a className="skip-link" href="#main-content">Skip to main content</a>
         {children}
         <ScrollRestoration />
         <Scripts />
@@ -52,6 +55,7 @@ export default function Root() {
       <AccountProvider>
         <PageViewTracker />
         <Outlet />
+        <SiteLegalFooter />
         <AnalyticsConsentBanner />
       </AccountProvider>
     </CollectionsProvider>
@@ -67,7 +71,7 @@ export function ErrorBoundary() {
       ? 'Busy right now, please try again in a moment'
       : 'Something went wrong'
   return (
-    <main className="route-error">
+    <main id="main-content" className="route-error">
       <a className="route-error-brand" href="/">GameMetrix</a>
       <p>{status}</p>
       <h1>{title}</h1>

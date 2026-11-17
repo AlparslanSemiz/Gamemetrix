@@ -45,7 +45,7 @@ export function AdminPage() {
   }
 
   return (
-    <main className="admin-shell">
+    <main id="main-content" className="admin-shell">
       <div className="admin-layout">
         <AdminSidebar active={section} />
         <div className="admin-content">

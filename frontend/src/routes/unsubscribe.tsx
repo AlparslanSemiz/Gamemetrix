@@ -44,7 +44,7 @@ export default function UnsubscribeRoute() {
   }
 
   return (
-    <main className="account-auth-shell">
+    <main id="main-content" className="account-auth-shell">
       <section className="account-auth-dialog" aria-labelledby="unsubscribe-title">
         <h1 id="unsubscribe-title">Email preferences</h1>
         <p>Confirm that you want to stop GameMetrix watchlist update emails.</p>

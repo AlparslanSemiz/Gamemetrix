@@ -16,7 +16,7 @@
 .curated-links a { border: 1px solid #30323b; border-radius: 5px; color: #b9bbc4; padding: 7px 10px; text-decoration: none; font-size: 12px; }
 .curated-list { display: grid; gap: 1px; margin: 0; padding: 0; list-style: none; border-top: 1px solid #2a2c34; }
 .curated-list > li { display: grid; grid-template-columns: 36px 92px minmax(0, 1fr); gap: 16px; align-items: center; border-bottom: 1px solid #2a2c34; padding: 15px 4px; }
-.curated-rank { color: #767a85; text-align: center; font-size: 15px; font-weight: 800; }
+.curated-rank { color: var(--gm-muted); text-align: center; font-size: 15px; font-weight: 800; }
 .curated-cover { width: 92px; aspect-ratio: 3 / 4; overflow: hidden; border-radius: 5px; background: #1c1e25; }
 .curated-cover img { width: 100%; height: 100%; display: block; object-fit: cover; }
 .curated-game-head { display: flex; align-items: start; justify-content: space-between; gap: 14px; }
@@ -55,3 +55,8 @@
   .curated-game-head h2 { font-size: 16px; }
   .curated-game-head > strong { min-width: 38px; font-size: 21px; }
 }
+
+/* In-text links must be recognisable without relying on colour alone. */
+.curated-method a,
+.curated-heading > div a,
+.curated-empty a { color: #a78bfa; text-decoration: underline; }
