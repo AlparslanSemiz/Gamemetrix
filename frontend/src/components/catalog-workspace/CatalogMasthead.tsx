@@ -1,6 +1,6 @@
 import { Search } from 'lucide-react'
 
-import { formatRoundedThousands } from '../../catalog/config'
+import { formatNumber } from '../../utils/format'
 import type { WorkspaceProps } from './types'
 
 const SEARCH_ICON_SIZE = 18
@@ -47,7 +47,7 @@ export function CatalogMasthead({
           aria-label="Search games by title"
         />
         <div className="masthead-search-meta">
-          <span>{formatRoundedThousands(libraryTotal || catalogTotal)} games</span>
+          <span>{formatNumber(libraryTotal || catalogTotal)} games</span>
           <Search size={SEARCH_ICON_SIZE} aria-hidden="true" />
         </div>
       </div>

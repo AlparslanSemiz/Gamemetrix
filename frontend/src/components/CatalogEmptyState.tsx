@@ -3,10 +3,29 @@ import type { ActivePage } from '../catalog/config'
 interface CatalogEmptyStateProps {
   activePage: ActivePage
   pageTitle: string
+  query?: string
   onBrowseCatalog: () => void
+  onClearSearch?: () => void
 }
 
-export function CatalogEmptyState({ activePage, pageTitle, onBrowseCatalog }: CatalogEmptyStateProps) {
+export function CatalogEmptyState({
+  activePage,
+  pageTitle,
+  query = '',
+  onBrowseCatalog,
+  onClearSearch,
+}: CatalogEmptyStateProps) {
+  if (activePage === 'catalog' && query && onClearSearch) {
+    return (
+      <div className="empty-state" role="status">
+        <p>No results for “{query}”.</p>
+        <p className="empty-hint">Check the spelling, try fewer words, or loosen the filters.</p>
+        <button type="button" className="apply-button" onClick={onClearSearch}>
+          Clear search
+        </button>
+      </div>
+    )
+  }
   if (activePage === 'catalog') {
     return (
       <div className="empty-state">

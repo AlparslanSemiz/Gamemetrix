@@ -5,6 +5,7 @@ import {
   setInternalAnalyticsTraffic,
   useAnalyticsPreferences,
 } from '../services/analyticsConsent'
+import './CatalogSettings.css'
 
 interface CatalogSettingsProps {
   filtersOpen: boolean

@@ -60,3 +60,7 @@
 .curated-method a,
 .curated-heading > div a,
 .curated-empty a { color: #a78bfa; text-decoration: underline; }
+
+.curated-search { display: flex; flex: 1 1 260px; max-width: 420px; margin: 0 16px; }
+.curated-search input { flex: 1; min-width: 0; min-height: 36px; border: 1px solid #30323b; border-right: 0; border-radius: 6px 0 0 6px; background: #14151a; color: #eceef3; font: inherit; font-size: 13px; padding: 0 12px; }
+.curated-search button { display: grid; place-items: center; width: 40px; border: 1px solid #30323b; border-radius: 0 6px 6px 0; background: #1b1d24; color: #c7c9d0; cursor: pointer; }

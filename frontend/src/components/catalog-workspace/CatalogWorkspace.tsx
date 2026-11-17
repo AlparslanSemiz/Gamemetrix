@@ -1,15 +1,14 @@
-import { CURRENT_YEAR, findPreset, utilityNavItems } from '../../catalog/config'
+import { CURRENT_YEAR, collectionPageMap, findPreset, utilityNavItems } from '../../catalog/config'
 import type { GameSort } from '../../types/game'
 import { ActiveFilterChips } from '../ActiveFilterChips'
 import { CatalogToolbar } from '../CatalogToolbar'
 import { FilterBar } from '../FilterBar'
+import { GuestListNotice } from '../GuestListNotice'
 import { CatalogHeading } from './CatalogHeading'
 import { CatalogMasthead } from './CatalogMasthead'
 import { GameResults } from './GameResults'
 import type { CatalogWorkspaceProps } from './types'
 import { UtilityPanel } from './UtilityPanel'
-
-const DEFAULT_PROVIDER_COUNT = 5
 
 export function CatalogWorkspace(props: CatalogWorkspaceProps) {
   const isUtilityPage = utilityNavItems.some((item) => item.id === props.activePage)
@@ -34,13 +33,6 @@ export function CatalogWorkspace(props: CatalogWorkspaceProps) {
         onChangeFilters={props.onChangeFilters}
         onFocusSearch={props.onFocusSearch}
       />
-      <ProviderStrip
-        catalogTotal={props.catalogTotal}
-        loadedCount={props.games.length}
-        providerCount={props.providerCount}
-        readyProviders={props.readyProviders}
-        shownCount={props.visibleGames.length}
-      />
 
       {isUtilityPage ? (
         <UtilityPanel
@@ -56,32 +48,6 @@ export function CatalogWorkspace(props: CatalogWorkspaceProps) {
         <CatalogBody {...props} headingTitle={headingTitle} isCuratedView={isCuratedView} />
       )}
     </main>
-  )
-}
-
-function ProviderStrip({
-  catalogTotal,
-  loadedCount,
-  providerCount,
-  readyProviders,
-  shownCount,
-}: {
-  catalogTotal: number
-  loadedCount: number
-  providerCount: number
-  readyProviders: number
-  shownCount: number
-}) {
-  return (
-    <div className="provider-strip">
-      <span>{shownCount} shown</span>
-      <span>
-        {loadedCount} / {catalogTotal || loadedCount} loaded
-      </span>
-      <span>
-        {readyProviders} / {providerCount || DEFAULT_PROVIDER_COUNT} providers ready
-      </span>
-    </div>
   )
 }
 
@@ -109,6 +75,7 @@ function CatalogBody({
         onChangeFilters={props.onChangeFilters}
         onApplyFilters={props.onApplyFilters}
       />
+      {props.activePage in collectionPageMap ? <GuestListNotice subject="list" /> : null}
       <ActiveFilterChips
         filters={props.filters}
         onClearDealMode={props.onClearDealMode}
@@ -150,9 +117,11 @@ function CatalogBody({
         loadMoreError={props.loadMoreError}
         loaderRef={props.loaderRef}
         pageTitle={props.pageTitle}
+        query={props.filters.q.trim()}
         viewMode={props.viewMode}
         visibleGames={props.visibleGames}
         onBrowseCatalog={props.onBrowseCatalog}
+        onClearSearch={() => props.onChangeFilters((current) => ({ ...current, q: '' }))}
         onFilterDeveloper={props.onFilterDeveloper}
         onFilterGenre={props.onFilterGenre}
         onFilterPublisher={props.onFilterPublisher}

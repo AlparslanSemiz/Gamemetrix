@@ -22,6 +22,7 @@ import {
 } from './snapshotRestore'
 import type { CatalogPagination } from './useCatalogPagination'
 import type { CatalogScroll } from './useCatalogScroll'
+import { clientNow } from '../utils/clock'
 
 const useIsomorphicLayoutEffect = typeof window === 'undefined' ? useEffect : useLayoutEffect
 
@@ -125,7 +126,7 @@ function useLatestCatalogSnapshot(
     }
     latestCatalogRef.current = {
       version: 1,
-      savedAt: Date.now(),
+      savedAt: clientNow(),
       activePage,
       activePreset,
       catalogTotal,

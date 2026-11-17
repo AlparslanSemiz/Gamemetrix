@@ -84,7 +84,7 @@ export interface SystemRequirement {
   recommended: string
 }
 
-export interface RelatedGame {
+interface RelatedGame {
   id?: number | string | null
   title: string
   slug?: string | null
@@ -114,11 +114,6 @@ export interface PriceSnapshot {
   subscription_service?: string | null
   url?: string | null
   fetched_at: string
-}
-
-export interface GameListResponse {
-  games: Game[]
-  total: number
 }
 
 export interface CatalogGameListResponse {
@@ -154,11 +149,6 @@ export interface Facets {
 }
 
 export type PlayerMode = 'singleplayer' | 'multiplayer' | 'coop'
-
-export interface ProviderStatus {
-  source: string
-  status: string
-}
 
 export type GameSort =
   | 'rank_score'

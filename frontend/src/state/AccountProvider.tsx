@@ -15,6 +15,7 @@ import {
 } from '../services/account'
 import { emptyCollections, loadCollections, type CollectionKey } from './collections'
 import { AccountContext } from './account'
+import { enqueueSync } from './syncQueue'
 import { useCollections } from './useCollections'
 
 const READ_KEY = 'gamemetrix.alerts.read.v1'
@@ -160,7 +161,7 @@ export function AccountProvider({ children }: { children: ReactNode }) {
 
   const syncCollection = useCallback(async (collection: CollectionKey, slug: string, enabled: boolean) => {
     if (!account) return
-    await persistCollection(collection, slug, enabled)
+    await enqueueSync(`${slug}:${collection}`, () => persistCollection(collection, slug, enabled))
   }, [account])
 
   const updatePreferences = useCallback(async (next: Partial<AccountPreferences>) => {

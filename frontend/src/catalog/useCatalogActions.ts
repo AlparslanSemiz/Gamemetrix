@@ -1,6 +1,5 @@
 import { useCallback, type Dispatch, type RefObject, type SetStateAction } from 'react'
 import { useLocation, useNavigate } from 'react-router'
-import type { ClearableFilterKey } from '../components/ActiveFilterChips'
 import type { GameFilters } from '../types/game'
 import {
   CURRENT_YEAR,
@@ -13,6 +12,7 @@ import {
 
 interface CatalogActionsProps {
   accountIsActive: boolean
+  pendingSearchRef: RefObject<string | null>
   saveCatalogSnapshot: () => void
   scrollToTop: () => void
   setActivePage: Dispatch<SetStateAction<ActivePage>>
@@ -41,6 +41,7 @@ function presetFilters(preset: CuratedPreset): GameFilters {
 
 export function useCatalogActions({
   accountIsActive,
+  pendingSearchRef,
   saveCatalogSnapshot,
   scrollToTop,
   setActivePage,
@@ -54,7 +55,10 @@ export function useCatalogActions({
   const navigate = useNavigate()
 
   const goHome = useCallback(() => {
-    if (location.pathname !== '/' || location.search) navigate('/')
+    if (location.pathname !== '/' || location.search) {
+      pendingSearchRef.current = ''
+      navigate('/')
+    }
     snapshotAnchorRef.current = null
     scrollToTop()
     setActivePage('catalog')
@@ -65,6 +69,7 @@ export function useCatalogActions({
     location.pathname,
     location.search,
     navigate,
+    pendingSearchRef,
     scrollToTop,
     setActivePage,
     setActivePreset,
@@ -99,11 +104,15 @@ export function useCatalogActions({
     setActivePage(id)
     setActivePreset(null)
     const target = id === 'catalog' ? '/' : `/?view=${encodeURIComponent(id)}`
-    if (`${location.pathname}${location.search}` !== target) navigate(target)
+    if (`${location.pathname}${location.search}` !== target) {
+      pendingSearchRef.current = id === 'catalog' ? '' : `?view=${encodeURIComponent(id)}`
+      navigate(target)
+    }
   }, [
     location.pathname,
     location.search,
     navigate,
+    pendingSearchRef,
     setActivePage,
     setActivePreset,
   ])
@@ -116,14 +125,18 @@ export function useCatalogActions({
     }
   }, [location.pathname, navigate, saveCatalogSnapshot, setMobileMoreOpen])
 
-  const clearFilter = useCallback((key: ClearableFilterKey) => {
-    setFilters((current) => ({ ...current, [key]: '' }))
-  }, [setFilters])
+  const clearFilter = useCallback((reset: Partial<GameFilters>) => {
+    setFilters((current) => ({ ...current, ...reset }))
+    // Year, score and the like are applied by a counter bump, and the filter
+    // panel's drafts re-seed from it.
+    setPendingApply((count) => count + 1)
+  }, [setFilters, setPendingApply])
 
   const clearDealMode = useCallback(() => {
     setFilters((current) => ({ ...current, dealMode: 'all' }))
     setActivePreset(null)
-  }, [setActivePreset, setFilters])
+    setPendingApply((count) => count + 1)
+  }, [setActivePreset, setFilters, setPendingApply])
 
   const openAccount = useCallback(
     () => {
