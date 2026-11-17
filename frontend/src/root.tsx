@@ -18,6 +18,14 @@ const CLOUDFLARE_BEACON_URL = 'https://static.cloudflareinsights.com/beacon.min.
 // Set only for production images (images.yml); local, test and Lighthouse builds load no beacon.
 const CLOUDFLARE_BEACON_TOKEN = String(import.meta.env.VITE_CF_BEACON_TOKEN ?? '').trim()
 
+// Loads the beacon only for real visitors: not for automated browsers (navigator.webdriver) and
+// not for the owner's own browsers (localStorage notrack=1; ?notrack=1 sets it, ?notrack=0 clears it).
+// localStorage can throw (private mode); then the beacon loads as usual. Inline script: the CSP
+// already allows 'unsafe-inline'. "<" is escaped so the token cannot close the script element.
+const CLOUDFLARE_BEACON_LOADER = CLOUDFLARE_BEACON_TOKEN
+  ? `(function(){try{var n=new URLSearchParams(location.search).get('notrack');if(n==='1')localStorage.setItem('notrack','1');else if(n==='0')localStorage.removeItem('notrack')}catch(e){}try{if(localStorage.getItem('notrack')==='1')return}catch(e){}if(navigator.webdriver)return;var s=document.createElement('script');s.defer=true;s.src=${JSON.stringify(CLOUDFLARE_BEACON_URL)};s.setAttribute('data-cf-beacon',${JSON.stringify(JSON.stringify({ token: CLOUDFLARE_BEACON_TOKEN })).replace(/</g, '\\u003c')});document.head.appendChild(s)})();`
+  : ''
+
 export function Layout({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
@@ -29,13 +37,7 @@ export function Layout({ children }: { children: ReactNode }) {
         <Meta />
         <Links />
         {/* Cloudflare Web Analytics: cookieless page-view counts, no consent needed. */}
-        {CLOUDFLARE_BEACON_TOKEN && (
-          <script
-            defer
-            src={CLOUDFLARE_BEACON_URL}
-            data-cf-beacon={JSON.stringify({ token: CLOUDFLARE_BEACON_TOKEN })}
-          />
-        )}
+        {CLOUDFLARE_BEACON_LOADER && <script dangerouslySetInnerHTML={{ __html: CLOUDFLARE_BEACON_LOADER }} />}
       </head>
       <body>
         {children}
