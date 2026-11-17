@@ -1,125 +1,142 @@
-"""Failed-login limits per account.
+"""Failed-login limits, kept in Postgres.
 
-In process memory (production runs one uvicorn worker, so one process sees every attempt; a
-restart only loosens this back to the per-IP slowapi limit). Two layers:
+State survives restarts and is shared by every process; there is no map to fill up or evict
+from. Rows are keyed `email:<normalized e-mail>` and `pair:<normalized e-mail>|<client /64>`,
+and rows older than the window are deleted daily (purge_expired).
 
-* Hard limit per (e-mail, client IP/64) pair: MAX_PAIR_ATTEMPTS in WINDOW_SECONDS, then 429.
-  The key includes the client, so someone guessing a victim's address locks out only
-  themselves, never the real owner on another network.
-* Soft limit per e-mail across all clients: past MAX_EMAIL_ATTEMPTS in the window every
-  further attempt is *delayed* (1, 2, 4, 8, at most 15 s) instead of refused. The owner is
-  never locked out, but distributed guessing becomes slow. A caller presenting a valid signed
-  device cookie for that e-mail (issued on a previous successful login, see
-  account_security.device_cookie_valid) skips both layers; the IP is not part of that trust.
+* Pair (e-mail, client): at most MAX_PAIR_ATTEMPTS per WINDOW_SECONDS, then 429. The client is
+  part of the key, so someone guessing a victim's address locks out only themselves. A trusted
+  device only gets the looser TRUSTED_PAIR_ATTEMPTS limit, never a bypass.
+* E-mail: past MAX_EMAIL_ATTEMPTS per window every accepted attempt pushes `next_allowed_at`
+  out exponentially (1, 2, 4 ... at most 60 s). Requests arriving before it answer 429 with
+  Retry-After, so concurrent requests cannot jump the wait, yet the owner is only ever asked
+  to wait a minute. Trusted devices skip this layer.
 
-Attempts are *reserved* before the password is checked and released only on success, under one
-lock, so concurrent requests cannot all pass a check that none has counted yet. The maps never
-evict live counters: when they are full and nothing has expired, brand-new keys are simply not
-tracked (the per-IP slowapi limit still applies to them).
+Each attempt is reserved with a single INSERT ... ON CONFLICT DO UPDATE ... RETURNING (the
+check and the increment are one atomic statement) before the password is verified, and handed
+back on success.
 """
 
 from __future__ import annotations
 
-import threading
-import time
-from collections import deque
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 
 from fastapi import HTTPException
+from sqlalchemy import text
+from sqlalchemy.orm import Session
 
 MAX_PAIR_ATTEMPTS = 10
+TRUSTED_PAIR_ATTEMPTS = 30
 MAX_EMAIL_ATTEMPTS = 20
 WINDOW_SECONDS = 15 * 60
-MAX_TRACKED_KEYS = 10_000
-MAX_DELAY_SECONDS = 15.0
+MAX_DELAY_SECONDS = 60
 
-_lock = threading.Lock()
-_pairs: dict[tuple[str, str], deque[float]] = {}
-_emails: dict[str, deque[float]] = {}
+_RESERVE = text(
+    """
+    INSERT INTO login_throttle AS t (key, kind, failures, window_start, next_allowed_at)
+    VALUES (:key, :kind, 1, :now, NULL)
+    ON CONFLICT (key) DO UPDATE SET
+      failures = CASE WHEN t.window_start <= :now - make_interval(secs => :window)
+                      THEN 1 ELSE t.failures + 1 END,
+      window_start = CASE WHEN t.window_start <= :now - make_interval(secs => :window)
+                          THEN :now ELSE t.window_start END,
+      next_allowed_at = CASE
+        WHEN :hard OR t.window_start <= :now - make_interval(secs => :window) THEN NULL
+        WHEN t.failures + 1 > :limit THEN :now + make_interval(
+          secs => LEAST(CAST(:max_delay AS double precision),
+                        power(2.0, LEAST(t.failures + 1 - :limit - 1, 6))))
+        ELSE NULL END
+    WHERE t.window_start <= :now - make_interval(secs => :window)
+       OR ((NOT :hard OR t.failures < :limit)
+           AND (t.next_allowed_at IS NULL OR t.next_allowed_at <= :now))
+    RETURNING failures
+    """
+)
+_STATE = text("SELECT window_start, next_allowed_at FROM login_throttle WHERE key = :key")
+_RELEASE = text(
+    "UPDATE login_throttle SET failures = GREATEST(failures - 1, 0), next_allowed_at = NULL "
+    "WHERE key = ANY(:keys)"
+)
+_PURGE = text("DELETE FROM login_throttle WHERE window_start < :cutoff")
 
 
-def reset() -> None:
-    with _lock:
-        _pairs.clear()
-        _emails.clear()
+@dataclass(frozen=True)
+class Reservation:
+    keys: tuple[str, ...]
 
 
-def _trim(attempts: deque[float], now: float) -> None:
-    while attempts and now - attempts[0] >= WINDOW_SECONDS:
-        attempts.popleft()
+def _now(now: datetime | None) -> datetime:
+    return now or datetime.now(UTC)
 
 
-def _purge_expired(now: float) -> None:
-    for table in (_pairs, _emails):
-        for key in [k for k, v in table.items() if not v or now - v[-1] >= WINDOW_SECONDS]:
-            del table[key]
+def _reserve_one(db: Session, key: str, kind: str, limit: int, hard: bool, now: datetime) -> bool:
+    row = db.execute(
+        _RESERVE,
+        {
+            "key": key, "kind": kind, "now": now, "window": WINDOW_SECONDS, "hard": hard,
+            "limit": limit, "max_delay": MAX_DELAY_SECONDS,
+        },
+    ).first()
+    return row is not None
 
 
-def _may_track_new_keys(now: float) -> bool:
-    if len(_pairs) + len(_emails) < MAX_TRACKED_KEYS:
-        return True
-    _purge_expired(now)
-    return len(_pairs) + len(_emails) < MAX_TRACKED_KEYS
+def _retry_after(db: Session, key: str, now: datetime) -> int:
+    state = db.execute(_STATE, {"key": key}).first()
+    if state is None:
+        return 1
+    window_start, next_allowed = state
+    waits = [(window_start + timedelta(seconds=WINDOW_SECONDS) - now).total_seconds()]
+    if next_allowed is not None and next_allowed > now:
+        waits = [(next_allowed - now).total_seconds()]
+    return max(1, int(waits[0]) + 1)
 
 
 def reserve_login_attempt(
+    db: Session,
     email: str,
     client: str,
     *,
-    device_trusted: bool = False,
-    now: float | None = None,
-) -> tuple[float | None, float]:
-    """Count this attempt. Returns (reservation token, seconds to delay) or raises 429.
-
-    The token goes to release_login_attempt() on success; it is None when nothing was counted
-    (trusted device, or the tables are full of live entries).
-    """
-    if device_trusted:
-        return None, 0.0
-    current = time.monotonic() if now is None else now
-    pair = (email, client)
-    with _lock:
-        pair_attempts = _pairs.get(pair)
-        email_attempts = _emails.get(email)
-        if pair_attempts is not None:
-            _trim(pair_attempts, current)
-            if len(pair_attempts) >= MAX_PAIR_ATTEMPTS:
-                raise HTTPException(
-                    status_code=429,
-                    detail="Too many failed login attempts. Try again later.",
-                    headers={
-                        "Retry-After": str(int(WINDOW_SECONDS - (current - pair_attempts[0])) + 1)
-                    },
-                )
-        delay = 0.0
-        if email_attempts is not None:
-            _trim(email_attempts, current)
-            excess = len(email_attempts) - MAX_EMAIL_ATTEMPTS
-            if excess >= 0:
-                delay = min(MAX_DELAY_SECONDS, float(2 ** min(excess, 4)))
-
-        if (pair_attempts is None or email_attempts is None) and not _may_track_new_keys(current):
-            return None, delay
-        if pair_attempts is None:
-            pair_attempts = _pairs.setdefault(pair, deque())
-        if email_attempts is None:
-            email_attempts = _emails.setdefault(email, deque())
-        pair_attempts.append(current)
-        email_attempts.append(current)
-        return current, delay
+    trusted_device: bool = False,
+    now: datetime | None = None,
+) -> Reservation:
+    """Count this attempt or raise 429 with Retry-After. Commits on success."""
+    current = _now(now)
+    pair_key = f"pair:{email}|{client}"
+    email_key = f"email:{email}"
+    pair_limit = TRUSTED_PAIR_ATTEMPTS if trusted_device else MAX_PAIR_ATTEMPTS
+    keys = [pair_key]
+    blocked_key: str | None = None
+    if not _reserve_one(db, pair_key, "pair", pair_limit, True, current):
+        blocked_key = pair_key
+    elif not trusted_device:
+        keys.append(email_key)
+        if not _reserve_one(db, email_key, "email", MAX_EMAIL_ATTEMPTS, False, current):
+            blocked_key = email_key
+    if blocked_key is not None:
+        db.rollback()  # discards the pair increment made in this same transaction
+        retry = _retry_after(db, blocked_key, current)
+        db.rollback()
+        raise HTTPException(
+            status_code=429,
+            detail="Too many login attempts. Try again shortly.",
+            headers={"Retry-After": str(retry)},
+        )
+    db.commit()
+    return Reservation(tuple(keys))
 
 
-def release_login_attempt(email: str, client: str, token: float | None) -> None:
-    """Successful login: hand the reservation back."""
-    if token is None:
-        return
-    with _lock:
-        for table, key in ((_pairs, (email, client)), (_emails, email)):
-            attempts = table.get(key)
-            if attempts is None:
-                continue
-            try:
-                attempts.remove(token)
-            except ValueError:
-                pass
-            if not attempts:
-                del table[key]
+def release_login_attempt(db: Session, reservation: Reservation) -> None:
+    """Successful login: hand the reserved attempt back."""
+    db.execute(_RELEASE, {"keys": list(reservation.keys)})
+    db.commit()
+
+
+def purge_expired(db: Session, *, now: datetime | None = None) -> int:
+    from ..models import TrustedDevice
+
+    current = _now(now)
+    removed = db.execute(_PURGE, {"cutoff": current - timedelta(seconds=WINDOW_SECONDS)}).rowcount
+    removed += db.query(TrustedDevice).filter(TrustedDevice.expires_at < current).delete()
+    db.commit()
+    return int(removed or 0)

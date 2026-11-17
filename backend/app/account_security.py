@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import hashlib
-import hmac
 import threading
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -22,13 +20,13 @@ from sqlalchemy.orm import Session
 from .config import get_settings
 from .database import get_db
 from .models import AccountSession, User
+from .services.trusted_devices import revoke_devices
 
 
 SESSION_COOKIE = "gm_session"
 CSRF_COOKIE = "gm_csrf"
 OAUTH_COOKIE = "gm_oauth"
 _DEVICE_COOKIE = "gm_device"
-_DEVICE_COOKIE_DAYS = 90
 MIN_SIGNING_SECRET_LENGTH = 32
 LINK_SIGNING_ALGORITHM = "HS256"
 _PASSWORD_HASHER = PasswordHasher(time_cost=3, memory_cost=65536, parallelism=2)
@@ -178,28 +176,11 @@ def device_cookie_name() -> str:
     return f"__Host-{_DEVICE_COOKIE}" if get_settings().is_production else _DEVICE_COOKIE
 
 
-def _device_key() -> bytes:
-    """HKDF-SHA256 (RFC 5869) of JWT_SECRET_KEY for this one purpose, so the device cookie
-    key is not the signing key itself."""
-    prk = hmac.new(b"gamemetrix-hkdf-salt", get_settings().JWT_SECRET_KEY.encode(), sha256).digest()
-    return hmac.new(prk, b"gamemetrix device cookie v1\x01", sha256).digest()
-
-
-def _device_value(email: str) -> str:
-    return hmac.new(_device_key(), f"device:{email}".encode(), hashlib.sha256).hexdigest()
-
-
-def device_cookie_valid(request: Request, email: str) -> bool:
-    """True when the request carries the signed device cookie issued for this e-mail."""
-    presented = request.cookies.get(device_cookie_name(), "")
-    return bool(presented) and compare_digest(presented, _device_value(email))
-
-
-def set_device_cookie(response: Response, email: str) -> None:
+def set_device_cookie(response: Response, raw_token: str) -> None:
     response.set_cookie(
         device_cookie_name(),
-        _device_value(email),
-        max_age=_DEVICE_COOKIE_DAYS * 24 * 60 * 60,
+        raw_token,
+        max_age=30 * 24 * 60 * 60,
         httponly=True,
         secure=get_settings().is_production,
         samesite="lax",
@@ -299,4 +280,6 @@ def revoke_user_sessions(db: Session, user_id: str) -> None:
         )
     ).all():
         session.revoked_at = now
+    # Password resets and "sign out everywhere" also end the trust placed in browsers.
+    revoke_devices(db, user_id)
     db.flush()

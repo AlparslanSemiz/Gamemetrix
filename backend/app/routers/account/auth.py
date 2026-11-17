@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from uuid import uuid4
 
@@ -11,10 +10,10 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from ...account_security import (
+    device_cookie_name,
     AccountPrincipal,
     clear_account_cookies,
     create_account_session,
-    device_cookie_valid,
     hash_password_async,
     normalize_email,
     optional_account_principal,
@@ -35,6 +34,7 @@ from ...rate_limit import get_client_ip, limiter
 from ...services.account_email import email_delivery_ready
 from ...services.account_state import account_payload, get_or_create_preference
 from ...services.login_throttle import release_login_attempt, reserve_login_attempt
+from ...services.trusted_devices import is_trusted_device, issue_device
 from ...services.account_tokens import (
     consume_token,
     send_password_reset_email,
@@ -189,20 +189,19 @@ async def login(
     require_same_origin(request)
     email = normalize_email(str(payload.email))
     client = get_client_ip(request)
-    # Reserved before the password check (atomic with the limit test); handed back on success.
-    reservation, delay = reserve_login_attempt(
-        email, client, device_trusted=device_cookie_valid(request, email)
-    )
-    if delay:
-        await asyncio.sleep(delay)  # slows distributed guessing without ever locking the owner out
     user = db.scalar(select(User).where(User.email == email))
+    device_token = request.cookies.get(device_cookie_name())
+    trusted = user is not None and is_trusted_device(db, user.id, device_token)
+    # Reserved (atomically, in Postgres) before the password is checked; 429 + Retry-After
+    # when over a limit. Handed back below on success.
+    reservation = reserve_login_attempt(db, email, client, trusted_device=trusted)
     password_matches = await verify_password_async(
         payload.password,
         user.password_hash if user else None,
     )
     if user is None or not user.is_active or not password_matches:
         raise HTTPException(status_code=401, detail="Invalid email or password.")
-    release_login_attempt(email, client, reservation)
+    release_login_attempt(db, reservation)
     if user.email_verified_at is None:
         raise HTTPException(status_code=403, detail="Verify your email before logging in.")
 
@@ -210,7 +209,8 @@ async def login(
         user.password_hash = await hash_password_async(payload.password)
     session_token, csrf_token = create_account_session(db, user, request)
     set_account_cookies(response, session_token, csrf_token)
-    set_device_cookie(response, email)
+    if not trusted:
+        set_device_cookie(response, issue_device(db, user.id))
     return {"account": account_payload(user)}
 
 

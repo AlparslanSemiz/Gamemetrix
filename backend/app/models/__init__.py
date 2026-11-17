@@ -13,6 +13,8 @@ Computed Game properties delegate to `game_signals.py`; classification lives in
 from .accounts import (
     AccountSession,
     AccountToken,
+    LoginThrottle,
+    TrustedDevice,
     NotificationDelivery,
     OAuthIdentity,
     User,
@@ -36,6 +38,8 @@ from .ops import (
 __all__ = [
     "AccountSession",
     "AccountToken",
+    "LoginThrottle",
+    "TrustedDevice",
     "AdminAuditLog",
     "AiCatalogChange",
     "AnalyticsEvent",

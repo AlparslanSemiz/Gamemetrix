@@ -381,6 +381,10 @@ async def raw_analytics_retention_loop() -> None:
     while True:
         try:
             with SessionLocal() as db:
+                from .login_throttle import purge_expired
+
+                purge_expired(db)  # login counters and expired trusted devices
+            with SessionLocal() as db:
                 redacted = purge_expired_raw_analytics(db)
             if redacted:
                 log.info("Redacted raw network data on %d visit events", redacted)

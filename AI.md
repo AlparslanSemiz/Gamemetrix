@@ -132,7 +132,8 @@ database.py         Engines + session factories only. Request engine: pool 8+4, 
 security.py         Admin JWT (require_admin_user).
 account_security.py Normal-account auth (Argon2id passwords, hashed opaque sessions).
 rate_limit.py       slowapi HTTP rate limiting (distinct from integrations/rate_limiter.py); keys IPv6 by /64.
-services/login_throttle.py  failed-login limits: hard 429 per (e-mail, IP/64) 10 per 15 min, per-e-mail 20 then 1-15 s delays, signed device cookie exempts, atomic reservation, in process memory.
+services/login_throttle.py  Postgres `login_throttle`: 429 per (e-mail, IP/64) 10/15 min, per-e-mail 20 then exponential `next_allowed_at` (<= 60 s, 429+Retry-After); atomic reserve before the password check.
+services/trusted_devices.py  `trusted_devices` (hashed random cookie token, 30 d; deleted on password reset / session revocation); loosens, never bypasses, the pair limit.
 services/count_cache.py     5-minute bounded cache for catalog COUNT(*) totals.
 heavy_jobs.py       HEAVY_JOB_LOCK + peak-hour gate shared by all bulk jobs.
 ```
