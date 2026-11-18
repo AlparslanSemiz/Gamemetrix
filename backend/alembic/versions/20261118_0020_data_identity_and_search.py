@@ -94,15 +94,26 @@ def upgrade() -> None:
     op.execute("CREATE INDEX IF NOT EXISTS ix_game_search_aliases_game_id ON game_search_aliases (game_id)")
     op.execute("DELETE FROM game_search_aliases")
 
+    # One set-based statement: a per-alias ORDER BY rank_score ... LIMIT 1 walked the
+    # rank index for every alias (seconds each on a large catalog) while this
+    # transaction holds ACCESS EXCLUSIVE on games.
+    op.execute("ANALYZE games")
     connection = op.get_bind()
-    for alias, normalized_title in _ALIASES.items():
+    if _ALIASES:
+        values = ", ".join(f"(:a{i}, :t{i})" for i in range(len(_ALIASES)))
+        params: dict[str, str] = {}
+        for i, (alias, normalized_title) in enumerate(_ALIASES.items()):
+            params[f"a{i}"] = alias
+            params[f"t{i}"] = normalized_title
         connection.execute(
             sa.text(
                 "INSERT INTO game_search_aliases (alias, game_id) "
-                "SELECT :alias, id FROM games WHERE title_normalized = :title "
-                "AND content_type = 'game' ORDER BY rank_score DESC, id ASC LIMIT 1"
+                "SELECT DISTINCT ON (a.alias) a.alias, g.id "
+                f"FROM (VALUES {values}) AS a(alias, title) "
+                "JOIN games g ON g.title_normalized = a.title AND g.content_type = 'game' "
+                "ORDER BY a.alias, g.rank_score DESC NULLS LAST, g.id ASC"
             ),
-            {"alias": alias, "title": normalized_title},
+            params,
         )
 
 

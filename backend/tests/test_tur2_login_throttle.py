@@ -175,7 +175,7 @@ def test_session_revocation_and_password_reset_delete_devices(pg_client) -> None
     reset = client.post(
         "/api/account/password/reset",
         headers={"Origin": "http://localhost:5173"},
-        json={"token": token, "password": "a brand new long passphrase"},
+        json={"token": token, "password": "a brand new long passphrase"},  # pragma: allowlist secret
     )
     assert reset.status_code == 200
     with sessions() as db:
@@ -185,7 +185,7 @@ def test_session_revocation_and_password_reset_delete_devices(pg_client) -> None
 def test_login_issues_a_device_cookie_that_is_recognized_afterwards(pg_client) -> None:
     client, sessions = pg_client
     origin = {"Origin": "http://localhost:5173"}
-    password = "correct horse battery staple"
+    password = "correct horse battery staple"  # pragma: allowlist secret
     with sessions() as db:
         user = _user(db, "login@example.com")
         user.password_hash = sec.hash_password(password)

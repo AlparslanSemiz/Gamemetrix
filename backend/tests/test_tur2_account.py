@@ -40,7 +40,7 @@ def test_forgot_and_register_send_mail_after_the_response(pg_client, monkeypatch
 
     registered = client.post(
         "/api/account/register", headers=origin,
-        json={"display_name": "Test User", "email": "bg@example.com", "password": "correct horse battery staple"},
+        json={"display_name": "Test User", "email": "bg@example.com", "password": "correct horse battery staple"},  # pragma: allowlist secret
     )
     assert registered.status_code == 202
     assert events == ["Verify your GameMetrix account"]
@@ -48,7 +48,7 @@ def test_forgot_and_register_send_mail_after_the_response(pg_client, monkeypatch
     # A second registration for the same pending address answers identically.
     again = client.post(
         "/api/account/register", headers=origin,
-        json={"display_name": "Test User", "email": "bg@example.com", "password": "another long passphrase here"},
+        json={"display_name": "Test User", "email": "bg@example.com", "password": "another long passphrase here"},  # pragma: allowlist secret
     )
     assert again.status_code == 202 and again.json() == registered.json()
 
@@ -68,7 +68,7 @@ def test_forgot_and_register_send_mail_after_the_response(pg_client, monkeypatch
 def test_login_is_limited_per_client_and_account_after_repeated_failures(pg_client) -> None:
     client, _sessions = pg_client
     origin = {"Origin": "http://localhost:5173"}
-    body = {"email": "grind@example.com", "password": "wrong password value"}
+    body = {"email": "grind@example.com", "password": "wrong password value"}  # pragma: allowlist secret
     codes = [client.post("/api/account/login", headers=origin, json=body).status_code for _ in range(11)]
     assert codes[:10] == [401] * 10
     assert codes[10] == 429
