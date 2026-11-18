@@ -34,8 +34,10 @@ def test_advanced_catalog_filters_and_sorts_stay_in_postgres() -> None:
     statement = game_query.apply_sort(statement, "review_count", "desc").limit(24).offset(48)
     sql = str(statement.compile(dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}))
 
-    assert "jsonb_array_elements" in sql
-    assert "ORDER BY (SELECT" in sql
+    # Stored columns, not per-row JSON sub-queries.
+    assert "jsonb_array_elements" not in sql
+    assert "ORDER BY games.review_count_total DESC" in sql
+    assert "games.has_live_critic IS true" in sql
     assert "LIMIT 24 OFFSET 48" in sql
 
 

@@ -6,7 +6,7 @@ from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Response
 from sqlalchemy import cast, desc, exists, func, or_, select
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session, load_only, selectinload
 
 from ..database import get_db
 from ..config import get_settings
@@ -143,6 +143,7 @@ def sitemap_games(chunk: int = Path(ge=1), db: Session = Depends(get_db)) -> Res
             db.scalars(
                 select(Game)
                 .where(Game.seo_indexable.is_(True))
+                .options(load_only(Game.id, Game.slug, Game.seo_updated_at))
                 .order_by(desc(Game.rank_score), Game.slug)
                 .offset(offset)
                 .limit(page_size)
@@ -161,7 +162,17 @@ def sitemap_static(db: Session = Depends(get_db)) -> Response:
             db.scalars(
                 select(Game)
                 .where(Game.seo_indexable.is_(True))
-                .options(selectinload(Game.price_snapshots))
+                .options(
+                    load_only(
+                        Game.id,
+                        Game.slug,
+                        Game.release_year,
+                        Game.proton_tier,
+                        Game.platforms,
+                        Game.seo_updated_at,
+                    ),
+                    selectinload(Game.price_snapshots),
+                )
                 .order_by(desc(Game.rank_score), Game.slug)
                 .limit(get_settings().SEO_INDEX_LIMIT)
             ).all()
