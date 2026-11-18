@@ -21,12 +21,9 @@ import time
 from dataclasses import dataclass
 
 from sqlalchemy import (
-    BigInteger,
     ColumnElement,
-    Float,
     Select,
     Text,
-    and_,
     asc,
     case,
     cast,
@@ -39,35 +36,24 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Session
-from sqlalchemy.sql.expression import TableValuedAlias
 
-from ..integrations.source_registry import CRITIC_SOURCES, PC_PLATFORM_KEYS, PRIMARY_SOURCES
 from ..models import Game, GameSearchAlias, PriceSnapshot
 from ..search_text import fuzzy_search_allowed, normalize_search_text
 from .like_escape import LIKE_ESCAPE_CHAR, escape_like
 
 _DEAL_FRESHNESS_HOURS = 24
 _BEST_DEAL_MIN_DISCOUNT_PERCENT = 50
-_MAX_REVIEW_COUNT = 2_000_000_000
-_MAX_VALID_SCORE = 100
 _MINUTES_PER_HOUR = 60
 
 # ProtonDB tiers that count as playable on Linux (kept in step with routers/seo.py).
 
-# Catalogs that predate the game_modes column still carry the signal in their
-# genre tags, so a mode filter also accepts these equivalents.
-_PLAYER_MODE_GENRE_ALIASES: dict[str, frozenset[str]] = {
-    "multiplayer": frozenset({"massively multiplayer", "mmo", "mmorpg", "mmoarpg", "multiplayer", "pvp", "online co-op"}),
-    "coop": frozenset({"co-op", "coop", "online co-op", "local co-op"}),
-    "singleplayer": frozenset({"single player", "singleplayer"}),
-}
-
 _PROTON_PLAYABLE_TIERS = ("native", "platinum", "gold", "silver")
 
-_SOURCE_SORT_COLUMNS: dict[str, str] = {
-    "metacritic_score": "Metacritic",
-    "opencritic_score": "OpenCritic",
-    "steam_score": "Steam",
+# Stored per-source scores (catalog_derived.py); 0 means no live score.
+_SOURCE_SORT_COLUMNS = {
+    "metacritic_score": Game.metacritic_live_score,
+    "opencritic_score": Game.opencritic_score,
+    "steam_score": Game.steam_score,
 }
 
 
@@ -225,12 +211,11 @@ def apply_sort(query: Select[tuple[Game]], sort: str, direction: str) -> Select[
         col = desc(Game.metrix_score) if direction == "desc" else asc(Game.metrix_score)
         return query.order_by(col, desc(Game.rank_score), desc(Game.is_rankable), asc(Game.title), asc(Game.id))
     if sort in _SOURCE_SORT_COLUMNS:
-        source_score = _source_score_expression(_SOURCE_SORT_COLUMNS[sort])
+        source_score = _SOURCE_SORT_COLUMNS[sort]
         col = desc(source_score) if direction == "desc" else asc(source_score)
         return query.order_by(col, desc(Game.rank_score), desc(Game.metrix_score), asc(Game.title), asc(Game.id))
     if sort == "review_count":
-        reviews = _review_count_expression(require_live_score=False)
-        col = desc(reviews) if direction == "desc" else asc(reviews)
+        col = desc(Game.review_count_total) if direction == "desc" else asc(Game.review_count_total)
         return query.order_by(col, desc(Game.rank_score), desc(Game.metrix_score), asc(Game.title), asc(Game.id))
     # Default (rank_score) — reliability-weighted ranking
     col = desc(Game.rank_score) if direction == "desc" else asc(Game.rank_score)
@@ -254,16 +239,14 @@ def apply_advanced_filters(query: Select, filters: CatalogFilters) -> Select:
         terms = {filters.platform.lower()}
         if filters.platform.lower() == "steam":
             terms.add("pc")
-        platform_match = _json_array_match(Game.platforms, terms, substring=True)
+        # Tags are canonical lower-case names plus umbrellas (steam, playstation, ...).
+        platform_match = Game.platform_tags.overlap(sorted(terms))
         if filters.platform.lower() == "linux":
             # Playable through Proton counts as Linux support alongside native builds.
             platform_match = or_(platform_match, Game.proton_tier.in_(_PROTON_PLAYABLE_TIERS))
         query = query.where(platform_match)
     if filters.player_mode:
-        query = query.where(or_(
-            _json_array_match(Game.game_modes, {filters.player_mode}),
-            _json_array_match(Game.genres, _PLAYER_MODE_GENRE_ALIASES[filters.player_mode]),
-        ))
+        query = query.where(Game.mode_tags.contains([filters.player_mode]))
     if filters.playtime_min_hours is not None:
         playtime = _effective_playtime_minutes()
         query = query.where(
@@ -279,15 +262,15 @@ def apply_advanced_filters(query: Select, filters: CatalogFilters) -> Select:
             playtime <= filters.playtime_max_hours * _MINUTES_PER_HOUR,
         )
     if filters.min_ratings is not None:
-        query = query.where(_review_count_expression(require_live_score=True) >= filters.min_ratings)
+        query = query.where(Game.live_review_count >= filters.min_ratings)
     if filters.max_ratings is not None:
-        query = query.where(_review_count_expression(require_live_score=True) <= filters.max_ratings)
+        query = query.where(Game.live_review_count <= filters.max_ratings)
     if filters.has_award:
         query = query.where(or_(Game.goty_year.is_not(None), Game.award_count > 0))
     if filters.min_live_sources is not None:
-        query = query.where(_live_primary_source_count_expression() >= filters.min_live_sources)
+        query = query.where(Game.live_primary_sources >= filters.min_live_sources)
     if filters.require_critic:
-        query = query.where(_has_live_critic_expression())
+        query = query.where(Game.has_live_critic.is_(True))
     return query
 
 
@@ -299,84 +282,6 @@ def _effective_playtime_minutes() -> ColumnElement:
     Endless games show "no fixed time" on the card, so the filters skip them too.
     """
     return func.coalesce(func.nullif(Game.hltb_main_story_minutes, 0), Game.playtime_minutes)
-
-
-def _json_array_match(
-    column: ColumnElement,
-    values: set[str] | frozenset[str],
-    *,
-    substring: bool = False,
-) -> ColumnElement[bool]:
-    rows = func.jsonb_array_elements_text(cast(column, JSONB)).table_valued("value")
-    stored = func.lower(func.trim(rows.c.value))
-    if substring:
-        condition = or_(*(func.strpos(stored, value) > 0 for value in values))
-    else:
-        condition = stored.in_(values)
-    return exists(select(1).select_from(rows).where(condition)).correlate(Game)
-
-
-def _source_score_parts() -> tuple[TableValuedAlias, ColumnElement, ColumnElement[float], ColumnElement[bool]]:
-    rows = func.jsonb_array_elements(cast(Game.source_scores, JSONB)).table_valued("value")
-    item = cast(rows.c.value, JSONB)
-    numeric_score = case(
-        (func.jsonb_typeof(item["score"]) == "number", cast(item["score"].astext, Float)),
-        else_=0.0,
-    )
-    valid = and_(
-        item["status"].astext == "live",
-        numeric_score > 0,
-        numeric_score <= _MAX_VALID_SCORE,
-    )
-    return rows, item, numeric_score, valid
-
-
-def _source_score_expression(source: str) -> ColumnElement[float]:
-    rows, item, numeric_score, valid = _source_score_parts()
-    return (
-        select(func.coalesce(func.max(case((and_(valid, item["source"].astext == source), numeric_score), else_=0.0)), 0.0))
-        .select_from(rows)
-        .correlate(Game)
-        .scalar_subquery()
-    )
-
-
-def _review_count_expression(*, require_live_score: bool) -> ColumnElement[int]:
-    rows, item, _numeric_score, valid = _source_score_parts()
-    numeric_reviews = case(
-        (func.jsonb_typeof(item["review_count"]) == "number", cast(item["review_count"].astext, BigInteger)),
-        else_=0,
-    )
-    safe_reviews = and_(numeric_reviews >= 0, numeric_reviews <= _MAX_REVIEW_COUNT)
-    condition = and_(valid, safe_reviews) if require_live_score else safe_reviews
-    return (
-        select(func.coalesce(func.sum(case((condition, numeric_reviews), else_=0)), 0))
-        .select_from(rows)
-        .correlate(Game)
-        .scalar_subquery()
-    )
-
-
-def _live_primary_source_count_expression() -> ColumnElement[int]:
-    rows, item, _numeric_score, valid = _source_score_parts()
-    pc_platform = _json_array_match(Game.platforms, PC_PLATFORM_KEYS)
-    applicable_source = or_(
-        item["source"].astext.in_(PRIMARY_SOURCES - {"Steam"}),
-        and_(item["source"].astext == "Steam", pc_platform),
-    )
-    return (
-        select(func.coalesce(func.sum(case((and_(valid, applicable_source), 1), else_=0)), 0))
-        .select_from(rows)
-        .correlate(Game)
-        .scalar_subquery()
-    )
-
-
-def _has_live_critic_expression() -> ColumnElement[bool]:
-    rows, item, _numeric_score, valid = _source_score_parts()
-    return exists(
-        select(1).select_from(rows).where(and_(valid, item["source"].astext.in_(CRITIC_SOURCES)))
-    ).correlate(Game)
 
 
 _GENRE_LOOKUP_TTL = 300.0
