@@ -11,3 +11,12 @@ test('SSR head keeps the entry, runtime and framework modulepreloads and trims t
   }
   expect(preloads.length).toBeLessThanOrEqual(6)
 })
+
+test('public pages carry a social preview image, /about included', async ({ request }) => {
+  for (const path of ['/', '/about', '/best/linux-games']) {
+    const html = await (await request.get(path)).text()
+    expect(html, path).toMatch(/<meta property="og:image" content="https:\/\/[^"]+"/)
+  }
+  const about = await (await request.get('/about')).text()
+  expect(about).toContain('<meta property="og:image" content="https://gamemetrix.me/og/home.png"')
+})

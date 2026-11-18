@@ -7,6 +7,8 @@ export interface AccountContextValue {
   accountState: AccountState | null
   isLoading: boolean
   googleLoginAvailable: boolean
+  /** False until the session says accounts are on, so login entry points never flash while they are off. */
+  accountsEnabled: boolean
   login: (email: string, password: string) => Promise<void>
   logout: () => Promise<void>
   refresh: () => Promise<void>

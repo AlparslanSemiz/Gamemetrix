@@ -79,7 +79,15 @@ async function accountFetch<T>(path: string, init: RequestInit = {}): Promise<T>
   return response.json() as Promise<T>
 }
 
-export function getAccountSession(): Promise<{ account: Account | null; google_login?: boolean }> {
+/** Mirrors `AccountSessionResponse` in backend/app/routers/account/schemas.py. */
+export interface AccountSession {
+  account: Account | null
+  google_login: boolean
+  /** False while the operator has switched accounts off (ACCOUNT_AUTH_ENABLED=false). */
+  accounts_enabled: boolean
+}
+
+export function getAccountSession(): Promise<AccountSession> {
   return accountFetch('/session')
 }
 

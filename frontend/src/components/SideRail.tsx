@@ -16,6 +16,8 @@ interface SideRailProps {
   activePreset: string | null
   collections: Collections
   isSignedIn: boolean
+  /** Hide the Login entry point while the account system is switched off. */
+  showAccountEntry: boolean
   onOpenAccount: () => void
   onOpenMainPage: (id: MainPage) => void
   onOpenPreset: (preset: CuratedPreset) => void
@@ -103,16 +105,19 @@ function UtilityNavigation({
   isSignedIn,
   onOpenAccount,
   onOpenUtilityPage,
+  showAccountEntry,
 }: Pick<
   SideRailProps,
-  'activePage' | 'isSignedIn' | 'onOpenAccount' | 'onOpenUtilityPage'
+  'activePage' | 'isSignedIn' | 'onOpenAccount' | 'onOpenUtilityPage' | 'showAccountEntry'
 >) {
   return (
     <div className="rail-group rail-utility-group">
-      <button type="button" title={isSignedIn ? 'Account' : 'Login'} onClick={onOpenAccount}>
-        {isSignedIn ? <UserRound size={22} aria-hidden="true" /> : <LogIn size={22} aria-hidden="true" />}
-        <span>{isSignedIn ? 'Account' : 'Login'}</span>
-      </button>
+      {showAccountEntry ? (
+        <button type="button" title={isSignedIn ? 'Account' : 'Login'} onClick={onOpenAccount}>
+          {isSignedIn ? <UserRound size={22} aria-hidden="true" /> : <LogIn size={22} aria-hidden="true" />}
+          <span>{isSignedIn ? 'Account' : 'Login'}</span>
+        </button>
+      ) : null}
       {utilityNavItems.map(({ icon: Icon, id, label }) => (
         <button type="button" className={activePage === id ? 'is-active' : ''} aria-current={activePage === id ? 'page' : undefined} key={id} title={label} onClick={() => onOpenUtilityPage(id)}>
           <Icon size={22} aria-hidden="true" />

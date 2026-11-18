@@ -1,7 +1,7 @@
 import type { CatalogGame } from '../types/game'
 import { thumbnailUrl } from './coverImage'
 
-const DEFAULT_SOCIAL_IMAGE = 'https://gamemetrix.me/og/home.png'
+export const DEFAULT_SOCIAL_IMAGE = 'https://gamemetrix.me/og/home.png'
 
 function trimDescription(value: string, max = 155): string {
   const clean = value.replace(/\s+/g, ' ').trim()

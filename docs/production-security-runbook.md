@@ -45,6 +45,11 @@ JWT_AUDIENCE=gamemetrix-admin
 CORS_ALLOW_ORIGINS=https://gamemetrix.me,https://www.gamemetrix.me
 ```
 
+With accounts off, `GET /api/account/session` still answers 200 with
+`{"account": null, "google_login": false, "accounts_enabled": false}` and the
+frontend hides every Login/Register entry point (`/login` shows a short
+"accounts unavailable" note). Every other `/api/account/*` route answers 503.
+
 The application refuses invalid production settings. Do not work around that
 validator.
 

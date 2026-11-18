@@ -16,4 +16,7 @@ for _sub_router in (auth.router, oauth.router, state.router, preferences.router,
 
 router.add_api_route("", auth.delete_account, methods=["DELETE"])
 
-__all__ = ["router"]
+public_router = APIRouter(prefix="/api/account", tags=["account"])
+public_router.include_router(auth.public_router)
+
+__all__ = ["public_router", "router"]

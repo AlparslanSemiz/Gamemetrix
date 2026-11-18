@@ -151,6 +151,12 @@ function json(response, status, payload, headers = {}) {
   response.end(JSON.stringify(payload))
 }
 
+// A test opts into "accounts switched off" (production's ACCOUNT_AUTH_ENABLED=false)
+// with this cookie; the session endpoint then says so and the rest answer 503.
+function accountsDisabled(request) {
+  return /(?:^|;\s*)gm_test_accounts=off(?:;|$)/.test(request.headers.cookie ?? '')
+}
+
 function hasSession(request) {
   return /(?:^|;\s*)gm_session=test-session(?:;|$)/.test(request.headers.cookie ?? '')
 }
@@ -189,6 +195,12 @@ const server = http.createServer(async (request, response) => {
     response.writeHead(204)
     return response.end()
   }
+  if (url.pathname === '/api/account/session' && accountsDisabled(request)) {
+    return json(response, 200, { account: null, google_login: false, accounts_enabled: false })
+  }
+  if (url.pathname.startsWith('/api/account/') && accountsDisabled(request)) {
+    return json(response, 503, { detail: 'Account login is temporarily unavailable.' })
+  }
   if (url.pathname === '/api/account/login' && request.method === 'POST') {
     return json(response, 200, { account }, {
       'Set-Cookie': [
@@ -201,7 +213,7 @@ const server = http.createServer(async (request, response) => {
     return hasSession(request) ? json(response, 200, { account }) : json(response, 401, { detail: 'Not authenticated.' })
   }
   if (url.pathname === '/api/account/session') {
-    return json(response, 200, { account: hasSession(request) ? account : null, google_login: true })
+    return json(response, 200, { account: hasSession(request) ? account : null, google_login: true, accounts_enabled: true })
   }
   if (url.pathname === '/api/account/state') {
     return hasSession(request) ? json(response, 200, state) : json(response, 401, { detail: 'Not authenticated.' })

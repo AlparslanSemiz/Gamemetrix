@@ -68,3 +68,20 @@ def test_production_deploy_preserves_protected_environment_boundary() -> None:
     assert '"${compose[@]}" up -d --wait --wait-timeout 240 nginx' in deploy
     assert "Deployment completed successfully." in deploy
     assert "exec sudo -n bash" in wrapper
+
+
+def test_origin_tls_listener_does_not_repeat_security_headers() -> None:
+    # The TLS listener relays to the :8080 virtual hosts, which already add the
+    # security headers; inheriting the http-level add_header set duplicated them.
+    tls = _read("ops/nginx-origin-tls.conf")
+    assert "add_header_inherit off;" in tls
+    nginx = _read("nginx.conf")
+    assert nginx.count('add_header X-Frame-Options "DENY" always;') == 2  # http level + /admin
+
+
+def test_frontend_paths_drop_trailing_slash_but_api_does_not() -> None:
+    nginx = _read("nginx.conf")
+    site_root = nginx.rsplit("location / {", 1)[1].split("}", 1)[0]
+    assert "rewrite ^(.+)/$ $1 permanent;" in site_root
+    api_block = nginx.split("location /api/ {", 1)[1].split("}", 1)[0]
+    assert "rewrite" not in api_block

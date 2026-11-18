@@ -44,6 +44,7 @@ from .schemas import (
     DeleteAccountPayload,
     ForgotPasswordPayload,
     LoginPayload,
+    AccountSessionResponse,
     MessageResponse,
     RegisterPayload,
     ResetPasswordPayload,
@@ -52,6 +53,9 @@ from .schemas import (
 
 log = logging.getLogger(__name__)
 router = APIRouter()
+# Mounted without the require_account_enabled gate: the UI asks this on every page
+# load and needs a 200 that says "accounts are off" rather than a 503.
+public_router = APIRouter()
 
 VERIFY_RATE_LIMIT = "10/minute"
 
@@ -231,15 +235,17 @@ def me(principal: AccountPrincipal = Depends(require_account_principal)) -> dict
     return {"account": account_payload(principal.user)}
 
 
-@router.get("/session")
-def account_session(
-    principal: AccountPrincipal | None = Depends(optional_account_principal),
-) -> dict:
+@public_router.get("/session", response_model=AccountSessionResponse)
+def account_session(request: Request, db: Session = Depends(get_db)) -> AccountSessionResponse:
     cfg = get_settings()
-    return {
+    if not cfg.ACCOUNT_AUTH_ENABLED:
+        return AccountSessionResponse(account=None, google_login=False, accounts_enabled=False)
+    principal = optional_account_principal(request, db)
+    return AccountSessionResponse.model_validate({
         "account": account_payload(principal.user) if principal else None,
         "google_login": bool(cfg.GOOGLE_CLIENT_ID and cfg.GOOGLE_CLIENT_SECRET),
-    }
+        "accounts_enabled": True,
+    })
 
 
 @router.post("/password/forgot", response_model=MessageResponse, status_code=status.HTTP_202_ACCEPTED)
