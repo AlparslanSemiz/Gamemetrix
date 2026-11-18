@@ -16,11 +16,13 @@ from sqlalchemy import (
     func,
     text,
 )
+from sqlalchemy import event
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .. import game_signals
 from ..database import Base
 from ..integrations.source_registry import PC_PLATFORM_KEYS, applicable_for_game
+from ..search_text import normalize_search_text
 
 
 class Game(Base):
@@ -37,6 +39,10 @@ class Game(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     title: Mapped[str] = mapped_column(String(160), nullable=False, index=True)
     slug: Mapped[str] = mapped_column(String(180), unique=True, nullable=False, index=True)
+    # Lower-cased, unaccented, punctuation-free copy of `title` for search. Kept in
+    # step by the before_insert/before_update listener below; the pg_trgm GIN index
+    # on it comes from migration 0018.
+    title_normalized: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
     # Null is retained for legacy rows whose original insertion time cannot be
     # reconstructed. PostgreSQL supplies the timestamp for every new row.
     catalog_added_at: Mapped[datetime | None] = mapped_column(
@@ -84,6 +90,9 @@ class Game(Base):
     # of the cover URL, which silently failed for any game whose art came from
     # IGDB/GOG/PlayStation rather than Steam.
     steam_app_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    # Set only after appdetails agreed with the row (type=game, matching name/year).
+    # A verified id cannot be replaced by a lower-confidence source.
+    steam_app_id_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     game_modes: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
     playtime_minutes: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     hltb_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -97,6 +106,7 @@ class Game(Base):
     endless_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     proton_tier: Mapped[str | None] = mapped_column(String(16), nullable=True)
     proton_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    proton_refreshed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     award_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     award_nominations: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     goty_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -260,3 +270,35 @@ class PriceSnapshot(Base):
     itad_id: Mapped[str | None] = mapped_column(String(200), nullable=True, index=True)
 
     game: Mapped["Game"] = relationship("Game", back_populates="price_snapshots")
+
+
+@event.listens_for(Game, "before_insert")
+@event.listens_for(Game, "before_update")
+def _sync_title_normalized(_mapper, _connection, game: Game) -> None:
+    game.title_normalized = normalize_search_text(game.title)
+
+
+class SlugRedirect(Base):
+    """An old slug that now lives on another game (written when duplicates merge)."""
+
+    __tablename__ = "slug_redirects"
+
+    old_slug: Mapped[str] = mapped_column(String(180), primary_key=True)
+    game_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("games.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class GameSearchAlias(Base):
+    """Short names people type ("gta 5", "bg3") mapped to one game."""
+
+    __tablename__ = "game_search_aliases"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    alias: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
+    game_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("games.id", ondelete="CASCADE"), nullable=False, index=True
+    )

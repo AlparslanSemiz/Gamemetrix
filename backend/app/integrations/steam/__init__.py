@@ -6,7 +6,14 @@
   store   — screenshots, requirements, website, price, DLC, release dates
 """
 
-from .client import STEAM_APP_ID_RE, extract_steam_app_id, store_page_url
+from .client import (
+    STEAM_APP_ID_RE,
+    AppdetailsOutcome,
+    extract_steam_app_id,
+    fetch_app_outcome,
+    resolve_steam_app_id,
+    store_page_url,
+)
 from .parsing import parse_release_date
 from .reviews import get_steam_score
 from .store import (
@@ -20,6 +27,8 @@ from .store import (
 )
 
 __all__ = [
+    "AppdetailsOutcome",
+    "fetch_app_outcome",
     "STEAM_APP_ID_RE",
     "extract_steam_app_id",
     "fetch_steam_dlcs",
@@ -31,5 +40,6 @@ __all__ = [
     "get_steam_release_dates",
     "get_steam_score",
     "parse_release_date",
+    "resolve_steam_app_id",
     "store_page_url",
 ]

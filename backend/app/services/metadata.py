@@ -22,7 +22,7 @@ from datetime import UTC, date, datetime
 from ..models import Game
 from ..integrations.rate_limiter import get_rate_limiter
 from ..integrations.rawg_score import get_rawg_game_metadata, get_rawg_release_date
-from ..integrations.steam import extract_steam_app_id, get_steam_release_date
+from ..integrations.steam import get_steam_release_date, resolve_steam_app_id
 
 
 log = logging.getLogger(__name__)
@@ -219,7 +219,7 @@ async def fix_game_year(game: Game) -> bool:
     if game.release_year and game.release_year != 1970:
         return False
 
-    app_id = extract_steam_app_id(game.slug, game.cover_url)
+    app_id = resolve_steam_app_id(game)
     release_date: date | None = None
     if app_id and await get_rate_limiter().acquire("Steam"):
         release_date = await get_steam_release_date(app_id)

@@ -169,7 +169,7 @@ this path — that is why `from ..models import Game` still works.
 
 | Module | Tables |
 |---|---|
-| `catalog.py` | `Game`, `ExternalId`, `RatingSnapshot`, `SourceSnapshot`, `PriceSnapshot` |
+| `catalog.py` | `Game`, `ExternalId`, `RatingSnapshot`, `SourceSnapshot`, `PriceSnapshot`, `SlugRedirect`, `GameSearchAlias` |
 | `accounts.py` | `User`, `AccountSession`, `AccountToken`, `OAuthIdentity`, `UserCollection`, `UserPreference`, `UserAlertState`, `NotificationDelivery` |
 | `analytics.py` | `VisitEvent`, `AnalyticsEvent` |
 | `ops.py` | `ApiRequestBudget`, `ApiRequestWindow`, `AdminAuditLog`, `AiCatalogChange`, `CatalogQualityReview`, `CatalogSyncState`, `DataFillRun`, `JobRun` |
@@ -184,9 +184,18 @@ Stored columns worth knowing:
   `metrix_score`, `rank_score`, `is_rankable`, `critic_score`, `user_score`, `metacritic_score`.
 - **Enrichment:** `playtime_minutes`, `hltb_*`, `is_endless`, `proton_tier`, `proton_score`,
   `system_requirements`, `dlcs`, `similar_games`, `steam_app_id`, `website_url`.
+- **Steam identity:** `steam_app_id` is only *trusted* once `steam_app_id_verified_at` is set (appdetails
+  said `type=game` and the name/qualifiers/year match). `integrations/steam/identity.py` holds the
+  verdict; `services/steam_identity.py::claim_steam_app_id` is the only writer — an unverified source
+  fills a gap but never replaces an id, a verified id is never replaced by an unverified one.
+  `integrations/steam/client.py::resolve_steam_app_id` is the one reader (stored id → Steam external id →
+  Steam URL in the art; never the slug, whose numeric suffix is a RAWG/IGDB id).
+- **Search:** `title_normalized` (unaccent + lower + punctuation/apostrophes stripped, kept in step by
+  an ORM listener, `app/search_text.py`) with a pg_trgm GIN index; `game_search_aliases` ("gta 5", "bg3").
+  `game_query.title_search_condition` ORs literal, normalized, alias and trigram matches.
 - **Awards (display only):** `award_count`, `award_nominations`, `goty_year`, `awards`.
 - **Freshness bookkeeping:** `ratings_refreshed_at`, `metadata_refreshed_at`, `prices_refreshed_at`,
-  `hltb_refreshed_at`, `summary_refreshed_at`, `summary_checked_at`, `summary_quality`,
+  `hltb_refreshed_at`, `proton_refreshed_at`, `summary_refreshed_at`, `summary_checked_at`, `summary_quality`,
   `endless_checked_at`, `data_complete`, `catalog_added_at`.
 - **SEO:** `seo_indexable`, `seo_exclusion_reason`, `seo_updated_at`.
 
@@ -203,7 +212,7 @@ Computed properties on `Game` delegate to `game_signals.py` — never re-impleme
 
 ### Migrations
 
-**Alembic owns the schema.** `backend/alembic/versions/` — 17 revisions as of 2026-07-29,
+**Alembic owns the schema.** `backend/alembic/versions/` — 18 revisions as of 2026-11-18,
 baseline `20260720_0001_postgres_baseline`. Run `alembic upgrade head`.
 
 > There is no `_run_migrations()` / `_add_column_if_missing()` in `main.py` any more. Older notes
@@ -304,9 +313,19 @@ the admin **`GET /admin/jobs/periodic`** panel reads out of the `job_runs` table
 | `hltb_backfill_loop` | 90 s | `HLTB_BACKFILL_INTERVAL_MINUTES` (60) | HowLongToBeat playtimes (scraped — deliberately slow) |
 | `summary_audit_loop` | 120 s | `SUMMARY_SHORTEN_INTERVAL_MINUTES` | rotates the catalog auditing/rewriting descriptions, derives `summary_short` |
 | `endless_backfill_loop` | 150 s | `ENDLESS_BACKFILL_INTERVAL_MINUTES` | flags roguelikes/MMOs/sandbox as `is_endless` (∞ instead of "missing playtime") |
+| `duplicate_consolidation_loop` | 240 s | `DUPLICATE_CONSOLIDATION_INTERVAL_HOURS` (24) | verifies Steam ids of grouped games, merges duplicates, writes `slug_redirects` (detail endpoint answers 301); independent of the startup flag (`services/data_maintenance.py`) |
+| `protondb_refresh_loop` | 180 s | daily batch, `PROTONDB_REFRESH_INTERVAL_HOURS` (168) = per-game max age | `proton_tier`/`proton_score`/`proton_refreshed_at` for verified Steam ids only, <= 1 request/s (`services/protondb_refresh.py`) |
 | `data_fill_loop` | — | `DATA_FILL_*` | the ordered full-catalog fill, see below |
 | `notification_digest_loop` | — | — | account alert digests |
 | `raw_analytics_retention_loop` | 120 s | 6 h | redacts raw IP/user-agent past the retention window |
+
+Rating budget order (`integrations/sync/priority.py`): popularity x release recency x missing primary
+sources x staleness, so a new big release without scores is refreshed before an old game's re-check.
+`ratings_refreshed_at` / `prices_refreshed_at` only move when a provider actually answered — budget
+exhaustion, missing config and transport errors do not count.
+
+Operator commands (all dry-run by default, `--apply` to write): `python -m app.scripts.verify_steam_ids`,
+`consolidate_duplicates`, `fix_release_dates`.
 
 `_background_startup` runs the expensive full-catalog classify/rescore/dedupe pass **only** when
 `STARTUP_CATALOG_MAINTENANCE_ENABLED=true`. It is off by default so API readiness is not blocked
@@ -592,7 +611,8 @@ A new rule never goes in AI.md; a new module never goes in AI_Guidelines.md.
 One line per session that changed the architecture. Newest first. Skip purely cosmetic work.
 
 - **2026-11-18** — Backend/ops audit round 2: full-catalog scans run via `anyio.to_thread` on a separate long-timeout pool; request pool 8+4 with 8 s statement timeout and 503 on exhaustion; catalog offset <= 2400 and cached totals; genre filter via GIN containment, `lower(developer|publisher)` indexes (revision 0018); `/health/ready`; AI chain fixes (slot wait, settle, credential block); e-mail sends in BackgroundTasks and per-account login limit; images build only after CI succeeds and without `:latest`; `.deployed-sha`, `ops/notify.sh`, `ops/restore-test.sh`, logrotate, Dependabot, `docs/disaster-recovery.md`.
-- **2026-11-17** — Audit fixes: public `/impressum`, `/privacy`, `/datenschutz` routes (noindex) and `SiteLegalFooter`; `GET /api/account/session` now reports `google_login`; SSR maps backend 429/5xx to 429/503 with `Retry-After`; nginx rate-limits `/game/` (429); sitemaps keep a process-local last-good copy; `/api/integrations/status` is source+status only.
+- **2026-11-18** — Data identity: verified Steam ids (`steam_app_id_verified_at`, `claim_steam_app_id`, `resolve_steam_app_id`), `verify_steam_ids`/`fix_release_dates`/`consolidate_duplicates` commands, daily duplicate merge with 301 `slug_redirects`, weekly ProtonDB tiers, truthful freshness stamps + budget priority, DLC detection from appdetails `type`, HLTB-first playtime filter, normalized/trigram/alias title search (migration 0018).
+- **2026-11-17** — Audit fixes: public `/impressum`, `/privacy`, `/datenschutz` routes (noindex) and `SiteLegalFooter`; `GET /api/account/session` now reports `google_login`; SSR maps backend 429/5xx to 429/503 with `Retry-After` (the nginx `/game/` limit was reverted: the origin saw every visitor as the Docker gateway); sitemaps keep a process-local last-good copy; `/api/integrations/status` is source+status only.
 - **2026-11-16** — Added Cloudflare Web Analytics (cookieless beacon in `root.tsx`, enabled by the `VITE_CF_BEACON_TOKEN` repo variable in production images only; CSP in `nginx.conf`); `deploy-production.sh` now restarts nginx when `nginx.conf` changed (single-file bind mounts go stale after `git pull`).
 - **2026-11-14** — Removed dead code: the in-memory catalog filters (`game_filter.py`, `deduplication/in_memory.py`; filtering is SQL-only in `game_query.py`), the unused `integrations/itad.py` facade; `escape_like` moved to `services/like_escape.py`.
 - **2026-11-14** — Images are built in CI and pulled by production; `ops/auto-deploy.sh` deploys main automatically.

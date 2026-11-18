@@ -52,7 +52,7 @@ def get_game(
     db: Session = Depends(get_db),
     admin: AuthenticatedUser | None = Depends(optional_admin_user),
 ) -> GameRead:
-    game = get_game_or_404(db, slug)
+    game = get_game_or_404(db, slug, redirect=True)
     if refresh_metadata and admin is None:
         raise HTTPException(status_code=403, detail="Admin role required to refresh metadata.")
     if refresh_metadata and _needs_detail_refresh(game):

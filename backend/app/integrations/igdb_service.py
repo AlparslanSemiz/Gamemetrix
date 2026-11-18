@@ -104,7 +104,7 @@ class IGDBService:
             "involved_companies.company.name,involved_companies.developer,"
             "involved_companies.publisher,franchise.name,franchises.name,"
             "collection.name,summary,external_games.uid,"
-            "external_games.category,websites.url,websites.type,"
+            "external_games.category,external_games.name,external_games.year,websites.url,websites.type,"
             "websites.trusted,url; "
             f'search "{escape_igdb_search_text(title)}"; '
             "where version_parent = null; "
@@ -163,7 +163,7 @@ class IGDBService:
             "involved_companies.company.name,involved_companies.developer,"
             "involved_companies.publisher,franchise.name,franchises.name,"
             "collection.name,summary,external_games.uid,"
-            "external_games.category,external_games.url,"
+            "external_games.category,external_games.url,external_games.name,external_games.year,"
             "websites.url,websites.type,"
             "websites.trusted,url; "
             f"where id = {igdb_id}; "
@@ -246,7 +246,9 @@ class IGDBService:
 
         normalized_raw = dict(raw)
         normalized_raw["website"] = extract_official_website(raw)
-        normalized_raw["steam_app_id"] = extract_steam_app_id(raw)
+        normalized_raw["steam_app_id"] = extract_steam_app_id(
+            raw, title=str(raw.get("name") or "") or None
+        )
         return NormalizedGame(
             source="IGDB",
             external_id=str(raw["id"]),

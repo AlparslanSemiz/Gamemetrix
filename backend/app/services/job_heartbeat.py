@@ -38,6 +38,8 @@ JOB_LABELS: dict[str, str] = {
     "hltb_backfill": "HowLongToBeat playtimes",
     "summary_backfill": "Description audit (AI)",
     "endless_backfill": "Endless classification (AI)",
+    "duplicate_consolidation": "Duplicate merge + 301 redirects",
+    "protondb_refresh": "ProtonDB Linux tiers",
 }
 
 

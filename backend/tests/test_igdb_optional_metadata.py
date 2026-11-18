@@ -32,6 +32,6 @@ def test_optional_metadata_parser_keeps_only_official_website() -> None:
         2: {
             "website": "https://example-game.test",
             "game_modes": ["singleplayer", "coop"],
-            "steam_app_id": 620,
+            "steam_candidates": [{"app_id": 620, "name": "", "year": None}],
         }
     }
