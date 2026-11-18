@@ -37,7 +37,7 @@ and review volume shrink a thin score toward a neutral baseline.
 | Backend | FastAPI, Python 3.12, SQLAlchemy 2.x ORM, Alembic migrations |
 | Database | PostgreSQL — **the only supported runtime DB**; a SQLite `DATABASE_URL` is rejected |
 | Frontend | React Router **Framework Mode** (SSR), React + TypeScript strict, Vite |
-| Proxy | nginx (`nginx.conf`) in front of both, Cloudflare in front of that |
+| Proxy | nginx (`nginx.conf`) in front of both, Cloudflare in front of that. Production's TLS listener (`ops/nginx-origin-tls.conf`) relays to the :8080 virtual hosts with `add_header_inherit off`, so security headers are added once; the site's `location /` 301s a trailing slash (`/about/` → `/about`) |
 | Deploy | `docker-compose.yml` — services: `db`, `backend`, `frontend`, `nginx`; volume `pgdata` |
 | Images | `.github/workflows/images.yml` builds both images for amd64 + arm64 after the CI workflow succeeds for a main commit (`workflow_run`) → `ghcr.io/alparslansemiz/gamemetrix-{backend,frontend}:sha-<commit>` (no `:latest`). Production pulls them (`GAMEMETRIX_IMAGE_PREFIX` in `.env`, tag written by `deploy-production.sh`); root cron `ops/auto-deploy.sh` deploys a new main within ~5 min of its images appearing, tracks success in `.deployed-sha`, and reports failures through `ops/notify.sh` |
 | Host constraint | 1 GB RAM production host. This drives several designs — see §9. |
@@ -490,7 +490,8 @@ loaders forward `request.signal` and the client IP (`clientForwardHeaders`), and
   liked, favorites`. localStorage key `gamemetrix.collections`, spread over `emptyCollections`
   on load for forward compatibility. Changing these keys breaks existing users' local data.
 - `state/AccountProvider.tsx` + `state/account.ts` — signed-in account state; server-side
-  collections sync through `/api/account/state`.
+  collections sync through `/api/account/state`. `accountsEnabled` stays `false` until the
+  session says otherwise, so Login links never flash while accounts are switched off.
 
 ### Conventions
 
@@ -515,7 +516,10 @@ GET  /sitemap.xml  /sitemap-games-{chunk}.xml  /sitemap-static.xml
 POST /api/analytics/page-view  /api/analytics/event                GET /health  /health/ready
 ```
 
-Accounts (`/api/account`, gated by `require_account_enabled`):
+Accounts (`/api/account`, gated by `require_account_enabled` — except `GET /session`, which is
+mounted on the ungated `public_router` and answers 200 with `accounts_enabled: false` when
+`ACCOUNT_AUTH_ENABLED` is off; the frontend reads that flag (`useAccount().accountsEnabled`) to hide
+Login/Register entry points):
 
 ```
 POST /register /email/verify /login /logout /password/forgot /password/reset
@@ -598,7 +602,7 @@ docker compose config
 ```
 
 PostgreSQL integration tests run only when `TEST_DATABASE_URL` names a dedicated database ending
-in `_test`. 42 backend test modules live in `backend/tests/`; `test_scoring.py`,
+in `_test`. 58 backend test modules live in `backend/tests/`; `test_scoring.py`,
 `test_sync_persistence.py` and `test_provider_budgets.py` are the ones most likely to catch a
 regression in the core pipeline. Frontend e2e specs are in `frontend/tests/e2e/`.
 
@@ -636,6 +640,7 @@ A new rule never goes in AI.md; a new module never goes in AI_Guidelines.md.
 
 One line per session that changed the architecture. Newest first. Skip purely cosmetic work.
 
+- **2026-11-19** — `GET /api/account/session` is ungated and reports `accounts_enabled` (200 instead of 503 while accounts are off; UI hides Login/Register); nginx TLS listener no longer re-adds the security headers (`add_header_inherit off`), frontend paths 301 off a trailing slash; 390px no-overflow e2e.
 - **2026-11-19** — CSP for `gamemetrix.me` HTML moved from nginx to the SSR app (`frontend/src/csp.server.ts`, `entry.server.tsx`): per-response nonce + `'strict-dynamic'`, no `script-src 'unsafe-inline'`; nginx sends no CSP for that host (`map $host $gm_csp`), the API host keeps the static one; nonce/cache trade-off in `docs/production-security-runbook.md`.
 - **2026-11-19** — Catalog sort/filter values (review count, live source count, critic, per-source scores, platform/mode tags) are stored columns derived by `services/catalog_derived.py` and indexed (revision 20261119_0022); `game_query.py` no longer builds JSON sub-queries; sitemap endpoints use `load_only`.
 - **2026-11-19** — DB retention: snapshot tables partitioned monthly with a latest-per-key retention sweep, quota-window and data-fill-run purges, tighter Postgres settings for the 224 MiB container (migration `20261119_0023`).

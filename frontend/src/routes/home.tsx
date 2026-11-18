@@ -22,9 +22,9 @@ import {
 } from '../catalog/queryParams'
 import { RouteErrorPage } from '../components/RouteErrorPage'
 import { sharedCacheHeaders } from '../utils/cacheHeaders'
+import { DEFAULT_SOCIAL_IMAGE } from '../utils/curatedMeta'
 import type { CatalogGameListResponse } from '../types/game'
 
-const SOCIAL_IMAGE = 'https://gamemetrix.me/og/home.png'
 const LOGO_IMAGE = 'https://gamemetrix.me/logo-512.png'
 
 interface HomeLoaderData extends CatalogGameListResponse {
@@ -123,11 +123,11 @@ export const meta: MetaFunction = ({ location }) => [
   { property: 'og:description', content: 'Independent game rankings with four named score sources, Linux compatibility, playtime and prices.' },
   { property: 'og:type', content: 'website' },
   { property: 'og:url', content: 'https://gamemetrix.me/' },
-  { property: 'og:image', content: SOCIAL_IMAGE },
+  { property: 'og:image', content: DEFAULT_SOCIAL_IMAGE },
   { name: 'twitter:card', content: 'summary_large_image' },
   { name: 'twitter:title', content: 'GameMetrix – Game Scores, Compatibility & Playtime' },
   { name: 'twitter:description', content: 'Independent game rankings with four named score sources, Linux compatibility, playtime and prices.' },
-  { name: 'twitter:image', content: SOCIAL_IMAGE },
+  { name: 'twitter:image', content: DEFAULT_SOCIAL_IMAGE },
 ]
 
 export const headers = sharedCacheHeaders

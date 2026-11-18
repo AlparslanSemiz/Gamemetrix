@@ -24,6 +24,7 @@ from .seed import seed_games
 from .routers import admin
 from .routers.analytics import router as analytics_router
 from .routers.auth import router as auth_router
+from .routers.account import public_router as account_public_router
 from .routers.account import router as account_router
 from .routers.games import router as games_router
 from .routers.imports import router as imports_router
@@ -245,6 +246,7 @@ async def private_api_cache_control(request, call_next):
 app.middleware("http")(audit_admin_request)
 
 app.include_router(auth_router)
+app.include_router(account_public_router)
 app.include_router(account_router)
 app.include_router(analytics_router)
 app.include_router(games_router)

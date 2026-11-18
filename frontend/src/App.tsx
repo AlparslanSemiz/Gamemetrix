@@ -138,7 +138,7 @@ export function AppContent({
     loaderRef,
     retryLoadMore,
   } = pagination
-  const { account } = useAccount()
+  const { account, accountsEnabled } = useAccount()
   const [catalogTotal, setCatalogTotal] = useState(
     restoredSnapshot?.catalogTotal ?? initialTotal,
   )
@@ -301,6 +301,7 @@ export function AppContent({
         activePreset={activePreset}
         collections={collections}
         isSignedIn={Boolean(account)}
+        showAccountEntry={accountsEnabled || Boolean(account)}
         onOpenAccount={actions.openAccount}
         onOpenMainPage={actions.openMainPage}
         onOpenPreset={actions.openPreset}
@@ -311,6 +312,7 @@ export function AppContent({
         activePage={activePage}
         activePreset={activePreset}
         isSignedIn={Boolean(account)}
+        showAccountEntry={accountsEnabled || Boolean(account)}
         moreOpen={mobileMoreOpen}
         onOpenAccount={actions.openAccount}
         onOpenMainPage={actions.openMainPage}

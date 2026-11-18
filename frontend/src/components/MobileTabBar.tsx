@@ -5,6 +5,8 @@ interface MobileTabBarProps {
   activePage: ActivePage
   activePreset: string | null
   isSignedIn: boolean
+  /** Hide the Login entry point while the account system is switched off. */
+  showAccountEntry: boolean
   moreOpen: boolean
   onOpenAccount: () => void
   onOpenMainPage: (id: MainPage) => void
@@ -21,6 +23,7 @@ export function MobileTabBar({
   onOpenMainPage,
   onOpenUtilityPage,
   onToggleMore,
+  showAccountEntry,
 }: MobileTabBarProps) {
   return (
     <nav className="mobile-tabbar" aria-label="Mobile navigation">
@@ -50,9 +53,11 @@ export function MobileTabBar({
       </button>
       {moreOpen ? (
         <div className="mobile-more-menu">
-          <button type="button" onClick={onOpenAccount}>
-            {isSignedIn ? <UserRound size={18} /> : <LogIn size={18} />}{isSignedIn ? 'Account' : 'Login'}
-          </button>
+          {showAccountEntry ? (
+            <button type="button" onClick={onOpenAccount}>
+              {isSignedIn ? <UserRound size={18} /> : <LogIn size={18} />}{isSignedIn ? 'Account' : 'Login'}
+            </button>
+          ) : null}
           <button type="button" onClick={() => onOpenUtilityPage('settings')}><Settings size={18} />Settings</button>
           <button type="button" onClick={() => onOpenUtilityPage('about')}><Info size={18} />About</button>
         </div>

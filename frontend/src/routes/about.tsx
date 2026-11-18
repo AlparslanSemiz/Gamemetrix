@@ -1,4 +1,5 @@
 import type { MetaFunction } from 'react-router'
+import { DEFAULT_SOCIAL_IMAGE } from '../utils/curatedMeta'
 import { UtilityRoute } from './utility'
 
 export function headers() {
@@ -19,6 +20,9 @@ export const meta: MetaFunction = () => [
   },
   { property: 'og:type', content: 'website' },
   { property: 'og:url', content: 'https://gamemetrix.me/about' },
+  { property: 'og:image', content: DEFAULT_SOCIAL_IMAGE },
+  { name: 'twitter:card', content: 'summary_large_image' },
+  { name: 'twitter:image', content: DEFAULT_SOCIAL_IMAGE },
 ]
 
 export default function AboutRoute() {

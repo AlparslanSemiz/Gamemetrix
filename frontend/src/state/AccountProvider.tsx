@@ -70,6 +70,7 @@ function useAccountHydration(
   const [accountState, setAccountState] = useState<AccountState | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [googleLoginAvailable, setGoogleLoginAvailable] = useState(false)
+  const [accountsEnabled, setAccountsEnabled] = useState(false)
 
   const applyState = useCallback((state: AccountState) => {
     setAccount(state.account)
@@ -81,6 +82,7 @@ function useAccountHydration(
   const hydrate = useCallback(async (mergeGuest: boolean) => {
     const current = await getAccountSession()
     setGoogleLoginAvailable(current.google_login === true)
+    setAccountsEnabled(current.accounts_enabled === true)
     if (!current.account) {
       setAccount(null)
       setAccountState(null)
@@ -121,6 +123,7 @@ function useAccountHydration(
   return {
     account,
     accountState,
+    accountsEnabled,
     googleLoginAvailable,
     hydrate,
     isLoading,
@@ -135,6 +138,7 @@ export function AccountProvider({ children }: { children: ReactNode }) {
   const {
     account,
     accountState,
+    accountsEnabled,
     googleLoginAvailable,
     hydrate,
     isLoading,
@@ -180,6 +184,7 @@ export function AccountProvider({ children }: { children: ReactNode }) {
   const value = useMemo(() => ({
     account,
     accountState,
+    accountsEnabled,
     googleLoginAvailable,
     isLoading,
     login,
@@ -188,7 +193,7 @@ export function AccountProvider({ children }: { children: ReactNode }) {
     syncCollection,
     updatePreferences,
     clearAccount,
-  }), [account, accountState, clearAccount, googleLoginAvailable, isLoading, login, logout, refresh, syncCollection, updatePreferences])
+  }), [account, accountState, accountsEnabled, clearAccount, googleLoginAvailable, isLoading, login, logout, refresh, syncCollection, updatePreferences])
 
   return <AccountContext.Provider value={value}>{children}</AccountContext.Provider>
 }

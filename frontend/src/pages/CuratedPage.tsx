@@ -74,7 +74,7 @@ function recentYears(renderedAt: number): number[] {
 }
 
 export function CuratedPage({ data }: { data: CuratedPageData }) {
-  const { account } = useAccount()
+  const { account, accountsEnabled } = useAccount()
   return (
     <main id="main-content" className="curated-shell">
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: itemListJson(data) }} />
@@ -85,9 +85,11 @@ export function CuratedPage({ data }: { data: CuratedPageData }) {
           <input type="search" name="q" maxLength={120} placeholder="Search games" aria-label="Search games by title" />
           <button type="submit" aria-label="Search"><Search size={15} aria-hidden="true" /></button>
         </form>
-        <nav aria-label="Account navigation">
-          <Link to={account ? '/account' : '/login'}>{account ? <Gamepad2 size={16} /> : <LogIn size={16} />}{account ? 'Account' : 'Login'}</Link>
-        </nav>
+        {accountsEnabled || account ? (
+          <nav aria-label="Account navigation">
+            <Link to={account ? '/account' : '/login'}>{account ? <Gamepad2 size={16} /> : <LogIn size={16} />}{account ? 'Account' : 'Login'}</Link>
+          </nav>
+        ) : null}
       </header>
 
       <div className="curated-inner">

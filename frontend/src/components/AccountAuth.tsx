@@ -165,6 +165,15 @@ function AuthLinks({ mode }: { mode: AuthMode }) {
   )
 }
 
+function AccountsUnavailable() {
+  return (
+    <div className="account-auth-unavailable" role="status">
+      <p>Accounts are switched off for now. Everything else works without one: your lists and alert settings are kept in this browser.</p>
+      <Link to="/">Back to the catalog</Link>
+    </div>
+  )
+}
+
 function authIcon(mode: AuthMode) {
   if (mode === 'register') return <UserPlus size={22} />
   if (mode === 'forgot' || mode === 'reset') return <KeyRound size={22} />
@@ -173,7 +182,8 @@ function authIcon(mode: AuthMode) {
 }
 
 export function AccountAuth({ mode }: { mode: AuthMode }) {
-  const { googleLoginAvailable } = useAccount()
+  const { accountsEnabled, googleLoginAvailable, isLoading } = useAccount()
+  const accountsOff = !isLoading && !accountsEnabled
   const [searchParams] = useSearchParams()
   const [actionToken] = useState(() => {
     const queryToken = searchParams.get('token') ?? ''
@@ -197,31 +207,35 @@ export function AccountAuth({ mode }: { mode: AuthMode }) {
         <div className="account-auth-icon" aria-hidden="true">
           {authIcon(mode)}
         </div>
-        <h1 id="account-auth-title">{TITLES[mode]}</h1>
+        <h1 id="account-auth-title">{accountsOff ? 'Accounts unavailable' : TITLES[mode]}</h1>
 
-        <form onSubmit={form.submit} className="account-auth-form">
-          <AuthFields firstInput={firstInput} form={form} mode={mode} />
-          {form.error || oauthError ? <p className="account-auth-status is-error" role="alert">{form.error ?? oauthError}</p> : null}
-          {form.message ? <p className="account-auth-status is-success" role="status">{form.message}</p> : null}
-          <button type="submit" className="account-auth-submit" disabled={form.isSubmitting}>
-            {form.isSubmitting ? 'Working...' : TITLES[mode]}
-          </button>
-          {mode === 'register' ? (
-            <p className="account-auth-legal">
-              We store your name, e-mail and a password hash to run your account. See the{' '}
-              <a href="/privacy">Privacy policy</a>.
-            </p>
-          ) : null}
-        </form>
-
-        {(mode === 'login' || mode === 'register') && googleLoginAvailable ? (
+        {accountsOff ? <AccountsUnavailable /> : (
           <>
-            <div className="account-auth-divider"><span>or</span></div>
-            <a className="account-auth-google" href={googleUrl}>Continue with Google</a>
-          </>
-        ) : null}
+            <form onSubmit={form.submit} className="account-auth-form">
+              <AuthFields firstInput={firstInput} form={form} mode={mode} />
+              {form.error || oauthError ? <p className="account-auth-status is-error" role="alert">{form.error ?? oauthError}</p> : null}
+              {form.message ? <p className="account-auth-status is-success" role="status">{form.message}</p> : null}
+              <button type="submit" className="account-auth-submit" disabled={form.isSubmitting}>
+                {form.isSubmitting ? 'Working...' : TITLES[mode]}
+              </button>
+              {mode === 'register' ? (
+                <p className="account-auth-legal">
+                  We store your name, e-mail and a password hash to run your account. See the{' '}
+                  <a href="/privacy">Privacy policy</a>.
+                </p>
+              ) : null}
+            </form>
 
-        <AuthLinks mode={mode} />
+            {(mode === 'login' || mode === 'register') && googleLoginAvailable ? (
+              <>
+                <div className="account-auth-divider"><span>or</span></div>
+                <a className="account-auth-google" href={googleUrl}>Continue with Google</a>
+              </>
+            ) : null}
+
+            <AuthLinks mode={mode} />
+          </>
+        )}
       </section>
     </main>
   )

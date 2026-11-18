@@ -30,6 +30,22 @@ class MessageResponse(BaseModel):
     message: str
 
 
+class AccountRead(BaseModel):
+    id: str
+    email: str
+    display_name: str
+    email_verified: bool
+    created_at: str
+
+
+class AccountSessionResponse(BaseModel):
+    """Answered even when accounts are switched off, so the UI can hide login entry points."""
+
+    account: AccountRead | None
+    google_login: bool
+    accounts_enabled: bool
+
+
 def validate_password_strength(value: str) -> str:
     if value != value.strip() or len(set(value)) < MIN_PASSWORD_DISTINCT_CHARS:
         raise ValueError("Choose a less repetitive password without leading or trailing spaces.")
