@@ -22,6 +22,7 @@ import {
 } from '../catalog/queryParams'
 import { RouteErrorPage } from '../components/RouteErrorPage'
 import { sharedCacheHeaders } from '../utils/cacheHeaders'
+import { bestCoverUrl, thumbnailUrl } from '../utils/coverImage'
 import { DEFAULT_SOCIAL_IMAGE } from '../utils/curatedMeta'
 import type { CatalogGameListResponse } from '../types/game'
 
@@ -179,10 +180,13 @@ function homeStructuredData(data: CatalogGameListResponse): string {
 }
 
 export default function Home({ loaderData }: { loaderData: HomeLoaderData }) {
-  const firstCover = loaderData.games[0]?.cover_url || loaderData.games[0]?.image_url
+  // Must be the exact URL the first card renders (buildGameCardModel), or the
+  // browser fetches the full-size original and the thumbnail both.
+  const firstGame = loaderData.games[0]
+  const firstCover = firstGame ? thumbnailUrl(bestCoverUrl(firstGame)) : null
   return (
     <>
-      {firstCover ? (
+      {firstCover && !firstCover.startsWith('data:') ? (
         <link rel="preload" as="image" href={firstCover} fetchPriority="high" />
       ) : null}
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: homeStructuredData(loaderData) }} />

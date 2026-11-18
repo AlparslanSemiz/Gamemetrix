@@ -1,5 +1,6 @@
 import type { CSSProperties } from 'react'
 import type { Game } from '../../types/game'
+import { responsiveImage } from '../../utils/coverImage'
 import { scoreColor, scoreColorRgb } from '../../utils/scoreColors'
 import { safeExternalUrl } from '../../utils/url'
 
@@ -35,7 +36,7 @@ export function DlcSection({ game }: { game: Game }) {
           const body = (
             <>
               <div className="dp-dlc-cover">
-                {item.cover_url ? <img src={item.cover_url} alt="" loading="lazy" /> : null}
+                {item.cover_url ? <img src={responsiveImage(item.cover_url, 420).src} alt="" loading="lazy" /> : null}
                 {score ? (
                   <span
                     className="dp-similar-score"

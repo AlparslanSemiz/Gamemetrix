@@ -4,7 +4,7 @@ import { clientForwardHeaders, fetchBackend, loadTopGenres } from '../server-api
 import type { CatalogGameListResponse } from '../types/game'
 import { sharedCacheHeaders } from '../utils/cacheHeaders'
 import { curatedMetaTags } from '../utils/curatedMeta'
-import { latestContentUpdate } from '../utils/seo'
+import { curatedListPayload } from '../utils/curatedCards'
 
 export async function loader({ request }: LoaderFunctionArgs): Promise<CuratedPageData> {
   const init = { signal: request.signal, headers: clientForwardHeaders(request) }
@@ -13,13 +13,11 @@ export async function loader({ request }: LoaderFunctionArgs): Promise<CuratedPa
     loadTopGenres(init),
   ])
   return {
-    ...result,
+    ...curatedListPayload(result, Date.now()),
     label: 'PC game deals',
     title: 'Best PC Game Deals',
     description: 'High-signal PC games with a tracked discount or free offer, ranked by quality and source reliability rather than discount alone.',
     canonical: 'https://gamemetrix.me/deals',
-    updatedAt: latestContentUpdate(result.games),
-    renderedAt: Date.now(),
     genres,
   }
 }

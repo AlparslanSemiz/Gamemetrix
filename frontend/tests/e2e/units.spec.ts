@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { buildGameCardModel } from '../../src/components/game-card/model'
-import { thumbnailUrl } from '../../src/utils/coverImage'
+import { responsiveImage, smallCoverUrl, thumbnailUrl } from '../../src/utils/coverImage'
+import { toCuratedCard } from '../../src/utils/curatedCards'
 import { sourceScoreUrl } from '../../src/utils/sourceLinks'
 import type { CatalogGame } from '../../src/types/game'
 import { activeFilterChips } from '../../src/catalog/filterChips'
@@ -13,6 +14,84 @@ import {
 } from '../../src/catalog/queryParams'
 import { enqueueSync } from '../../src/state/syncQueue'
 import { formatIsoDate } from '../../src/utils/format'
+
+test.describe('sized image variants', () => {
+  const RAWG = 'https://media.rawg.io/media/games/c16/c160077f8977cb22f14e56408c1560ef.jpg'
+
+  test('small cover boxes get the 420px RAWG variant', () => {
+    expect(smallCoverUrl(RAWG))
+      .toBe('https://media.rawg.io/media/resize/420/-/games/c16/c160077f8977cb22f14e56408c1560ef.jpg')
+  })
+
+  test('small cover boxes swap the Steam library hero for the header capsule', () => {
+    expect(smallCoverUrl('https://cdn.akamai.steamstatic.com/steam/apps/254700/library_hero.jpg'))
+      .toBe('https://cdn.akamai.steamstatic.com/steam/apps/254700/header.jpg')
+    expect(smallCoverUrl('https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/220/library_hero.jpg?t=1745368545'))
+      .toBe('https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/220/header.jpg?t=1745368545')
+    // Other Steam art and unknown hosts are left as they are.
+    for (const url of [
+      'https://cdn.akamai.steamstatic.com/steam/apps/620/capsule_616x353.jpg',
+      'https://images.example/library_hero.jpg.png',
+      'data:image/svg+xml;base64,AAAA',
+    ]) expect(smallCoverUrl(url)).toBe(url)
+  })
+
+  test('the detail hero gets a RAWG srcset up to 1280px, never the original', () => {
+    const hero = responsiveImage(RAWG, 1280)
+    expect(hero.src).toBe('https://media.rawg.io/media/resize/1280/-/games/c16/c160077f8977cb22f14e56408c1560ef.jpg')
+    expect(hero.srcSet).toBe([420, 640, 1280]
+      .map((width) => `https://media.rawg.io/media/resize/${width}/-/games/c16/c160077f8977cb22f14e56408c1560ef.jpg ${width}w`)
+      .join(', '))
+    expect(responsiveImage(RAWG, 420).src)
+      .toBe('https://media.rawg.io/media/resize/420/-/games/c16/c160077f8977cb22f14e56408c1560ef.jpg')
+  })
+
+  test('Steam screenshots offer the 600px frame; other URLs pass through', () => {
+    const shot = 'https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/1/ss_a.1920x1080.jpg?t=1'
+    expect(responsiveImage(shot, 1280)).toEqual({
+      src: shot,
+      srcSet: 'https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/1/ss_a.600x338.jpg?t=1 600w, '
+        + `${shot} 1920w`,
+    })
+    expect(responsiveImage(shot, 420)).toEqual({ src: shot.replace('.1920x1080.', '.600x338.') })
+    const capsule = 'https://cdn.akamai.steamstatic.com/steam/apps/1086940/capsule_616x353.jpg'
+    expect(responsiveImage(capsule, 1280)).toEqual({ src: capsule })
+    expect(responsiveImage('https://media.rawg.io/media/resize/640/-/games/a.jpg', 1280))
+      .toEqual({ src: 'https://media.rawg.io/media/resize/640/-/games/a.jpg' })
+  })
+})
+
+test('ranking rows keep only what they render', () => {
+  const now = Date.parse('2026-11-19T12:00:00Z')
+  const card = toCuratedCard({
+    id: 1, title: 'Row', slug: 'row', cover_url: '', image_url: 'https://media.rawg.io/media/games/a/b.jpg',
+    release_date: '2024-01-01', release_year: 2024, metrix_score: 87.6, genres: [], platforms: [],
+    developer: 'Dev', playtime_minutes: 0, hltb_main_story_minutes: 0, hltb_all_styles_minutes: 95,
+    proton_tier: 'platinum',
+    source_scores: [
+      { source: 'Metacritic', score: 91.4, scale: 100, status: 'live', detail: 'long text' },
+      { source: 'Steam', score: 0, scale: 100, status: 'live' },
+      { source: 'IGDB', score: 80, scale: 100, status: 'mock' },
+    ],
+    price_snapshots: [
+      { source: 'CheapShark', store: 'GOG', currency: 'USD', list_price: 20, sale_price: 10, discount_percent: 50, is_free: false, url: 'https://gog.example/deal', fetched_at: '2026-11-19T00:00:00Z' },
+      { source: 'Steam', store: 'Steam', currency: 'USD', list_price: 5, sale_price: 5, discount_percent: 0, is_free: false, url: 'https://steam.example', fetched_at: '2026-11-01T00:00:00Z' },
+    ],
+  } as unknown as CatalogGame, now)
+  expect(card).toEqual({
+    slug: 'row',
+    title: 'Row',
+    cover: 'https://media.rawg.io/media/games/a/b.jpg',
+    release_year: 2024,
+    developer: 'Dev',
+    score: 88,
+    sourceScores: [91, null, null, null],
+    proton_tier: 'platinum',
+    playtimeHours: 2,
+    // The cheaper Steam snapshot is 18 days old, past the actionable window.
+    price: { label: '$10.00', discountPercent: 50, url: 'https://gog.example/deal', store: 'GOG' },
+  })
+})
 
 test.describe('thumbnailUrl', () => {
   test('uses the 640px RAWG variant', () => {
