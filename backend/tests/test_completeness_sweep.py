@@ -73,7 +73,11 @@ def _game(slug: str, *, data_complete: bool = False) -> Game:
 @pytest.fixture
 def engine():
     engine = create_engine("sqlite://")
-    Base.metadata.create_all(engine)
+    # The snapshot tables are PostgreSQL range partitions; SQLite cannot build them.
+    Base.metadata.create_all(
+        engine,
+        tables=[t for t in Base.metadata.sorted_tables if not t.dialect_options["postgresql"]["partition_by"]],
+    )
     return engine
 
 

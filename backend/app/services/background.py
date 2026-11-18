@@ -371,6 +371,10 @@ async def raw_analytics_retention_loop() -> None:
                 redacted = purge_expired_raw_analytics(db)
             if redacted:
                 log.info("Redacted raw network data on %d visit events", redacted)
+            from .snapshot_retention import run_snapshot_retention
+
+            summary = await anyio.to_thread.run_sync(run_snapshot_retention, BackgroundSessionLocal)
+            log.info("Snapshot retention sweep: %s", summary)
         except Exception:
             log.exception("Raw analytics retention sweep failed")
         await asyncio.sleep(_RETENTION_INTERVAL_SECONDS)

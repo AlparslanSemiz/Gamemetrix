@@ -15,25 +15,33 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
     # PostgreSQL's image defaults (128MB shared buffers + 64MB maintenance
-    # memory + 100 connections) do not fit a 160MB cgroup during catalog
-    # imports. The app currently uses fewer than ten connections; these bounded
-    # settings preserve query headroom without relying on swap.
+    # memory + 100 connections) do not fit a 224MB cgroup. Budget: shared_buffers 80MB
+    # + ~30 backends x ~3-5MB (work_mem 4MB is per sort node, so a few concurrent sorts)
+    # + autovacuum/maintenance 32MB stays inside 224MB; swap (memswap_limit) is only a cushion.
+    # Backend pools cap at 12 (request: 8+4) + 4 (background: 2+2) = 16 connections, leaving
+    # 14 for superuser-reserved slots (3), alembic, backups, psql and the watchdog.
     command:
       - postgres
       - -c
-      - shared_buffers=64MB
+      - shared_buffers=80MB
       - -c
-      - work_mem=2MB
+      - work_mem=4MB
       - -c
       - maintenance_work_mem=32MB
       - -c
-      - max_connections=40
-      # The planner assumed 4GB of cache inside a 224MB container; keep it honest and
-      # cost random reads like the SSD they are so index scans win over seq scans.
+      - max_connections=30
+      # Keep the planner honest about a 224MB container and cost random reads like the
+      # SSD they are so index scans win over seq scans.
       - -c
-      - effective_cache_size=96MB
+      - effective_cache_size=192MB
       - -c
       - random_page_cost=1.1
+      # JIT compile time dwarfs these short OLTP queries; it also costs memory.
+      - -c
+      - jit=off
+      # Background jobs once left transactions idle for 14-36 s holding locks/snapshots.
+      - -c
+      - idle_in_transaction_session_timeout=60s
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 5s
