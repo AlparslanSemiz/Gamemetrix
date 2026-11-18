@@ -1,9 +1,9 @@
 -r requirements.txt
-pytest==9.1.1
-pytest-asyncio==1.4.0
-httpx2==2.12.0
+pytest==9.2.0
+pytest-asyncio==1.5.0
+httpx2==2.16.0
 bandit==1.9.4
 detect-secrets==1.5.0
 pip-audit==2.10.1
 # pip-audit depends on pip; keep it on a release with known security fixes
-pip==26.2
+pip==26.3
