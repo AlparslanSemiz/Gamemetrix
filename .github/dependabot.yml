@@ -37,6 +37,10 @@ updates:
     schedule:
       interval: weekly
       day: monday
+    # Python/Node runtime majors change the platform under the app: review by hand.
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
     groups:
       docker-base-images:
         patterns: ["*"]
@@ -48,6 +52,11 @@ updates:
     schedule:
       interval: weekly
       day: monday
+    # A postgres major (15 -> 18) cannot open the old data directory: it needs a
+    # planned dump/restore with a backup, never an automatic PR + auto-deploy.
+    ignore:
+      - dependency-name: postgres
+        update-types: ["version-update:semver-major"]
     groups:
       compose-images:
         patterns: ["*"]
