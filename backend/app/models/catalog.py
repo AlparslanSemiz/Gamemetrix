@@ -16,7 +16,7 @@ from sqlalchemy import (
     func,
     text,
 )
-from sqlalchemy import event
+from sqlalchemy import DDL, event
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .. import game_signals
@@ -197,9 +197,15 @@ class RatingSnapshot(Base):
     """
 
     __tablename__ = "rating_snapshots"
+    # Monthly RANGE partitions on fetched_at (see services/snapshot_retention.py and migration
+    # 20261119_0023). A partitioned table's primary key must contain the partition column.
+    __table_args__ = (
+        Index("ix_rating_snapshots_game_source", "game_id", "source", "fetched_at"),
+        {"postgresql_partition_by": "RANGE (fetched_at)"},
+    )
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    game_id: Mapped[int] = mapped_column(Integer, ForeignKey("games.id", ondelete="CASCADE"), nullable=False, index=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    game_id: Mapped[int] = mapped_column(Integer, ForeignKey("games.id", ondelete="CASCADE"), nullable=False)
     source: Mapped[str] = mapped_column(String(60), nullable=False)
     score: Mapped[float | None] = mapped_column(Float, nullable=True)
     score_normalized: Mapped[float | None] = mapped_column(Float, nullable=True)
@@ -212,7 +218,9 @@ class RatingSnapshot(Base):
     is_applicable: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     confidence: Mapped[float] = mapped_column(Float, nullable=False, default=1.0)
     raw_payload: Mapped[dict | None] = mapped_column(JSON, nullable=True)
-    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    fetched_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), primary_key=True, autoincrement=False, nullable=False
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
@@ -228,17 +236,34 @@ class SourceSnapshot(Base):
             "external_id",
             "fetched_at",
         ),
+        {"postgresql_partition_by": "RANGE (fetched_at)"},
     )
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    source: Mapped[str] = mapped_column(String(60), nullable=False, index=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    source: Mapped[str] = mapped_column(String(60), nullable=False)
     endpoint: Mapped[str] = mapped_column(String(300), nullable=False)
     query: Mapped[str | None] = mapped_column(String(300), nullable=True)
     external_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
     status_code: Mapped[int | None] = mapped_column(Integer, nullable=True)
     raw_payload: Mapped[dict | None] = mapped_column(JSON, nullable=True)
-    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    fetched_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), primary_key=True, autoincrement=False, nullable=False
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+# A DEFAULT partition catches rows no monthly partition covers: the "latest record per key"
+# history older than the retention horizon lives there, and create_all()-built schemas (tests,
+# fresh installs) can insert immediately. Monthly partitions come from the retention job.
+for _snapshot_table in (RatingSnapshot.__table__, SourceSnapshot.__table__):
+    event.listen(
+        _snapshot_table,
+        "after_create",
+        DDL(
+            f"CREATE TABLE IF NOT EXISTS {_snapshot_table.name}_default "
+            f"PARTITION OF {_snapshot_table.name} DEFAULT"
+        ),
+    )
 
 
 class PriceSnapshot(Base):

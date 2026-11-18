@@ -317,7 +317,7 @@ the admin **`GET /admin/jobs/periodic`** panel reads out of the `job_runs` table
 | `protondb_refresh_loop` | 180 s | daily batch, `PROTONDB_REFRESH_INTERVAL_HOURS` (168) = per-game max age | `proton_tier`/`proton_score`/`proton_refreshed_at` for verified Steam ids only, <= 1 request/s (`services/protondb_refresh.py`) |
 | `data_fill_loop` | — | `DATA_FILL_*` | the ordered full-catalog fill, see below |
 | `notification_digest_loop` | — | — | account alert digests |
-| `raw_analytics_retention_loop` | 120 s | 6 h | redacts raw IP/user-agent past the retention window |
+| `raw_analytics_retention_loop` | 120 s | 6 h | redacts raw IP/user-agent past the retention window; also `services/snapshot_retention.py`: monthly partitions for `rating_snapshots`/`source_snapshots` (create ahead, DETACH+DROP expired ones keeping each key's latest row in the DEFAULT partition), purges `api_request_windows` ended > 2 days ago, clears old `data_fill_runs.result` |
 
 Rating budget order (`integrations/sync/priority.py`): popularity x release recency x missing primary
 sources x staleness, so a new big release without scores is refreshed before an old game's re-check.
@@ -401,9 +401,14 @@ The production host has **1 GB RAM**. Several designs exist only because of it:
   400 MiB limit and got it OOM-killed on every data-fill run.
 - The single shared `HEAVY_JOB_LOCK`.
 - `STARTUP_CATALOG_MAINTENANCE_ENABLED=false` by default.
-- Compose PostgreSQL is tuned below its 160 MiB cgroup limit (`shared_buffers=64MB`,
-  `work_mem=2MB`, `maintenance_work_mem=32MB`, `max_connections=40`, `effective_cache_size=96MB`, `random_page_cost=1.1`). Keep these aligned with the
-  container memory limit if deployment resources change.
+- Compose PostgreSQL is tuned for its 224 MiB cgroup limit (`shared_buffers=96MB`,
+  `work_mem=4MB`, `maintenance_work_mem=32MB`, `max_connections=30`, `effective_cache_size=192MB`,
+  `random_page_cost=1.1`, `jit=off`, `idle_in_transaction_session_timeout=60s`). Backend pools total
+  16 connections (request 8+4, background 2+2). Keep these aligned with the container memory limit
+  and `database.py` if either changes.
+- `rating_snapshots` / `source_snapshots` are monthly RANGE partitions on `fetched_at` (composite PK
+  `(id, fetched_at)`, DEFAULT partition holds the long-lived latest-per-key rows). Only the last 30
+  days plus the latest row per key is ever read; `ops/db-maintenance.sh` is the manual VACUUM FULL.
 
 ---
 
@@ -627,6 +632,7 @@ A new rule never goes in AI.md; a new module never goes in AI_Guidelines.md.
 
 One line per session that changed the architecture. Newest first. Skip purely cosmetic work.
 
+- **2026-11-19** — DB retention: snapshot tables partitioned monthly with a latest-per-key retention sweep, quota-window and data-fill-run purges, tighter Postgres settings for the 224 MiB container (migration `20261119_0023`).
 - **2026-11-18** — Frontend tur 2: filters and search live in the URL (`catalog/queryParams.ts`), debounced and abortable search, hydration-safe date/number/clock helpers + ESLint rule + multi-time-zone e2e, route `ErrorBoundary`s, About/score copy rewritten to the real weighted + reliability formula, Linux filter includes Proton-playable games, card actions collapsed into a labelled wishlist + "Lists" menu, About/Alerts/Settings CSS moved out of `App.css`.
 - **2026-11-18** — Backend/ops audit round 2: full-catalog scans run via `anyio.to_thread` on a separate long-timeout pool; request pool 8+4 with 8 s statement timeout and 503 on exhaustion; catalog offset <= 2400 and cached totals; genre filter via GIN containment, `lower(developer|publisher)` indexes (revision 0018); `/health/ready`; AI chain fixes (slot wait, settle, credential block); e-mail sends in BackgroundTasks and per-account login limit; images build only after CI succeeds and without `:latest`; `.deployed-sha`, `ops/notify.sh`, `ops/restore-test.sh`, logrotate, Dependabot, `docs/disaster-recovery.md`.
 - **2026-11-18** — Steam identity matcher: year gate no longer mislabels equal names as `name_mismatch`; edition/mark/prefix/remake normalisation.

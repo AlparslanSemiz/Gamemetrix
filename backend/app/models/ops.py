@@ -47,8 +47,8 @@ class ApiRequestWindow(Base):
         UniqueConstraint("source", "window_kind", "window_start", name="uq_api_request_window"),
     )
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    source: Mapped[str] = mapped_column(String(60), nullable=False, index=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    source: Mapped[str] = mapped_column(String(60), nullable=False)
     window_kind: Mapped[str] = mapped_column(String(24), nullable=False)
     window_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
     window_seconds: Mapped[int] = mapped_column(Integer, nullable=False)

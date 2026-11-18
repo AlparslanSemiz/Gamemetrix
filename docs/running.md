@@ -69,10 +69,11 @@ ordinary boots (`STARTUP_CATALOG_MAINTENANCE_ENABLED=false`) so API readiness
 does not wait behind a CPU- and memory-heavy maintenance scan. Enable it for one
 controlled restart only when that complete recomputation is explicitly needed.
 
-The Compose PostgreSQL service is deliberately tuned below its 160 MiB cgroup
-limit (`shared_buffers=64MB`, `work_mem=2MB`,
-`maintenance_work_mem=32MB`, `max_connections=40`). Keep those values aligned
-with the container memory limit if deployment resources change.
+The Compose PostgreSQL service is deliberately tuned for its 224 MiB cgroup
+limit (`shared_buffers=96MB`, `work_mem=4MB`, `maintenance_work_mem=32MB`,
+`max_connections=30`, `jit=off`). Keep those values aligned with the container
+memory limit and the backend pool sizes in `database.py` (16 connections).
+After migration `20261119_0023`, run `ops/db-maintenance.sh` once by hand.
 
 Visitor counts are available in the admin dashboard. To retain exact IPs for
 new visits, set `ANALYTICS_STORE_RAW_IP=true`; raw IPs are removed after
