@@ -15,7 +15,7 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
     # PostgreSQL's image defaults (128MB shared buffers + 64MB maintenance
-    # memory + 100 connections) do not fit a 224MB cgroup. Budget: shared_buffers 96MB
+    # memory + 100 connections) do not fit a 224MB cgroup. Budget: shared_buffers 80MB
     # + ~30 backends x ~3-5MB (work_mem 4MB is per sort node, so a few concurrent sorts)
     # + autovacuum/maintenance 32MB stays inside 224MB; swap (memswap_limit) is only a cushion.
     # Backend pools cap at 12 (request: 8+4) + 4 (background: 2+2) = 16 connections, leaving
@@ -23,7 +23,7 @@ services:
     command:
       - postgres
       - -c
-      - shared_buffers=96MB
+      - shared_buffers=80MB
       - -c
       - work_mem=4MB
       - -c

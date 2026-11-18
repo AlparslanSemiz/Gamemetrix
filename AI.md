@@ -96,7 +96,8 @@ services/           Business transformations. No direct HTTP to providers.
   catalog_quality/          AI review of suspicious rows: signals · review · research · remediation · batch · repair_batch
   similarity/               "games like X": taxonomy → signals → profiles → scoring/gates → ranking → queries (+ cache, ai_rerank)
   deduplication/            titles → matching → merge → store
-  game_query.py             catalog SELECT/COUNT construction (CatalogFilters, sorts, JSON predicates)
+  game_query.py             catalog SELECT/COUNT construction (CatalogFilters, sorts; stored-column predicates)
+  catalog_derived.py        pure derivation of the stored sort/filter columns on games (review_count_total, live_primary_sources, has_live_critic, steam/opencritic/metacritic_live_score, platform_tags, mode_tags); kept current by Game before_insert/before_update hooks; revision 20261119_0022 backfills with a mirrored SQL (tests compare)
   like_escape.py            escaping user input for SQL LIKE/ILIKE
   catalog_projection.py     ORM row → list/card payload
   seo.py / completeness.py  indexability state, data-completeness scoring
@@ -181,7 +182,10 @@ Stored columns worth knowing:
 - **Identity/content:** `title`, `slug`, `summary`, `summary_short`, `cover_url`, `screenshots`,
   `content_type`, `franchise`, `developer`, `publisher`, `genres`, `platforms`, `game_modes`.
 - **Scores:** `source_scores` (JSON list — one row per source, the input to scoring),
-  `metrix_score`, `rank_score`, `is_rankable`, `critic_score`, `user_score`, `metacritic_score`.
+  `metrix_score`, `rank_score`, `is_rankable`, `critic_score`, `user_score`, `metacritic_score`;
+  stored derived columns (never write by hand): `review_count_total`, `live_review_count`,
+  `live_primary_sources`, `has_live_critic`, `steam_score`, `opencritic_score`, `metacritic_live_score`,
+  `platform_tags`, `mode_tags`.
 - **Enrichment:** `playtime_minutes`, `hltb_*`, `is_endless`, `proton_tier`, `proton_score`,
   `system_requirements`, `dlcs`, `similar_games`, `steam_app_id`, `website_url`.
 - **Steam identity:** `steam_app_id` is only *trusted* once `steam_app_id_verified_at` is set (appdetails
@@ -632,6 +636,7 @@ A new rule never goes in AI.md; a new module never goes in AI_Guidelines.md.
 
 One line per session that changed the architecture. Newest first. Skip purely cosmetic work.
 
+- **2026-11-19** — Catalog sort/filter values (review count, live source count, critic, per-source scores, platform/mode tags) are stored columns derived by `services/catalog_derived.py` and indexed (revision 20261119_0022); `game_query.py` no longer builds JSON sub-queries; sitemap endpoints use `load_only`.
 - **2026-11-19** — DB retention: snapshot tables partitioned monthly with a latest-per-key retention sweep, quota-window and data-fill-run purges, tighter Postgres settings for the 224 MiB container (migration `20261119_0023`).
 - **2026-11-18** — Frontend tur 2: filters and search live in the URL (`catalog/queryParams.ts`), debounced and abortable search, hydration-safe date/number/clock helpers + ESLint rule + multi-time-zone e2e, route `ErrorBoundary`s, About/score copy rewritten to the real weighted + reliability formula, Linux filter includes Proton-playable games, card actions collapsed into a labelled wishlist + "Lists" menu, About/Alerts/Settings CSS moved out of `App.css`.
 - **2026-11-18** — Backend/ops audit round 2: full-catalog scans run via `anyio.to_thread` on a separate long-timeout pool; request pool 8+4 with 8 s statement timeout and 503 on exhaustion; catalog offset <= 2400 and cached totals; genre filter via GIN containment, `lower(developer|publisher)` indexes (revision 0018); `/health/ready`; AI chain fixes (slot wait, settle, credential block); e-mail sends in BackgroundTasks and per-account login limit; images build only after CI succeeds and without `:latest`; `.deployed-sha`, `ops/notify.sh`, `ops/restore-test.sh`, logrotate, Dependabot, `docs/disaster-recovery.md`.

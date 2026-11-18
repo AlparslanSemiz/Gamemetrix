@@ -3,6 +3,7 @@
 from datetime import date, datetime
 
 from sqlalchemy import (
+    BigInteger,
     Boolean,
     Date,
     DateTime,
@@ -11,18 +12,24 @@ from sqlalchemy import (
     Index,
     Integer,
     JSON,
+    SmallInteger,
     String,
     Text,
     func,
     text,
 )
 from sqlalchemy import DDL, event
+from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .. import game_signals
 from ..database import Base
 from ..integrations.source_registry import PC_PLATFORM_KEYS, applicable_for_game
 from ..search_text import normalize_search_text
+from ..services.catalog_derived import apply_derived_columns
+
+# Some unit tests build the schema on in-memory SQLite, which has no arrays.
+_TEXT_ARRAY = ARRAY(Text).with_variant(JSON(), "sqlite")
 
 
 class Game(Base):
@@ -34,6 +41,16 @@ class Game(Base):
             "catalog_added_at",
             postgresql_where=text("catalog_added_at IS NOT NULL"),
         ),
+        Index("ix_games_type_review_count_total", "content_type", text("review_count_total DESC")),
+        Index("ix_games_type_live_primary_sources", "content_type", "live_primary_sources"),
+        Index(
+            "ix_games_live_critic",
+            "content_type",
+            text("rank_score DESC"),
+            postgresql_where=text("has_live_critic"),
+        ),
+        Index("ix_games_platform_tags_gin", "platform_tags", postgresql_using="gin"),
+        Index("ix_games_mode_tags_gin", "mode_tags", postgresql_using="gin"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
@@ -84,6 +101,18 @@ class Game(Base):
         JSON,
         nullable=False,
     )
+    # Stored, query-ready values derived from source_scores/platforms/game_modes/genres
+    # (services/catalog_derived.py). Maintained by the Game before_insert/before_update
+    # hook; never write them by hand.
+    review_count_total: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0, server_default="0")
+    live_review_count: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0, server_default="0")
+    live_primary_sources: Mapped[int] = mapped_column(SmallInteger, nullable=False, default=0, server_default="0")
+    has_live_critic: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+    steam_score: Mapped[float] = mapped_column(Float, nullable=False, default=0.0, server_default="0")
+    opencritic_score: Mapped[float] = mapped_column(Float, nullable=False, default=0.0, server_default="0")
+    metacritic_live_score: Mapped[float] = mapped_column(Float, nullable=False, default=0.0, server_default="0")
+    platform_tags: Mapped[list[str]] = mapped_column(_TEXT_ARRAY, nullable=False, default=list, server_default="{}")
+    mode_tags: Mapped[list[str]] = mapped_column(_TEXT_ARRAY, nullable=False, default=list, server_default="{}")
     developer: Mapped[str | None] = mapped_column(String(200), nullable=True)
     publisher: Mapped[str | None] = mapped_column(String(200), nullable=True)
     # Authoritative Steam App ID. Without it the app had to scrape the id back out
@@ -301,6 +330,16 @@ class PriceSnapshot(Base):
 @event.listens_for(Game, "before_update")
 def _sync_title_normalized(_mapper, _connection, game: Game) -> None:
     game.title_normalized = normalize_search_text(game.title)
+
+
+@event.listens_for(Game, "before_insert")
+def _derive_on_insert(_mapper, _connection, game: Game) -> None:
+    apply_derived_columns(game)
+
+
+@event.listens_for(Game, "before_update")
+def _derive_on_update(_mapper, _connection, game: Game) -> None:
+    apply_derived_columns(game, only_if_changed=True)
 
 
 class SlugRedirect(Base):
