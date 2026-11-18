@@ -47,7 +47,9 @@ def verify_admin_password(username: str, password: str) -> bool:
     username_matches = bool(cfg.ADMIN_USERNAME) and compare_digest(username, cfg.ADMIN_USERNAME)
     candidate = cfg.ADMIN_PASSWORD_HASH.encode("utf-8") if username_matches and cfg.ADMIN_PASSWORD_HASH else _DUMMY_ADMIN_HASH
     try:
-        password_matches = bcrypt.checkpw(password.encode("utf-8"), candidate)
+        # bcrypt only ever used the first 72 bytes. bcrypt >= 5 raises on longer input
+        # instead of truncating, so truncate here: existing hashes keep verifying.
+        password_matches = bcrypt.checkpw(password.encode("utf-8")[:72], candidate)
         return username_matches and bool(cfg.ADMIN_PASSWORD_HASH) and password_matches
     except ValueError:
         return False
