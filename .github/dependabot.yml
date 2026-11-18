@@ -16,6 +16,14 @@ updates:
     schedule:
       interval: weekly
       day: monday
+    # @playwright/test is pinned to 1.61.x (exact in package.json). The Lighthouse CI step
+    # drives Playwright's Chromium, and the Chromium bundled with 1.65 (159, vs 149 in 1.61)
+    # moves the home page's simulated LCP from ~1.9 s to ~2.3-2.6 s on the CI runner with an
+    # identical build (PR #34 vs this pin). Raise it by hand once the home page is re-measured
+    # under the newer Chromium; 1.61.x patches still come through the group.
+    ignore:
+      - dependency-name: "@playwright/test"
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
     groups:
       npm-minor-and-patch:
         update-types: [minor, patch]
