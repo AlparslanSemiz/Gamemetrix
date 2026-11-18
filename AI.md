@@ -480,6 +480,13 @@ gallery), `smallCoverUrl` (RAWG 420, Steam `library_hero` -> `header.jpg`; ranki
 with `sizes`, similar/series/DLC tiles). The home route preloads exactly the first card's
 `thumbnailUrl(bestCoverUrl(...))`.
 
+**Client chunks** — `vite.config.ts` `codeSplitting.groups`: `framework` (React, React Router),
+`icons` (lucide) and `shared` (small JS modules from `services/`, `state/`, `utils/`, `hooks/`,
+`catalog/{queryParams,config,snapshot}` used by 2+ routes; CSS-importing components stay out so
+no route gains a stylesheet). `entry.server.tsx` keeps only the entry/runtime/framework
+`modulepreload`s. The home page loads 10 scripts in a three-level chain
+(`tests/e2e/home-lcp.spec.ts`); its LCP cover paints from the SSR HTML with JS disabled.
+
 Route errors: `components/RouteErrorPage.tsx` is the shared `ErrorBoundary` (root, home, game);
 loaders forward `request.signal` and the client IP (`clientForwardHeaders`), and `headers()` use
 `utils/cacheHeaders.ts` so a thrown 429/503 is never cached.
@@ -653,6 +660,7 @@ A new rule never goes in AI.md; a new module never goes in AI_Guidelines.md.
 
 One line per session that changed the architecture. Newest first. Skip purely cosmetic work.
 
+- **2026-11-19** — `shared` client chunk group in `vite.config.ts`: the home page's 22 scripts in a four-level import chain became 10 in three levels (Lighthouse simulated home LCP charged the whole chain; local lighthouse:ci median 2.49–2.72 s -> 2.26 s); `home-lcp.spec.ts` checks the no-JS cover paint and the script count.
 - **2026-11-19** — Ranking-page loaders return a row projection (`utils/curatedCards.ts`) instead of full catalog rows (live `/best/linux-games` 517 KB -> 231 KB HTML, 99 KB -> 30 KB gzip); sized image variants (`smallCoverUrl`, `responsiveImage` srcset) for ranking rows, detail hero, similar/series/DLC tiles; budget spec `curated-payload.spec.ts`.
 - **2026-11-19** — `GET /api/account/session` is ungated and reports `accounts_enabled` (200 instead of 503 while accounts are off; UI hides Login/Register); nginx TLS listener no longer re-adds the security headers (`add_header_inherit off`), frontend paths 301 off a trailing slash; 390px no-overflow e2e.
 - **2026-11-19** — CSP for `gamemetrix.me` HTML moved from nginx to the SSR app (`frontend/src/csp.server.ts`, `entry.server.tsx`): per-response nonce + `'strict-dynamic'`, no `script-src 'unsafe-inline'`; nginx sends no CSP for that host (`map $host $gm_csp`), the API host keeps the static one; nonce/cache trade-off in `docs/production-security-runbook.md`.
