@@ -28,7 +28,7 @@ const NORMALIZE: Record<string, string> = {
   'playstation portable': 'psp', psp: 'psp',
 }
 
-export interface PlatformMeta {
+interface PlatformMeta {
   name: string
   short: string
   color: string

@@ -71,12 +71,15 @@ export function startCatalogPageLoad(props: StartCatalogPageLoadProps): (() => v
 
   let active = true
   let settled = false
+  // A newer filter set cancels this request instead of letting it race the
+  // newer one to setGames().
+  const controller = new AbortController()
   const activeFilters = props.filtersRef.current
   const isFirstPage = props.offset === 0
 
   if (isFirstPage) {
+    // The previous list stays on screen (dimmed) until the new page arrives.
     props.setIsLoading(true)
-    props.setGames([])
   } else {
     props.setIsLoadingMore(true)
   }
@@ -123,11 +126,15 @@ export function startCatalogPageLoad(props: StartCatalogPageLoadProps): (() => v
     props.prefetchRef,
     applyPage,
     handleError,
+    controller.signal,
   )
 
   return () => {
     active = false
-    if (!settled) props.lastFetchSignatureRef.current = null
+    if (!settled) {
+      props.lastFetchSignatureRef.current = null
+      controller.abort()
+    }
   }
 }
 
@@ -138,12 +145,13 @@ async function requestCatalogPage(
   prefetchRef: RefObject<PrefetchedPage | null>,
   onSuccess: (games: CatalogGame[], total: number) => void,
   onError: () => void,
+  signal: AbortSignal,
 ) {
   const cached = prefetchRef.current
   try {
     const response = !isFirstPage && cached?.offset === offset
       ? await cached.request
-      : await getCatalogGames(filters, PAGE_SIZE, offset)
+      : await getCatalogGames(filters, PAGE_SIZE, offset, signal)
     if (cached?.offset === offset) prefetchRef.current = null
     onSuccess(response.games, response.total)
   } catch {

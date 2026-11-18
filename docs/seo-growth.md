@@ -54,7 +54,7 @@ RAWG never fills one of the four primary slots. It is displayed under supplement
 - Game title: `[Game] Scores, Linux Compatibility and Playtime | GameMetrix`
 - Year page: `Best Games of [Year] | GameMetrix`
 - Linux page: `Best Linux Games | GameMetrix`
-- Steam Deck page: `Best Steam Deck Games | GameMetrix`
+- Linux / Deck page: `Runs Well on Linux & Steam Deck (ProtonDB) | GameMetrix` (ProtonDB data, not Valve Deck Verified)
 - Free page: `Best Free PC Games | GameMetrix`
 - Deals page: `Best PC Game Deals | GameMetrix`
 

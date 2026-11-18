@@ -6,13 +6,17 @@ import {
   getSimilarGames,
 } from '../../services/games'
 import type { Game, SeriesGameItem } from '../../types/game'
+import { clientNow } from '../../utils/clock'
 import { SIMILAR_DISPLAY_LIMIT } from './SimilarGamesSection'
 
 export function useGameDetailGame(
   slug: string | undefined,
   initialGame: Game | undefined,
+  renderedAt: number | undefined,
 ) {
   const [game, setGame] = useState<Game | null>(initialGame ?? null)
+  // Loader time on the server-rendered game, fetch time for a client-loaded one.
+  const [loadedAt, setLoadedAt] = useState<number>(renderedAt ?? 0)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -28,6 +32,7 @@ export function useGameDetailGame(
     const controller = new AbortController()
     if (initialGame?.slug === slug) {
       setGame(initialGame)
+      if (renderedAt !== undefined) setLoadedAt(renderedAt)
       setError(null)
       return
     }
@@ -36,7 +41,9 @@ export function useGameDetailGame(
     setError(null)
     void getGameBySlug(slug, false, controller.signal)
       .then((loaded) => {
-        if (!controller.signal.aborted) setGame(loaded)
+        if (controller.signal.aborted) return
+        setLoadedAt(clientNow())
+        setGame(loaded)
       })
       .catch(() => {
         if (!controller.signal.aborted) setError('Game not found.')
@@ -44,9 +51,9 @@ export function useGameDetailGame(
     return () => {
       controller.abort()
     }
-  }, [initialGame, slug])
+  }, [initialGame, renderedAt, slug])
 
-  return { error, game }
+  return { error, game, loadedAt }
 }
 
 export function useSimilarGames(
@@ -96,8 +103,10 @@ export function useGameTrailer(game: Game | null) {
     requestControllerRef.current = controller
     setOpen(true)
     setLoading(true)
+    setVideoId(null)
     try {
-      setVideoId((await getGameTrailer(game.slug, controller.signal)).video_id)
+      const trailer = await getGameTrailer(game.slug, controller.signal)
+      if (!controller.signal.aborted) setVideoId(trailer.video_id)
     } catch {
       if (!controller.signal.aborted) setVideoId(null)
     } finally {
@@ -110,7 +119,17 @@ export function useGameTrailer(game: Game | null) {
     requestControllerRef.current = null
     setOpen(false)
     setVideoId(null)
+    setLoading(false)
   }
+
+  // Navigating to another game while the modal is open must not leave the
+  // previous game's trailer playing under the new title.
+  const slug = game?.slug
+  const openSlugRef = useRef<string | undefined>(undefined)
+  useEffect(() => {
+    if (openSlugRef.current !== undefined && openSlugRef.current !== slug) closeTrailer()
+    openSlugRef.current = slug
+  }, [slug])
 
   return { closeTrailer, loading, open, openTrailer, videoId }
 }

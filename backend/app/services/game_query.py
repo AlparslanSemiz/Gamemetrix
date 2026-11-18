@@ -52,6 +52,8 @@ _MAX_REVIEW_COUNT = 2_000_000_000
 _MAX_VALID_SCORE = 100
 _MINUTES_PER_HOUR = 60
 
+# ProtonDB tiers that count as playable on Linux (kept in step with routers/seo.py).
+
 # Catalogs that predate the game_modes column still carry the signal in their
 # genre tags, so a mode filter also accepts these equivalents.
 _PLAYER_MODE_GENRE_ALIASES: dict[str, frozenset[str]] = {

@@ -436,7 +436,9 @@ in `components/`.
 
 | File | Owns |
 |---|---|
-| `config.ts` | page types, `DEFAULT_FILTERS`, nav items, presets, sort options, page copy, URL deep-link filters |
+| `config.ts` | page types, nav items, presets, sort options, page copy (re-exports `DEFAULT_FILTERS` / `readUrlFilters`) |
+| `queryParams.ts` | pure filter logic shared by loader, browser and URL sync: `DEFAULT_FILTERS`, `buildCatalogParams`, `readUrlFilters`, `mergeFiltersIntoSearch`. The address bar carries every non-default filter (`q`, `genre`, `year_min`, `min_score`, `pt_max`, `sort`, …); `App.tsx` writes it with `replace` and the home loader reads it |
+| `filterChips.ts` | one removable chip per active filter field |
 | `snapshot.ts` / `snapshotRestore.ts` / `useCatalogSnapshot.ts` | sessionStorage back-nav restore |
 | `useCatalogScroll.ts` | masthead auto-hide + scroll-to-top |
 | `catalogFetch.ts`, `useCatalogPagination.ts`, `useCatalogBootstrap.ts`, `useCatalogActions.ts` | fetching, paging, bootstrap, actions |
@@ -444,6 +446,21 @@ in `components/`.
 | `presentation.ts` | view-model shaping |
 
 Nav entries and preset copy go in `config.ts` — never inline in `App.tsx`.
+
+Search is debounced 250 ms (`hooks/useDebouncedValue.ts`); a newer page load aborts the older
+request (`catalogFetch.ts`) and the previous list stays on screen, dimmed. The home route's
+`shouldRevalidate` is `false` for in-page changes on `/` — the page fetches by itself.
+
+**Hydration safety.** Server and browser disagree on zone, locale and clock, so render paths must
+not read them. Dates go through `utils/format.ts` (`formatIsoDate`, UTC, pinned locale), numbers
+through `formatNumber`, and "now" comes from the route loader (`renderedAt`, passed down as `now`).
+Client-only code reads the clock via `utils/clock.ts`. ESLint `no-restricted-syntax` enforces it
+(`utils/`, `services/`, `routes/` and admin are exempt); `tests/e2e/hydration-timezones.spec.ts`
+runs the public pages in LA / Auckland / Kolkata zones and non-US locales.
+
+Route errors: `components/RouteErrorPage.tsx` is the shared `ErrorBoundary` (root, home, game);
+loaders forward `request.signal` and the client IP (`clientForwardHeaders`), and `headers()` use
+`utils/cacheHeaders.ts` so a thrown 429/503 is never cached.
 
 `PAGE_SIZE = 24`. Default sort is `rank_score` desc. `SIDEBAR_GROUPS` currently holds one group
 ("Deals": Best Deals, Free Games); collection pages come from `collectionNavItems`.
@@ -610,6 +627,7 @@ A new rule never goes in AI.md; a new module never goes in AI_Guidelines.md.
 
 One line per session that changed the architecture. Newest first. Skip purely cosmetic work.
 
+- **2026-11-18** — Frontend tur 2: filters and search live in the URL (`catalog/queryParams.ts`), debounced and abortable search, hydration-safe date/number/clock helpers + ESLint rule + multi-time-zone e2e, route `ErrorBoundary`s, About/score copy rewritten to the real weighted + reliability formula, Linux filter includes Proton-playable games, card actions collapsed into a labelled wishlist + "Lists" menu, About/Alerts/Settings CSS moved out of `App.css`.
 - **2026-11-18** — Backend/ops audit round 2: full-catalog scans run via `anyio.to_thread` on a separate long-timeout pool; request pool 8+4 with 8 s statement timeout and 503 on exhaustion; catalog offset <= 2400 and cached totals; genre filter via GIN containment, `lower(developer|publisher)` indexes (revision 0018); `/health/ready`; AI chain fixes (slot wait, settle, credential block); e-mail sends in BackgroundTasks and per-account login limit; images build only after CI succeeds and without `:latest`; `.deployed-sha`, `ops/notify.sh`, `ops/restore-test.sh`, logrotate, Dependabot, `docs/disaster-recovery.md`.
 - **2026-11-18** — Data identity: verified Steam ids (`steam_app_id_verified_at`, `claim_steam_app_id`, `resolve_steam_app_id`), `verify_steam_ids`/`fix_release_dates`/`consolidate_duplicates` commands, daily duplicate merge with 301 `slug_redirects`, weekly ProtonDB tiers, truthful freshness stamps + budget priority, DLC detection from appdetails `type`, HLTB-first playtime filter, normalized/trigram/alias title search (migration 0018).
 - **2026-11-17** — Audit fixes: public `/impressum`, `/privacy`, `/datenschutz` routes (noindex) and `SiteLegalFooter`; `GET /api/account/session` now reports `google_login`; SSR maps backend 429/5xx to 429/503 with `Retry-After` (the nginx `/game/` limit was reverted: the origin saw every visitor as the Docker gateway); sitemaps keep a process-local last-good copy; `/api/integrations/status` is source+status only.

@@ -5,7 +5,7 @@ import type { WorkspaceProps } from './types'
 
 const SKELETON_CARD_COUNT = PAGE_SIZE / 3
 
-type GameResultsProps = WorkspaceProps<
+type GameResultsProps = { query: string; onClearSearch: () => void } & WorkspaceProps<
   | 'activePage'
   | 'collectionSets'
   | 'deferredCardCount'
@@ -38,9 +38,11 @@ export function GameResults({
   loadMoreError,
   loaderRef,
   pageTitle,
+  query,
   viewMode,
   visibleGames,
   onBrowseCatalog,
+  onClearSearch,
   onFilterDeveloper,
   onFilterGenre,
   onFilterPublisher,
@@ -51,6 +53,10 @@ export function GameResults({
   onToggleCollection,
 }: GameResultsProps) {
   const listClass = `game-list game-list-${viewMode}`
+  // While a new page loads the old list stays (dimmed) so the page does not
+  // jump to empty and back on every keystroke.
+  const refreshing = isLoading && visibleGames.length > 0
+  const skeletonsVisible = isLoading && visibleGames.length === 0
 
   return (
     <>
@@ -64,7 +70,7 @@ export function GameResults({
           ) : null}
         </div>
       ) : null}
-      {isLoading ? (
+      {skeletonsVisible ? (
         <div className={listClass} aria-hidden="true">
           {Array.from({ length: SKELETON_CARD_COUNT }, (_, index) => (
             <div key={index} className="skeleton-card" />
@@ -75,10 +81,12 @@ export function GameResults({
         <CatalogEmptyState
           activePage={activePage}
           pageTitle={pageTitle}
+          query={query}
           onBrowseCatalog={onBrowseCatalog}
+          onClearSearch={onClearSearch}
         />
       ) : null}
-      <div className={listClass}>
+      <div className={`${listClass}${refreshing ? ' is-refreshing' : ''}`} aria-busy={refreshing}>
         {visibleGames.map((game, index) => (
           <GameCard
             key={`${game.id}-${game.slug}`}

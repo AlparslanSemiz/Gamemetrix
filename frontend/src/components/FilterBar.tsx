@@ -1,5 +1,6 @@
 import { type Dispatch, type SetStateAction, useState } from 'react'
 import { ChevronDown, RotateCcw } from 'lucide-react'
+import { CURRENT_YEAR } from '../catalog/queryParams'
 import type { Facets, GameFilters, PlayerMode } from '../types/game'
 
 interface FilterBarProps {
@@ -9,7 +10,6 @@ interface FilterBarProps {
   onApply: () => void
 }
 
-const CURRENT_YEAR = new Date().getFullYear()
 
 const MIN_RATINGS_OPTIONS = [
   { label: 'Any', value: 0 },
@@ -160,15 +160,22 @@ function QuickFilters({
   )
 }
 
+function clampInput(raw: string, min: number, max: number, fallback: number): number {
+  const value = Math.round(Number(raw))
+  if (raw.trim() === '' || !Number.isFinite(value)) return fallback
+  return Math.min(max, Math.max(min, value))
+}
+
 function RangeField({
   label,
   max,
   min,
+  numberInputs,
   onChangeMax,
   onChangeMin,
   valueMax,
   valueMin,
-}: DualRangeProps & { label: string }) {
+}: DualRangeProps & { label: string; numberInputs?: boolean }) {
   return (
     <div className="range-field">
       <label>{label}</label>
@@ -182,6 +189,21 @@ function RangeField({
           onChangeMax={onChangeMax}
         />
       </div>
+      {numberInputs ? (
+        <div className="range-number-row">
+          <input
+            type="number" inputMode="numeric" min={min} max={max} value={valueMin}
+            aria-label={`${label} from`}
+            onChange={(event) => onChangeMin(clampInput(event.target.value, min, max, min))}
+          />
+          <span aria-hidden="true">–</span>
+          <input
+            type="number" inputMode="numeric" min={min} max={max} value={valueMax}
+            aria-label={`${label} to`}
+            onChange={(event) => onChangeMax(clampInput(event.target.value, min, max, max))}
+          />
+        </div>
+      ) : null}
     </div>
   )
 }
@@ -223,6 +245,23 @@ function AdvancedFilters({
           <option value={index} key={option.label}>{option.label}</option>
         ))}
       </select>
+      <label className="pill-select-wrapper">
+        <span className="pill-label">Max hours:</span>
+        <input
+          type="number"
+          inputMode="numeric"
+          min={1}
+          max={1000}
+          placeholder="any"
+          aria-label="Maximum playtime in hours"
+          value={filters.playtimeMaxHours ?? ''}
+          onChange={(event) => {
+            const raw = event.target.value
+            const hours = raw.trim() === '' ? null : clampInput(raw, 1, 1000, 1)
+            onChange((current) => ({ ...current, playtimeMaxHours: hours }))
+          }}
+        />
+      </label>
     </div>
   )
 }
@@ -314,6 +353,7 @@ export function FilterBar({ facets, filters, onChange, onApply }: FilterBarProps
       />
       <RangeField
         label="Year"
+        numberInputs
         min={minYear}
         max={maxYear}
         valueMin={draftYearMin}

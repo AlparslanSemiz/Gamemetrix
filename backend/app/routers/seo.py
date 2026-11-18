@@ -82,7 +82,7 @@ def _fresh_prices(game: Game, fresh_before: datetime) -> list[PriceSnapshot]:
 def _curated_paths(db: Session, games: list[Game], fresh_before: datetime) -> list[str]:
     linux_count = sum(
         1 for game in games
-        if (game.proton_tier or "").lower() in {"native", "platinum", "gold", "silver", "bronze"}
+        if (game.proton_tier or "").lower() in {"native", "platinum", "gold", "silver"}
         or any(platform.lower() == "linux" for platform in game.platforms)
     )
     deck_count = sum(
@@ -244,7 +244,7 @@ def curated_games(
         conditions.append(cast(Game.genres, JSONB).contains([display_name]))
     elif collection == "linux":
         conditions.append(or_(
-            Game.proton_tier.in_({"native", "platinum", "gold", "silver", "bronze"}),
+            Game.proton_tier.in_({"native", "platinum", "gold", "silver"}),
             cast(Game.platforms, JSONB).contains(["Linux"]),
         ))
     elif collection == "steam-deck":

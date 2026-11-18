@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import { useLocation } from 'react-router'
 import { getAnalyticsSessionId, getAnalyticsVisitorId, trackPageView } from '../services/analytics'
 import { useAnalyticsPreferences } from '../services/analyticsConsent'
+import { clientTimeZone } from '../utils/clock'
 import { trackGooglePageView } from '../services/googleAnalytics'
 
 export function PageViewTracker() {
@@ -30,7 +31,7 @@ export function PageViewTracker() {
         screen_width: window.innerWidth,
         screen_height: window.innerHeight,
         language: navigator.language || undefined,
-        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || undefined,
+        timezone: clientTimeZone(),
       })
       trackGooglePageView(path, document.title)
     }, 150)

@@ -1,5 +1,6 @@
 import type { CatalogGame, GameFilters } from '../types/game'
 import { DEFAULT_FILTERS, PAGE_SIZE, type ActivePage } from './config'
+import { clientNow } from '../utils/clock'
 
 const CATALOG_SNAPSHOT_KEY = 'gamemetrix.catalog.snapshot.v1'
 const CATALOG_SNAPSHOT_TTL_MS = 30 * 60 * 1000
@@ -72,7 +73,7 @@ export function readCatalogSnapshot(): CatalogSnapshot | null {
     if (!raw) return null
     const parsed = JSON.parse(raw) as Partial<CatalogSnapshot>
     if (parsed.version !== 1 || !parsed.savedAt) return null
-    if (Date.now() - parsed.savedAt > CATALOG_SNAPSHOT_TTL_MS) return null
+    if (clientNow() - parsed.savedAt > CATALOG_SNAPSHOT_TTL_MS) return null
     if (!Array.isArray(parsed.games)) return null
     const catalogTotal = parsed.catalogTotal ?? parsed.games.length
     const restoredOffset = Math.min(
@@ -108,7 +109,7 @@ export function writeCatalogSnapshot(snapshot: CatalogSnapshot | null) {
   if (!snapshot) return
   const payload: CatalogSnapshot = {
     ...snapshot,
-    savedAt: Date.now(),
+    savedAt: clientNow(),
   }
   try {
     window.sessionStorage.setItem(CATALOG_SNAPSHOT_KEY, JSON.stringify(payload))

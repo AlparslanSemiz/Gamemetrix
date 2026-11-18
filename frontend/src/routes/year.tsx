@@ -1,15 +1,20 @@
 import type { LoaderFunctionArgs, MetaFunction } from 'react-router'
 import { CuratedPage, type CuratedPageData } from '../pages/CuratedPage'
-import { fetchBackend } from '../server-api.server'
+import { clientForwardHeaders, fetchBackend, loadTopGenres } from '../server-api.server'
 import type { CatalogGameListResponse } from '../types/game'
+import { sharedCacheHeaders } from '../utils/cacheHeaders'
 import { curatedMetaTags } from '../utils/curatedMeta'
 import { latestContentUpdate } from '../utils/seo'
 
-export async function loader({ params }: LoaderFunctionArgs): Promise<CuratedPageData> {
+export async function loader({ params, request }: LoaderFunctionArgs): Promise<CuratedPageData> {
   const year = Number(params.year)
   const currentYear = new Date().getUTCFullYear()
   if (!Number.isInteger(year) || year < 1970 || year > currentYear) throw new Response('Not Found', { status: 404 })
-  const result = await fetchBackend<CatalogGameListResponse>(`/api/seo/curated/year?year=${year}&limit=100`)
+  const init = { signal: request.signal, headers: clientForwardHeaders(request) }
+  const [result, genres] = await Promise.all([
+    fetchBackend<CatalogGameListResponse>(`/api/seo/curated/year?year=${year}&limit=100`, init),
+    loadTopGenres(init),
+  ])
   return {
     ...result,
     label: `Games of ${year}`,
@@ -17,11 +22,13 @@ export async function loader({ params }: LoaderFunctionArgs): Promise<CuratedPag
     description: `The strongest ${year} game releases with enough primary score coverage and decision context to pass the GameMetrix publication threshold.`,
     canonical: `https://gamemetrix.me/best/games/${year}`,
     updatedAt: latestContentUpdate(result.games),
+    renderedAt: Date.now(),
+    genres,
   }
 }
 
 export const meta: MetaFunction<typeof loader> = ({ loaderData, location }) => loaderData
   ? curatedMetaTags(loaderData, location.search, `${loaderData.title} | GameMetrix`)
   : []
-export const headers = () => ({ 'Cache-Control': 'public, max-age=60, s-maxage=900, stale-while-revalidate=3600' })
+export const headers = sharedCacheHeaders
 export default function YearRoute({ loaderData }: { loaderData: CuratedPageData }) { return <CuratedPage data={loaderData} /> }

@@ -39,6 +39,22 @@ def test_advanced_catalog_filters_and_sorts_stay_in_postgres() -> None:
     assert "LIMIT 24 OFFSET 48" in sql
 
 
+def test_linux_platform_filter_includes_proton_playable_games() -> None:
+    def where_sql(platform: str) -> str:
+        statement = game_query.apply_advanced_filters(
+            select(Game.id), game_query.CatalogFilters(platform=platform),
+        )
+        return str(statement.compile(dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}))
+
+    linux = where_sql("Linux")
+    assert "games.proton_tier IN" in linux
+    for tier in ("native", "platinum", "gold", "silver"):
+        assert f"'{tier}'" in linux
+    # Bronze runs but crashes often: not counted as Linux support.
+    assert "'bronze'" not in linux
+    assert "proton_tier" not in where_sql("Switch")
+
+
 def test_catalog_count_uses_index_only_friendly_count_star() -> None:
     statement = game_query.build_catalog_count_query(
         "game", None, None, None, None, None, "all",

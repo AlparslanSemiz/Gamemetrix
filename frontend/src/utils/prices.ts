@@ -8,8 +8,8 @@ import type { PriceSnapshot } from '../types/game'
 export const PANEL_PRICE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000
 export const ACTIONABLE_PRICE_MAX_AGE_MS = 48 * 60 * 60 * 1000
 
-export function currentPriceSnapshots(prices: PriceSnapshot[], maxAgeMs: number): PriceSnapshot[] {
-  const cutoff = Date.now() - maxAgeMs
+export function currentPriceSnapshots(prices: PriceSnapshot[], maxAgeMs: number, now: number): PriceSnapshot[] {
+  const cutoff = now - maxAgeMs
   return prices.filter((price) => {
     const fetchedAt = Date.parse(price.fetched_at)
     return Number.isFinite(fetchedAt) && fetchedAt >= cutoff

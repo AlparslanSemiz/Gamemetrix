@@ -1,14 +1,7 @@
-import {
-  isRouteErrorResponse,
-  Links,
-  Meta,
-  Outlet,
-  Scripts,
-  ScrollRestoration,
-  useRouteError,
-} from 'react-router'
+import { Links, Meta, Outlet, Scripts, ScrollRestoration } from 'react-router'
 import type { ReactNode } from 'react'
 import { AnalyticsConsentBanner } from './components/AnalyticsConsentBanner'
+import { RouteErrorPage } from './components/RouteErrorPage'
 import { PageViewTracker } from './components/PageViewTracker'
 import { SiteLegalFooter } from './components/SiteLegalFooter'
 import { AccountProvider } from './state/AccountProvider'
@@ -63,19 +56,5 @@ export default function Root() {
 }
 
 export function ErrorBoundary() {
-  const error = useRouteError()
-  const status = isRouteErrorResponse(error) ? error.status : 500
-  const title = status === 404
-    ? 'Page not found'
-    : status === 429 || status === 503
-      ? 'Busy right now, please try again in a moment'
-      : 'Something went wrong'
-  return (
-    <main id="main-content" className="route-error">
-      <a className="route-error-brand" href="/">GameMetrix</a>
-      <p>{status}</p>
-      <h1>{title}</h1>
-      <a href="/">Return to the catalog</a>
-    </main>
-  )
+  return <RouteErrorPage />
 }

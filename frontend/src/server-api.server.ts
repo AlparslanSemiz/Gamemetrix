@@ -61,3 +61,27 @@ export async function fetchBackend<T>(path: string, init?: RequestInit): Promise
   }
   return response.json() as Promise<T>
 }
+
+export interface RankingGenre {
+  slug: string
+  name: string
+}
+
+const RELATED_GENRE_LIMIT = 8
+
+/**
+ * Most populated genre landing pages, for internal links. Links are decoration,
+ * so any failure (including a rate limit) just yields none instead of failing
+ * the page that asked.
+ */
+export async function loadTopGenres(init?: RequestInit): Promise<RankingGenre[]> {
+  try {
+    const { genres } = await fetchBackend<{ genres: Array<RankingGenre & { count: number }> }>(
+      '/api/seo/genres',
+      init,
+    )
+    return genres.slice(0, RELATED_GENRE_LIMIT).map(({ slug, name }) => ({ slug, name }))
+  } catch {
+    return []
+  }
+}

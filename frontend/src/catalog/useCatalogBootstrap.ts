@@ -2,9 +2,8 @@ import { useCallback, useEffect, useState, type Dispatch, type SetStateAction } 
 import {
   getFacets,
   getCatalogGames,
-  getIntegrationStatus,
 } from '../services/games'
-import type { Facets, ProviderStatus } from '../types/game'
+import type { Facets } from '../types/game'
 import { DEFAULT_FILTERS } from './config'
 
 export const FACETS_ERROR = 'Backend facets could not be loaded.'
@@ -14,7 +13,6 @@ interface CatalogBootstrapProps {
   setError: Dispatch<SetStateAction<string | null>>
   setFacets: Dispatch<SetStateAction<Facets>>
   setLibraryTotal: Dispatch<SetStateAction<number>>
-  setProviderStatuses: Dispatch<SetStateAction<ProviderStatus[]>>
 }
 
 export function useCatalogBootstrap({
@@ -22,7 +20,6 @@ export function useCatalogBootstrap({
   setError,
   setFacets,
   setLibraryTotal,
-  setProviderStatuses,
 }: CatalogBootstrapProps) {
   const [attempt, setAttempt] = useState(0)
   const retry = useCallback(() => {
@@ -46,16 +43,11 @@ export function useCatalogBootstrap({
         if (active) setLibraryTotal(response.total)
       })
       .catch(() => undefined)
-    void getIntegrationStatus()
-      .then((statuses) => {
-        if (active) setProviderStatuses(statuses)
-      })
-      .catch(() => undefined)
 
     return () => {
       active = false
     }
-  }, [attempt, enabled, setError, setFacets, setLibraryTotal, setProviderStatuses])
+  }, [attempt, enabled, setError, setFacets, setLibraryTotal])
 
   return { retry }
 }

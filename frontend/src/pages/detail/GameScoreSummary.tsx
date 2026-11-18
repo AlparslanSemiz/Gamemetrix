@@ -1,5 +1,6 @@
 import { Info } from 'lucide-react'
 import type { CSSProperties } from 'react'
+import { Link } from 'react-router'
 import { ScoreRing } from '../../components/ScoreRing'
 import type { Game, SourceScore } from '../../types/game'
 import {
@@ -71,17 +72,9 @@ export function GameScoreSummary({ game }: { game: Game }) {
       </div>
 
       <div className="dp-score-stats">
-        <div title="Plain average of the live primary source scores.">
-          <span>Source avg</span>
-          <strong>{sourceAverage}</strong>
-        </div>
         <div title={reliabilityCopy(game, livePrimaryCount)}>
           <span>Coverage</span>
           <strong>{livePrimaryCount}/{applicableCount}</strong>
-        </div>
-        <div title="Score used for leaderboard ordering.">
-          <span>Rank score</span>
-          <strong>{Math.round(game.rank_score)}</strong>
         </div>
         <div title={popularity.detail}>
           <span>Popularity</span>
@@ -103,6 +96,27 @@ export function GameScoreSummary({ game }: { game: Game }) {
           <strong>{rankStatus}</strong>
         </div>
       </div>
+
+      <details className="dp-score-how">
+        <summary>How is this score calculated?</summary>
+        <dl>
+          <div>
+            <dt>Source average</dt>
+            <dd>{sourceAverage}</dd>
+          </div>
+          <div>
+            <dt>Ranking score</dt>
+            <dd>{Math.round(game.rank_score)}</dd>
+          </div>
+        </dl>
+        <p>
+          The GameMetrix Score is a weighted average of the live primary sources
+          (Metacritic, OpenCritic, Steam, IGDB), pulled toward a neutral 70 and
+          slightly penalised when coverage, critic and player balance, or review
+          volume is thin. Lists are ordered by this same score.{' '}
+          <Link to="/about">Full method</Link>
+        </p>
+      </details>
     </div>
   )
 }
