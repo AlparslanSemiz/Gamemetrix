@@ -26,6 +26,11 @@ updates:
     schedule:
       interval: weekly
       day: monday
+    # SQLAlchemy 2.1 is a planned, reviewed upgrade (decision: stay <2.1 for now);
+    # 2.0.x patches still arrive through the group below.
+    ignore:
+      - dependency-name: sqlalchemy
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
     groups:
       pip-minor-and-patch:
         update-types: [minor, patch]
