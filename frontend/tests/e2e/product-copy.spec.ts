@@ -93,6 +93,12 @@ test('About explains the weighted formula with a worked example', async ({ page 
 
 test('the filter panel offers year and playtime as free number fields', async ({ page }) => {
   await gotoHydrated(page, '/')
+  // The Filters button sits inside the zone the side rail covers when it is
+  // hovered open (82 -> 210 px). In CI the pointer can start over the rail,
+  // which keeps it open and every click on Filters lands on the rail instead.
+  // Park the pointer in the content area first, like a real visitor would.
+  await page.mouse.move(700, 400)
+  await expect(page.locator('.side-rail')).toHaveCSS('width', '82px')
   await page.getByRole('button', { name: /Filters/i }).first().click()
   await expect(page.getByLabel('Year from')).toBeVisible()
   await expect(page.getByLabel('Year to')).toBeVisible()
