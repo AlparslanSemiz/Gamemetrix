@@ -9,7 +9,7 @@ from typing import Protocol
 
 from ...game_signals import safe_review_count
 from ...models import Game
-from .titles import base_title, canonical_title, normalized_title, slug_key
+from .titles import base_title, canonical_title, normalized_title, slug_key, title_qualifiers
 
 
 class TitleIdentity(Protocol):
@@ -57,7 +57,31 @@ def games_are_duplicates(left: TitleIdentity, right: TitleIdentity) -> bool:
     #    "Shadow Warrior (Classic)" ↔ "Shadow Warrior",
     #    "Mafia II (Classic)" ↔ "Mafia II: Definitive Edition"
     if left_base and left_base == right_base and (left_base != left_norm or left_base != right_norm):
+        return _stripped_titles_are_duplicates(left, right)
+    return False
+
+
+def _stripped_titles_are_duplicates(left: TitleIdentity, right: TitleIdentity) -> bool:
+    """Step 3, after the base titles matched.
+
+    A year ("(2009)") or "(Retired)" qualifier names a specific product, so two
+    different qualifiers are two products, and a qualifier against a bare title
+    only merges when the qualifier year matches the bare title's own year.
+    Without a qualifier the wide edition tolerance still applies.
+    """
+    left_quals = title_qualifiers(left.title)
+    right_quals = title_qualifiers(right.title)
+    if left_quals and right_quals:
+        return left_quals == right_quals
+    qualifiers = left_quals or right_quals
+    if not qualifiers:
         return _years_match(left.release_year, right.release_year, _EDITION_YEAR_TOLERANCE)
+    bare = right if left_quals else left
+    if any(q.isdigit() for q in qualifiers):
+        return any(
+            _years_match(int(q), bare.release_year, 0) for q in qualifiers if q.isdigit()
+        )
+    # "(Retired)", "(Open Beta)", "(Playtest)": a separate listing, never a duplicate.
     return False
 
 

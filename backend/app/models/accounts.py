@@ -52,6 +52,29 @@ class AccountSession(Base):
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class LoginThrottle(Base):
+    """Failed-login counters (keys `email:<e-mail>` and `pair:<e-mail>|<client /64>`)."""
+
+    __tablename__ = "login_throttle"
+
+    key: Mapped[str] = mapped_column(Text, primary_key=True)
+    kind: Mapped[str] = mapped_column(String(8), nullable=False)
+    failures: Mapped[int] = mapped_column(Integer, nullable=False)
+    window_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    next_allowed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class TrustedDevice(Base):
+    """Browser that completed a login; its random cookie token is stored only as a hash."""
+
+    __tablename__ = "trusted_devices"
+
+    token_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+
+
 class AccountToken(Base):
     __tablename__ = "account_tokens"
 

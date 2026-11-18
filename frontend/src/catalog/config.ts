@@ -18,6 +18,7 @@ import {
 } from 'lucide-react'
 import type { CollectionKey } from '../state/collections'
 import type { GameFilters, GameSort } from '../types/game'
+import { CURRENT_YEAR, DEFAULT_FILTERS, readUrlFilters } from './queryParams'
 
 export type MainPage =
   | 'catalog' | 'watchlist' | 'playing' | 'seen' | 'completed' | 'on_hold' | 'dropped'
@@ -25,7 +26,7 @@ export type MainPage =
 export type UtilityPage = 'alerts' | 'settings' | 'about'
 export type ActivePage = MainPage | UtilityPage
 
-export type NavIcon = typeof Search
+type NavIcon = typeof Search
 
 export interface NavItem<Id extends string> {
   id: Id
@@ -45,37 +46,13 @@ export interface SidebarGroup {
   items: CuratedPreset[]
 }
 
-export const CURRENT_YEAR = new Date().getFullYear()
+export { CURRENT_YEAR, DEFAULT_FILTERS, readUrlFilters }
 export const PAGE_SIZE = 24
-const EARLIEST_YEAR = 1970
 
 export const ROUTABLE_MAIN_PAGES = new Set<MainPage>([
   'watchlist', 'playing', 'seen', 'completed', 'on_hold', 'dropped',
   'liked', 'favorites', 'suggestions',
 ])
-
-export const DEFAULT_FILTERS: GameFilters = {
-  q: '',
-  genre: '',
-  platform: '',
-  developer: '',
-  publisher: '',
-  yearMin: EARLIEST_YEAR,
-  yearMax: CURRENT_YEAR,
-  minScore: 0,
-  maxScore: 100,
-  minRatings: 0,
-  maxRatings: 0,
-  minLiveSources: 0,
-  requireCritic: false,
-  hasAward: false,
-  dealMode: 'all',
-  playerMode: '',
-  playtimeMinHours: null,
-  playtimeMaxHours: null,
-  sort: 'rank_score',
-  direction: 'desc',
-}
 
 export const SIDEBAR_GROUPS: SidebarGroup[] = [
   {
@@ -191,8 +168,7 @@ const SUGGESTIONS_DESCRIPTION = "Top-rated games you haven't played, liked, or s
 
 function bestOfYearDescription(year: number): string {
   if (year !== CURRENT_YEAR) return `Ranked by reliability-weighted score — ${year} full-year results.`
-  const asOf = new Date().toLocaleString('en', { month: 'long', year: 'numeric' })
-  return `Year in progress — ranked by reliability-weighted score as of ${asOf}.`
+  return `Year in progress — ranked by reliability-weighted score so far this year.`
 }
 
 export function describeCatalogPage(
@@ -205,30 +181,4 @@ export function describeCatalogPage(
   if (activePreset !== null) return PRESET_DESCRIPTIONS[activePreset] ?? GENERIC_PRESET_DESCRIPTION
   if (activePage === 'suggestions') return SUGGESTIONS_DESCRIPTION
   return `Your local ${pageTitle.toLowerCase()} list.`
-}
-
-// Deep-link support: developer / genre / year passed as URL query params on the
-// catalog land on a pre-filtered homepage (used by the game detail page links).
-export function readUrlFilters(search: string): Partial<GameFilters> {
-  const params = new URLSearchParams(search)
-  const next: Partial<GameFilters> = {}
-  const genre = params.get('genre')?.trim()
-  const developer = params.get('developer')?.trim()
-  const publisher = params.get('publisher')?.trim()
-  const year = Number(params.get('year'))
-  if (genre) next.genre = genre
-  if (developer) next.developer = developer
-  if (publisher) next.publisher = publisher
-  if (Number.isInteger(year) && year > EARLIEST_YEAR && year <= CURRENT_YEAR) {
-    next.yearMin = year
-    next.yearMax = year
-  }
-  return next
-}
-
-const THOUSAND = 1000
-
-export function formatRoundedThousands(value: number): string {
-  if (value >= THOUSAND) return `${Math.round(value / THOUSAND)}K`
-  return new Intl.NumberFormat('en-US').format(value)
 }

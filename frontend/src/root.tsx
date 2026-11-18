@@ -1,15 +1,9 @@
-import {
-  isRouteErrorResponse,
-  Links,
-  Meta,
-  Outlet,
-  Scripts,
-  ScrollRestoration,
-  useRouteError,
-} from 'react-router'
+import { Links, Meta, Outlet, Scripts, ScrollRestoration } from 'react-router'
 import type { ReactNode } from 'react'
 import { AnalyticsConsentBanner } from './components/AnalyticsConsentBanner'
+import { RouteErrorPage } from './components/RouteErrorPage'
 import { PageViewTracker } from './components/PageViewTracker'
+import { SiteLegalFooter } from './components/SiteLegalFooter'
 import { AccountProvider } from './state/AccountProvider'
 import { CollectionsProvider } from './state/CollectionsProvider'
 import './index.css'
@@ -26,6 +20,7 @@ export function Layout({ children }: { children: ReactNode }) {
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <meta name="theme-color" content="#0f1014" />
         <link rel="icon" href="/favicon.svg" />
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
         <Meta />
         <Links />
         {/* Cloudflare Web Analytics: cookieless page-view counts, no consent needed. */}
@@ -38,6 +33,7 @@ export function Layout({ children }: { children: ReactNode }) {
         )}
       </head>
       <body>
+        <a className="skip-link" href="#main-content">Skip to main content</a>
         {children}
         <ScrollRestoration />
         <Scripts />
@@ -52,6 +48,7 @@ export default function Root() {
       <AccountProvider>
         <PageViewTracker />
         <Outlet />
+        <SiteLegalFooter />
         <AnalyticsConsentBanner />
       </AccountProvider>
     </CollectionsProvider>
@@ -59,15 +56,5 @@ export default function Root() {
 }
 
 export function ErrorBoundary() {
-  const error = useRouteError()
-  const status = isRouteErrorResponse(error) ? error.status : 500
-  const title = status === 404 ? 'Page not found' : 'Something went wrong'
-  return (
-    <main className="route-error">
-      <a className="route-error-brand" href="/">GameMetrix</a>
-      <p>{status}</p>
-      <h1>{title}</h1>
-      <a href="/">Return to the catalog</a>
-    </main>
-  )
+  return <RouteErrorPage />
 }

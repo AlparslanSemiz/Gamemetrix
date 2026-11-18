@@ -1,4 +1,10 @@
 from ..config import get_settings
+from .ai import provider_health
+
+
+def _ai_status(provider: str, configured: bool) -> str:
+    health = provider_health(provider, configured)
+    return "needs_credentials" if health == "unconfigured" else health
 
 
 def get_provider_statuses() -> list[dict[str, str]]:
@@ -61,7 +67,7 @@ def get_provider_statuses() -> list[dict[str, str]]:
         },
         {
             "source": "Groq",
-            "status": "ready" if cfg.groq_configured() else "needs_credentials",
+            "status": _ai_status("groq", cfg.groq_configured()),
             "detail": (
                 "Reviews suspicious catalog rows and generates bounded text under "
                 "one shared persistent free-tier budget."
@@ -69,19 +75,17 @@ def get_provider_statuses() -> list[dict[str, str]]:
         },
         {
             "source": "Gemini",
-            "status": "ready" if cfg.gemini_configured() else "needs_credentials",
+            "status": _ai_status("gemini", cfg.gemini_configured()),
             "detail": "Second AI fallback using the configured stable Flash-Lite model.",
         },
         {
             "source": "Cloudflare Workers AI",
-            "status": (
-                "ready" if cfg.cloudflare_ai_configured() else "needs_credentials"
-            ),
+            "status": _ai_status("cloudflare", cfg.cloudflare_ai_configured()),
             "detail": "Third AI fallback; requires an account ID and scoped API token.",
         },
         {
             "source": "OpenRouter",
-            "status": "ready" if cfg.openrouter_configured() else "needs_credentials",
+            "status": _ai_status("openrouter", cfg.openrouter_configured()),
             "detail": "Final AI fallback, configured to use the free-model router.",
         },
         {

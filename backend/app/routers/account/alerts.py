@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, Path, Response, status
 from sqlalchemy.orm import Session
 
@@ -10,6 +12,7 @@ from ...database import get_db
 from ...services.account_state import AccountStateLimitError, AlertState, set_alert_states
 from .schemas import MAX_ALERT_KEY_LENGTH, AlertStateBulkPayload, AlertStatePayload
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/alert-state")
 
 
@@ -17,7 +20,8 @@ def _store(db: Session, user_id: str, keys: list[str], state: AlertState) -> Res
     try:
         set_alert_states(db, user_id, keys, state)
     except AccountStateLimitError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
+        logger.info("Alert state update rejected: %s", exc)
+        raise HTTPException(status_code=422, detail="Alert state exceeds the allowed limits.") from exc
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 

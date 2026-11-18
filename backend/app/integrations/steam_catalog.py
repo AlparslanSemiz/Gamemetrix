@@ -16,7 +16,7 @@ from ..content_type import infer_content_type
 from ..models import CatalogSyncState, ExternalId, Game
 from ..services.deduplication import find_existing_duplicate
 from ..services.metadata_backfill.apply import apply_normalized_game
-from ..services.metadata_backfill.persistence import upsert_external_id
+from ..services.steam_identity import claim_steam_app_id, identity_from_result
 from ..services.metadata_backfill.sanitize import safe_url
 from .rate_limiter import get_rate_limiter
 from .steam_service import steam_service
@@ -153,29 +153,30 @@ def _existing_game(db: Session, app_id: int, candidate: Game) -> Game | None:
 
 
 def _ingest_detail(db: Session, result, app_id: int) -> bool:
+    steam_type = str(result.raw.get("steam_type") or "game")
+    if steam_type != "game":
+        # The official list is asked for games only, but appdetails has the last word:
+        # DLC, soundtracks and demos must not become catalog games or claim an id.
+        return False
     candidate = _new_game_from_steam(result, app_id)
     existing = _existing_game(db, app_id, candidate)
     if existing is None:
         db.add(candidate)
         db.flush()
-        game = candidate
-        created = True
-    else:
-        apply_normalized_game(existing, result, trusted=True, prefer_cover=not existing.cover_url)
-        existing.steam_app_id = app_id
-        db.add(existing)
-        db.flush()
-        game = existing
-        created = False
-    upsert_external_id(
-        db,
-        game.id,
-        "Steam",
-        str(app_id),
-        url=steam_service.store_url(app_id),
-        confidence=1.0,
-    )
-    return created
+        claim_steam_app_id(db, candidate, app_id, verified=True)
+        return True
+    if existing.steam_app_id != app_id:
+        # Matched by slug/title/fuzzy duplicate rather than by this app id: only
+        # merge when appdetails really describes the same product, and never over
+        # an id that was already verified.
+        if existing.steam_app_id_verified_at is not None:
+            return False
+        if not identity_from_result(existing, result).ok:
+            return False
+    apply_normalized_game(existing, result, trusted=True, prefer_cover=not existing.cover_url)
+    claim_steam_app_id(db, existing, app_id, verified=True)
+    db.flush()
+    return False
 
 
 async def import_steam_official_catalog(

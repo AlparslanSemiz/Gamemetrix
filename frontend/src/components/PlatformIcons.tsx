@@ -156,7 +156,7 @@ export function PlatformIcons({ platforms, mode = 'list', maxVisible, game }: Pl
               rel="noopener noreferrer"
               style={style}
               title={`${def.name} — view in store`}
-              aria-label={`${def.name} store page`}
+              aria-label={`${def.short}: ${def.name} store page`}
             >
               <Icon />
               {label ? <span className="pf-label">{label}</span> : null}

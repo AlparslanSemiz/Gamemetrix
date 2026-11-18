@@ -4,6 +4,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router'
 import { AccountApiError, deleteAccountData, exportAccountData } from '../services/account'
 import { trackProductEvent } from '../services/analytics'
 import { useAccount } from '../state/useAccount'
+import { clientNow } from '../utils/clock'
 import './AccountPage.css'
 
 function useAccountOperations(
@@ -40,7 +41,7 @@ function useAccountOperations(
     const url = URL.createObjectURL(blob)
     const anchor = document.createElement('a')
     anchor.href = url
-    anchor.download = `gamemetrix-account-${new Date().toISOString().slice(0, 10)}.json`
+    anchor.download = `gamemetrix-account-${new Date(clientNow()).toISOString().slice(0, 10)}.json`
     anchor.click()
     URL.revokeObjectURL(url)
   })
@@ -101,10 +102,10 @@ export function AccountPage() {
     navigate(next.size ? `/account?${next.toString()}` : '/account', { replace: true })
   }, [account, navigate, searchParams])
 
-  if (isLoading || !account) return <main className="account-page"><p>Loading account...</p></main>
+  if (isLoading || !account) return <main id="main-content" className="account-page"><p>Loading account...</p></main>
 
   return (
-    <main className="account-page">
+    <main id="main-content" className="account-page">
       <header className="account-page-head">
         <Link to="/" aria-label="Back to catalog"><ArrowLeft size={18} /></Link>
         <a href="/" className="account-page-brand">Game<span>Metrix</span></a>

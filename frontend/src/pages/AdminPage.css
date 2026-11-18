@@ -394,7 +394,7 @@
 }
 
 .admin-ai-fields i {
-  color: #8b5cf6;
+  color: #a78bfa;
   font-style: normal;
 }
 
@@ -1075,7 +1075,7 @@
 }
 
 .rate-limit-caption {
-  color: #6b7280;
+  color: var(--gm-muted);
   font-size: 12px;
 }
 

@@ -1,3 +1,5 @@
+import { formatIsoDate, formatNumber } from '../../utils/format'
+
 export function normalizeSignal(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
 }
@@ -5,10 +7,8 @@ export function normalizeSignal(value: string): string {
 // Pinned locale: the server formats in the container's locale and the browser in
 // the visitor's, so a bare toLocaleString() renders 26,352 on one side and
 // 26.352 on the other and fails hydration.
-const COUNT_FORMATTER = new Intl.NumberFormat('en-US')
-
 export function formatCount(value: number): string {
-  return COUNT_FORMATTER.format(value)
+  return formatNumber(value)
 }
 
 export function formatCompactCount(value: number): string {
@@ -18,10 +18,7 @@ export function formatCompactCount(value: number): string {
 }
 
 export function formatDate(value?: string | null): string {
-  if (!value) return 'Not tracked'
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime()) || date.getFullYear() <= 1970) return 'Not tracked'
-  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+  return formatIsoDate(value) ?? 'Not tracked'
 }
 
 export function formatMoney(value: number | null | undefined, currency: string): string {

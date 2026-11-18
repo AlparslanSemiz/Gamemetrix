@@ -57,6 +57,9 @@ class RateLimiter:
         until = datetime.now(UTC).timestamp() + max(1, int(seconds))
         self._blocked_until[canonical] = datetime.fromtimestamp(until, tz=UTC)
 
+    def is_blocked(self, source: str) -> bool:
+        return self._blocked(source)
+
     def _blocked(self, source: str) -> bool:
         canonical = self._canonical(source)
         until = self._blocked_until.get(canonical)

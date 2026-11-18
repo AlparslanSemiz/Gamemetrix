@@ -4,15 +4,14 @@ import type {
   CatalogGameListResponse,
   Game,
   GameFilters,
-  ProviderStatus,
   ScoreWeightsResponse,
   SeriesResponse,
   SimilarGamesResponse,
   TrailerResponse,
 } from '../types/game'
+import { buildCatalogParams } from '../catalog/queryParams'
 import { API_BASE_URL } from './api'
 
-const CURRENT_YEAR = new Date().getFullYear()
 const DEFAULT_CATALOG_REQUEST_TIMEOUT_MS = 12_000
 
 function catalogRequestTimeoutMs(): number {
@@ -30,9 +29,13 @@ export async function getCatalogGames(
   filters: GameFilters,
   limit = 24,
   offset = 0,
+  signal?: AbortSignal,
 ): Promise<CatalogGameListResponse> {
-  const params = catalogParams(filters, limit, offset)
+  const params = buildCatalogParams(filters, limit, offset)
   const controller = new AbortController()
+  const abortFromCaller = () => controller.abort()
+  if (signal?.aborted) controller.abort()
+  signal?.addEventListener('abort', abortFromCaller, { once: true })
   const timeout = setTimeout(() => controller.abort(), catalogRequestTimeoutMs())
   try {
     const response = await fetch(`${API_BASE_URL}/api/catalog/games?${params.toString()}`, {
@@ -42,39 +45,8 @@ export async function getCatalogGames(
     return await response.json()
   } finally {
     clearTimeout(timeout)
+    signal?.removeEventListener('abort', abortFromCaller)
   }
-}
-
-function catalogParams(filters: GameFilters, limit: number, offset: number): URLSearchParams {
-  const params = new URLSearchParams()
-
-  if (filters.q.trim()) params.set('q', filters.q.trim())
-  if (filters.genre) params.set('genre', filters.genre)
-  if (filters.platform) params.set('platform', filters.platform)
-  if (filters.developer) params.set('developer', filters.developer)
-  if (filters.publisher) params.set('publisher', filters.publisher)
-  const yearLo = Math.min(filters.yearMin, filters.yearMax)
-  const yearHi = Math.max(filters.yearMin, filters.yearMax)
-  if (yearLo > 1970) params.set('year_min', String(yearLo))
-  if (yearHi < CURRENT_YEAR) params.set('year_max', String(yearHi))
-  const scoreLo = Math.min(filters.minScore, filters.maxScore)
-  const scoreHi = Math.max(filters.minScore, filters.maxScore)
-  if (scoreLo > 0) params.set('min_score', String(scoreLo))
-  if (scoreHi < 100) params.set('max_score', String(scoreHi))
-  if (filters.minRatings > 0) params.set('min_ratings', String(filters.minRatings))
-  if (filters.maxRatings > 0) params.set('max_ratings', String(filters.maxRatings))
-  if (filters.minLiveSources > 0) params.set('min_live_sources', String(filters.minLiveSources))
-  if (filters.requireCritic) params.set('require_critic', 'true')
-  if (filters.hasAward) params.set('has_award', 'true')
-  if (filters.dealMode !== 'all') params.set('deal', filters.dealMode)
-  if (filters.playerMode) params.set('player_mode', filters.playerMode)
-  if (filters.playtimeMinHours !== null) params.set('playtime_min_hours', String(filters.playtimeMinHours))
-  if (filters.playtimeMaxHours !== null) params.set('playtime_max_hours', String(filters.playtimeMaxHours))
-  params.set('sort', filters.sort)
-  params.set('direction', filters.direction)
-  params.set('limit', String(limit))
-  params.set('offset', String(offset))
-  return params
 }
 
 export async function getCatalogGamesBySlugs(
@@ -161,12 +133,6 @@ async function relatedGamesRequest<T>(
 export async function getFacets(): Promise<Facets> {
   const response = await fetch(`${API_BASE_URL}/api/facets`)
   if (!response.ok) throw new Error('Failed to fetch facets')
-  return response.json()
-}
-
-export async function getIntegrationStatus(): Promise<ProviderStatus[]> {
-  const response = await fetch(`${API_BASE_URL}/api/integrations/status`)
-  if (!response.ok) throw new Error('Failed to fetch integration status')
   return response.json()
 }
 

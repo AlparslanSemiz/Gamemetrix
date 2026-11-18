@@ -15,10 +15,11 @@ concurrency:
 
 jobs:
   backend:
+    timeout-minutes: 30
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:15-alpine
+        image: postgres:15-alpine@sha256:3d0f7584ed7d04e27fa050d6683a74746608faf21f202be78460d679cc56461f
         env:
           POSTGRES_USER: test
           POSTGRES_PASSWORD: test
@@ -35,6 +36,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
 
       - name: Set up Python
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
@@ -97,10 +100,13 @@ jobs:
           docker compose config --quiet
 
   frontend:
+    timeout-minutes: 30
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
 
       - name: Set up Node.js
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
@@ -153,12 +159,15 @@ jobs:
           retention-days: 7
 
   docker-arm64:
+    timeout-minutes: 30
     # The production VM may be ARM (Oracle Ampere), so make sure both images
     # still build there. GitHub's ARM runners are free for public repositories.
     runs-on: ubuntu-24.04-arm
     steps:
       - name: Check out repository
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
 
       - name: Build backend image (arm64)
         run: docker build -t gamemetrix-backend:arm64 backend

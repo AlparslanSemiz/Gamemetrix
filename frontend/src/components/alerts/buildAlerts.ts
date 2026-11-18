@@ -1,4 +1,5 @@
 import type { CatalogGame, PriceSnapshot } from '../../types/game'
+import { formatIsoDate } from '../../utils/format'
 import { ACTIONABLE_PRICE_MAX_AGE_MS, currentPriceSnapshots } from '../../utils/prices'
 import type { AlertKind, AlertPreferences, GameAlert } from './types'
 
@@ -14,14 +15,14 @@ function bestDiscount(prices: PriceSnapshot[]): PriceSnapshot | undefined {
 function formatMoney(value: number | null | undefined, currency: string): string {
   if (value == null) return ''
   try {
-    return new Intl.NumberFormat(undefined, { style: 'currency', currency }).format(value)
+    return new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(value)
   } catch {
     return `${value.toFixed(2)} ${currency}`
   }
 }
 
-function priceAlert(game: CatalogGame, preferences: AlertPreferences): GameAlert | null {
-  const prices = currentPriceSnapshots(game.price_snapshots ?? [], ACTIONABLE_PRICE_MAX_AGE_MS)
+function priceAlert(game: CatalogGame, preferences: AlertPreferences, now: number): GameAlert | null {
+  const prices = currentPriceSnapshots(game.price_snapshots ?? [], ACTIONABLE_PRICE_MAX_AGE_MS, now)
   const freePrice = prices.find((price) => price.is_free || price.sale_price === 0)
   if (freePrice) {
     return {
@@ -46,19 +47,15 @@ function priceAlert(game: CatalogGame, preferences: AlertPreferences): GameAlert
   }
 }
 
-function releaseAlert(game: CatalogGame, now: Date, cutoff: Date): GameAlert | null {
+function releaseAlert(game: CatalogGame, now: number, cutoff: number): GameAlert | null {
   if (!game.release_date) return null
-  const releaseDate = new Date(`${game.release_date}T12:00:00`)
-  if (releaseDate < now || releaseDate > cutoff) return null
+  const releaseDate = new Date(`${game.release_date}T12:00:00Z`)
+  if (releaseDate.getTime() < now || releaseDate.getTime() > cutoff) return null
   return {
     id: `${game.slug}:release:${game.release_date}`,
     kind: 'release',
     title: `${game.title} releases soon`,
-    detail: releaseDate.toLocaleDateString(undefined, {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-    }),
+    detail: formatIsoDate(game.release_date, 'long') ?? game.release_date,
     game,
   }
 }
@@ -75,13 +72,12 @@ function scoreAlert(game: CatalogGame, preferences: AlertPreferences): GameAlert
   }
 }
 
-export function buildAlerts(games: CatalogGame[], preferences: AlertPreferences): GameAlert[] {
-  const now = new Date()
-  const cutoff = new Date(now.getTime() + preferences.upcomingDays * MS_PER_DAY)
+export function buildAlerts(games: CatalogGame[], preferences: AlertPreferences, now: number): GameAlert[] {
+  const cutoff = now + preferences.upcomingDays * MS_PER_DAY
 
   const alerts = games.flatMap((game) =>
     [
-      priceAlert(game, preferences),
+      priceAlert(game, preferences, now),
       releaseAlert(game, now, cutoff),
       scoreAlert(game, preferences),
     ].filter((alert): alert is GameAlert => alert !== null),

@@ -34,8 +34,8 @@ test('home SSR and infinite catalog use the same full-catalog total', async ({ r
     .replace(/<[^>]+>/g, ' ')
     .replace(/\s+/g, ' ')
 
-  expect(visibleText).toContain('24 / 48 loaded')
-  expect(visibleText).not.toContain('24 / 400 loaded')
+  expect(visibleText).toContain('48 games')
+  expect(visibleText).not.toContain('400 games')
   expect(gzipSync(html).byteLength).toBeLessThanOrEqual(50 * 1024)
 })
 
@@ -155,7 +155,7 @@ test('utility panels have dedicated noindex routes and return to catalog navigat
   await expect(page).toHaveURL('http://127.0.0.1:4173/')
   await expect(page.getByRole('heading', { name: 'Game scores and PC compatibility rankings' })).toBeVisible()
 
-  await page.getByRole('button', { name: 'Wishlist', exact: true }).click()
+  await page.locator('.side-rail').getByRole('button', { name: 'Wishlist', exact: true }).click()
   await expect(page).toHaveURL(/\?view=watchlist$/)
   await expect(page.locator('meta[name="robots"]')).toHaveAttribute('content', 'noindex,follow')
 })

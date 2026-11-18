@@ -1,8 +1,11 @@
-import { Clock3, ExternalLink, Gamepad2, LogIn, Shield, Tag } from 'lucide-react'
+import { Clock3, ExternalLink, Gamepad2, LogIn, Search, Tag } from 'lucide-react'
 import { Link } from 'react-router'
+import type { RankingGenre } from '../server-api.server'
 import { useAccount } from '../state/useAccount'
 import { trackProductEvent } from '../services/analytics'
 import type { CatalogGame, PriceSnapshot } from '../types/game'
+import { thumbnailUrl } from '../utils/coverImage'
+import { formatIsoDate } from '../utils/format'
 import { ACTIONABLE_PRICE_MAX_AGE_MS, currentPriceSnapshots } from '../utils/prices'
 import { isProtonTier, PROTON_TIER_LABELS } from '../utils/proton'
 import { safeExternalUrl } from '../utils/url'
@@ -16,12 +19,16 @@ export interface CuratedPageData {
   canonical: string
   label: string
   updatedAt: string
+  /** Loader wall-clock (ms) so server and browser agree on price freshness. */
+  renderedAt: number
+  /** Genre landing pages to cross-link under Related rankings. */
+  genres: RankingGenre[]
 }
 
 const PRIMARY_SOURCES = ['Metacritic', 'OpenCritic', 'Steam', 'IGDB'] as const
 
-function bestPrice(prices: PriceSnapshot[]): PriceSnapshot | undefined {
-  return currentPriceSnapshots(prices, ACTIONABLE_PRICE_MAX_AGE_MS)
+function bestPrice(prices: PriceSnapshot[], now: number): PriceSnapshot | undefined {
+  return currentPriceSnapshots(prices, ACTIONABLE_PRICE_MAX_AGE_MS, now)
     .filter((price) => price.is_free || price.sale_price != null || price.list_price != null)
     .sort((left, right) => Number(left.sale_price ?? left.list_price ?? Infinity) - Number(right.sale_price ?? right.list_price ?? Infinity))[0]
 }
@@ -61,16 +68,25 @@ function itemListJson(data: CuratedPageData) {
   }).replace(/</g, '\\u003c')
 }
 
+function recentYears(renderedAt: number): number[] {
+  const current = new Date(renderedAt).getUTCFullYear()
+  return [current, current - 1, current - 2]
+}
+
 export function CuratedPage({ data }: { data: CuratedPageData }) {
   const { account } = useAccount()
   return (
-    <main className="curated-shell">
+    <main id="main-content" className="curated-shell">
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: itemListJson(data) }} />
       <header className="curated-topbar">
         <a href="/" className="curated-brand">Game<span>Metrix</span></a>
+        {/* A plain GET form: works before hydration and lands on the catalog with the query in the URL. */}
+        <form className="curated-search" action="/" method="get" role="search">
+          <input type="search" name="q" maxLength={120} placeholder="Search games" aria-label="Search games by title" />
+          <button type="submit" aria-label="Search"><Search size={15} aria-hidden="true" /></button>
+        </form>
         <nav aria-label="Account navigation">
           <Link to={account ? '/account' : '/login'}>{account ? <Gamepad2 size={16} /> : <LogIn size={16} />}{account ? 'Account' : 'Login'}</Link>
-          <Link to="/admin"><Shield size={16} />Admin</Link>
         </nav>
       </header>
 
@@ -80,21 +96,27 @@ export function CuratedPage({ data }: { data: CuratedPageData }) {
           <p>{data.label}</p>
           <h1>{data.title}</h1>
           <div>{data.description}</div>
-          <small>Updated {new Date(data.updatedAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}. Ranked from live source coverage and GameMetrix reliability weighting.</small>
+          <small>Updated {formatIsoDate(data.updatedAt, 'long') ?? 'recently'}. Ranked from live source coverage and GameMetrix reliability weighting.</small>
         </header>
 
         <nav className="curated-links" aria-label="Related rankings">
           <Link to="/best/linux-games">Linux games</Link>
-          <Link to="/best/steam-deck-games">Steam Deck</Link>
+          <Link to="/best/steam-deck-games">Runs well on Linux / Deck</Link>
           <Link to="/best/free-pc-games">Free PC games</Link>
           <Link to="/deals">Best deals</Link>
+          {recentYears(data.renderedAt).map((year) => (
+            <Link key={year} to={`/best/games/${year}`}>Best of {year}</Link>
+          ))}
+          {data.genres.map((genre) => (
+            <Link key={genre.slug} to={`/best/${genre.slug}-games`}>{genre.name}</Link>
+          ))}
         </nav>
 
         {data.games.length ? (
           <ol className="curated-list">
             {data.games.map((game, index) => {
               const scores = new Map(game.source_scores.map((score) => [score.source, score]))
-              const price = bestPrice(game.price_snapshots ?? [])
+              const price = bestPrice(game.price_snapshots ?? [], data.renderedAt)
               const priceLabel = priceText(price)
               const storeUrl = safeExternalUrl(price?.url)
               const proton = game.proton_tier && isProtonTier(game.proton_tier) ? PROTON_TIER_LABELS[game.proton_tier] : null
@@ -103,7 +125,7 @@ export function CuratedPage({ data }: { data: CuratedPageData }) {
                 <li key={game.slug}>
                   <span className="curated-rank">{index + 1}</span>
                   <Link className="curated-cover" to={`/game/${game.slug}`} aria-label={`Open ${game.title}`}>
-                    <img src={game.cover_url || game.image_url || '/favicon.svg'} alt="" loading={index < 4 ? 'eager' : 'lazy'} />
+                    <img src={thumbnailUrl(game.cover_url || game.image_url || '/favicon.svg')} alt="" loading={index < 4 ? 'eager' : 'lazy'} />
                   </Link>
                   <article>
                     <div className="curated-game-head">
@@ -111,7 +133,7 @@ export function CuratedPage({ data }: { data: CuratedPageData }) {
                         <Link to={`/game/${game.slug}`}><h2>{game.title}</h2></Link>
                         <p>
                           {game.release_year > 1970 ? (
-                            <Link to={`/?year=${game.release_year}`}>
+                            <Link to={`/best/games/${game.release_year}`}>
                               {game.release_year}
                             </Link>
                           ) : 'Release date pending'}

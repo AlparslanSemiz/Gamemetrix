@@ -39,11 +39,11 @@ and review volume shrink a thin score toward a neutral baseline.
 | Frontend | React Router **Framework Mode** (SSR), React + TypeScript strict, Vite |
 | Proxy | nginx (`nginx.conf`) in front of both, Cloudflare in front of that |
 | Deploy | `docker-compose.yml` — services: `db`, `backend`, `frontend`, `nginx`; volume `pgdata` |
-| Images | `.github/workflows/images.yml` builds both images for amd64 + arm64 on every push to main → `ghcr.io/alparslansemiz/gamemetrix-{backend,frontend}:sha-<commit>` and `:latest`. Production pulls them (`GAMEMETRIX_IMAGE_PREFIX` in `.env`); root cron `ops/auto-deploy.sh` deploys a new main within ~5 min of its images appearing |
+| Images | `.github/workflows/images.yml` builds both images for amd64 + arm64 after the CI workflow succeeds for a main commit (`workflow_run`) → `ghcr.io/alparslansemiz/gamemetrix-{backend,frontend}:sha-<commit>` (no `:latest`). Production pulls them (`GAMEMETRIX_IMAGE_PREFIX` in `.env`, tag written by `deploy-production.sh`); root cron `ops/auto-deploy.sh` deploys a new main within ~5 min of its images appearing, tracks success in `.deployed-sha`, and reports failures through `ops/notify.sh` |
 | Host constraint | 1 GB RAM production host. This drives several designs — see §9. |
 | Host | bwCloud (Karlsruhe) `p1.nano`, IPv6 only, 4 GB swap; Cloudflare proxies IPv4 visitors (SSL mode Flexible) |
-| Self-healing | `restart: always`, plus root cron `ops/health-watchdog.sh` every minute (restarts missing/stopped containers, restarts ones unhealthy for 3 checks); nightly `ops/backup-db.sh` |
-| Outside check | `.github/workflows/uptime.yml` pings the site and `api.gamemetrix.me/health` every 10 minutes |
+| Self-healing | `restart: always`, plus root cron `ops/health-watchdog.sh` every minute (restarts missing/stopped containers, restarts ones unhealthy for 3 checks); nightly `ops/backup-db.sh`; `ops/restore-test.sh` proves a dump restores; scripts ping/notify via `ops/notify.sh` (`/etc/gamemetrix/notify.env`); `ops/logrotate-gamemetrix`; rebuild guide `docs/disaster-recovery.md` |
+| Outside check | `.github/workflows/uptime.yml` pings the site and `api.gamemetrix.me/health/ready` (DB answers + catalog not empty) every 10 minutes |
 
 Ports in development: backend `127.0.0.1:8000`, SSR frontend `127.0.0.1:5173`. The Vite dev
 server proxies `/api` and `/admin/*` to 8000 so account cookies behave like production.
@@ -73,7 +73,8 @@ docker-compose.yml  full stack; docker-compose.production.yml layers prod overri
 ```
 main.py
   App bootstrap only: settings validation, CORS, rate limiting, cache-control
-  and admin-audit middleware, router mounting, /health, and the lifespan that
+  and admin-audit middleware, router mounting, /health and /health/ready, 503 handlers
+  (pool exhaustion, statement timeout), and the lifespan that
   seeds the DB and starts the background loops. No business logic.
 
 routers/            HTTP surface. Orchestrate services, return schemas. No business logic.
@@ -125,10 +126,15 @@ content_type.py     Classifies a row as game / dlc / soundtrack / demo / mod / u
 schemas.py          Pydantic API schemas only.
 config.py           Every os.getenv call lives here. No other file may read the environment.
 config_validation.py Settings validation; reads no environment itself.
-database.py         Engine + session factory only.
+database.py         Engines + session factories only. Request engine: pool 8+4, 5 s pool timeout, 8 s
+                    statement_timeout. `BackgroundSessionLocal`/`get_long_db`: separate small pool with a
+                    15 min timeout for full-catalog scans (SEO refresh, completeness sweep, rating plan).
 security.py         Admin JWT (require_admin_user).
 account_security.py Normal-account auth (Argon2id passwords, hashed opaque sessions).
-rate_limit.py       slowapi HTTP rate limiting (distinct from integrations/rate_limiter.py).
+rate_limit.py       slowapi HTTP rate limiting (distinct from integrations/rate_limiter.py); keys IPv6 by /64.
+services/login_throttle.py  Postgres `login_throttle`: 429 per (e-mail, IP/64) 10/15 min, per-e-mail 20 then exponential `next_allowed_at` (<= 60 s, 429+Retry-After); atomic reserve before the password check.
+services/trusted_devices.py  `trusted_devices` (hashed random cookie token, 30 d; deleted on password reset / session revocation); loosens, never bypasses, the pair limit.
+services/count_cache.py     5-minute bounded cache for catalog COUNT(*) totals.
 heavy_jobs.py       HEAVY_JOB_LOCK + peak-hour gate shared by all bulk jobs.
 ```
 
@@ -163,7 +169,7 @@ this path — that is why `from ..models import Game` still works.
 
 | Module | Tables |
 |---|---|
-| `catalog.py` | `Game`, `ExternalId`, `RatingSnapshot`, `SourceSnapshot`, `PriceSnapshot` |
+| `catalog.py` | `Game`, `ExternalId`, `RatingSnapshot`, `SourceSnapshot`, `PriceSnapshot`, `SlugRedirect`, `GameSearchAlias` |
 | `accounts.py` | `User`, `AccountSession`, `AccountToken`, `OAuthIdentity`, `UserCollection`, `UserPreference`, `UserAlertState`, `NotificationDelivery` |
 | `analytics.py` | `VisitEvent`, `AnalyticsEvent` |
 | `ops.py` | `ApiRequestBudget`, `ApiRequestWindow`, `AdminAuditLog`, `AiCatalogChange`, `CatalogQualityReview`, `CatalogSyncState`, `DataFillRun`, `JobRun` |
@@ -178,9 +184,18 @@ Stored columns worth knowing:
   `metrix_score`, `rank_score`, `is_rankable`, `critic_score`, `user_score`, `metacritic_score`.
 - **Enrichment:** `playtime_minutes`, `hltb_*`, `is_endless`, `proton_tier`, `proton_score`,
   `system_requirements`, `dlcs`, `similar_games`, `steam_app_id`, `website_url`.
+- **Steam identity:** `steam_app_id` is only *trusted* once `steam_app_id_verified_at` is set (appdetails
+  said `type=game` and the name/qualifiers/year match). `integrations/steam/identity.py` holds the
+  verdict; `services/steam_identity.py::claim_steam_app_id` is the only writer — an unverified source
+  fills a gap but never replaces an id, a verified id is never replaced by an unverified one.
+  `integrations/steam/client.py::resolve_steam_app_id` is the one reader (stored id → Steam external id →
+  Steam URL in the art; never the slug, whose numeric suffix is a RAWG/IGDB id).
+- **Search:** `title_normalized` (unaccent + lower + punctuation/apostrophes stripped, kept in step by
+  an ORM listener, `app/search_text.py`) with a pg_trgm GIN index; `game_search_aliases` ("gta 5", "bg3").
+  `game_query.title_search_condition` ORs literal, normalized, alias and trigram matches.
 - **Awards (display only):** `award_count`, `award_nominations`, `goty_year`, `awards`.
 - **Freshness bookkeeping:** `ratings_refreshed_at`, `metadata_refreshed_at`, `prices_refreshed_at`,
-  `hltb_refreshed_at`, `summary_refreshed_at`, `summary_checked_at`, `summary_quality`,
+  `hltb_refreshed_at`, `proton_refreshed_at`, `summary_refreshed_at`, `summary_checked_at`, `summary_quality`,
   `endless_checked_at`, `data_complete`, `catalog_added_at`.
 - **SEO:** `seo_indexable`, `seo_exclusion_reason`, `seo_updated_at`.
 
@@ -197,7 +212,7 @@ Computed properties on `Game` delegate to `game_signals.py` — never re-impleme
 
 ### Migrations
 
-**Alembic owns the schema.** `backend/alembic/versions/` — 17 revisions as of 2026-07-29,
+**Alembic owns the schema.** `backend/alembic/versions/` — 18 revisions as of 2026-11-18,
 baseline `20260720_0001_postgres_baseline`. Run `alembic upgrade head`.
 
 > There is no `_run_migrations()` / `_add_column_if_missing()` in `main.py` any more. Older notes
@@ -298,9 +313,19 @@ the admin **`GET /admin/jobs/periodic`** panel reads out of the `job_runs` table
 | `hltb_backfill_loop` | 90 s | `HLTB_BACKFILL_INTERVAL_MINUTES` (60) | HowLongToBeat playtimes (scraped — deliberately slow) |
 | `summary_audit_loop` | 120 s | `SUMMARY_SHORTEN_INTERVAL_MINUTES` | rotates the catalog auditing/rewriting descriptions, derives `summary_short` |
 | `endless_backfill_loop` | 150 s | `ENDLESS_BACKFILL_INTERVAL_MINUTES` | flags roguelikes/MMOs/sandbox as `is_endless` (∞ instead of "missing playtime") |
+| `duplicate_consolidation_loop` | 240 s | `DUPLICATE_CONSOLIDATION_INTERVAL_HOURS` (24) | verifies Steam ids of grouped games, merges duplicates, writes `slug_redirects` (detail endpoint answers 301); independent of the startup flag (`services/data_maintenance.py`) |
+| `protondb_refresh_loop` | 180 s | daily batch, `PROTONDB_REFRESH_INTERVAL_HOURS` (168) = per-game max age | `proton_tier`/`proton_score`/`proton_refreshed_at` for verified Steam ids only, <= 1 request/s (`services/protondb_refresh.py`) |
 | `data_fill_loop` | — | `DATA_FILL_*` | the ordered full-catalog fill, see below |
 | `notification_digest_loop` | — | — | account alert digests |
 | `raw_analytics_retention_loop` | 120 s | 6 h | redacts raw IP/user-agent past the retention window |
+
+Rating budget order (`integrations/sync/priority.py`): popularity x release recency x missing primary
+sources x staleness, so a new big release without scores is refreshed before an old game's re-check.
+`ratings_refreshed_at` / `prices_refreshed_at` only move when a provider actually answered — budget
+exhaustion, missing config and transport errors do not count.
+
+Operator commands (all dry-run by default, `--apply` to write): `python -m app.scripts.verify_steam_ids`,
+`consolidate_duplicates`, `fix_release_dates`.
 
 `_background_startup` runs the expensive full-catalog classify/rescore/dedupe pass **only** when
 `STARTUP_CATALOG_MAINTENANCE_ENABLED=true`. It is off by default so API readiness is not blocked
@@ -349,7 +374,11 @@ Groq is the default first hop (it is *Groq*, not "Grok"). `ai.py` owns retry pol
 in-flight deduplication, JSON-fence stripping, response validation, and token accounting against
 the rate limiter. Providers raise a sanitized `ProviderFailure` with an `ErrorCategory` — raw
 response bodies never cross that boundary. Failure categories that definitely did not consume
-quota (rate-limited, auth, invalid model, not configured) do not charge the budget.
+quota (rate-limited, auth, invalid model, not configured) do not charge the budget; neither does a
+timeout that fires before the request was dispatched. A 401/403 blocks that provider for 6 hours
+(one `log.error`); a 400 on a `json_object` request counts as `INVALID_RESPONSE` and falls back.
+Providers may define `wait_for_slot()` (Groq's 12 s spacing) — the chain awaits it before reserving
+budget, outside the per-call timeout. `provider_statuses()` carries each provider's last outcome.
 
 Consumers: `services/summarizer/`, `services/catalog_quality/`, `services/endless.py`,
 `services/similarity/ai_rerank.py`. AI work is gated behind deterministic checks first — the AI
@@ -373,7 +402,7 @@ The production host has **1 GB RAM**. Several designs exist only because of it:
 - The single shared `HEAVY_JOB_LOCK`.
 - `STARTUP_CATALOG_MAINTENANCE_ENABLED=false` by default.
 - Compose PostgreSQL is tuned below its 160 MiB cgroup limit (`shared_buffers=64MB`,
-  `work_mem=2MB`, `maintenance_work_mem=32MB`, `max_connections=40`). Keep these aligned with the
+  `work_mem=2MB`, `maintenance_work_mem=32MB`, `max_connections=40`, `effective_cache_size=96MB`, `random_page_cost=1.1`). Keep these aligned with the
   container memory limit if deployment resources change.
 
 ---
@@ -407,7 +436,9 @@ in `components/`.
 
 | File | Owns |
 |---|---|
-| `config.ts` | page types, `DEFAULT_FILTERS`, nav items, presets, sort options, page copy, URL deep-link filters |
+| `config.ts` | page types, nav items, presets, sort options, page copy (re-exports `DEFAULT_FILTERS` / `readUrlFilters`) |
+| `queryParams.ts` | pure filter logic shared by loader, browser and URL sync: `DEFAULT_FILTERS`, `buildCatalogParams`, `readUrlFilters`, `mergeFiltersIntoSearch`. The address bar carries every non-default filter (`q`, `genre`, `year_min`, `min_score`, `pt_max`, `sort`, …); `App.tsx` writes it with `replace` and the home loader reads it |
+| `filterChips.ts` | one removable chip per active filter field |
 | `snapshot.ts` / `snapshotRestore.ts` / `useCatalogSnapshot.ts` | sessionStorage back-nav restore |
 | `useCatalogScroll.ts` | masthead auto-hide + scroll-to-top |
 | `catalogFetch.ts`, `useCatalogPagination.ts`, `useCatalogBootstrap.ts`, `useCatalogActions.ts` | fetching, paging, bootstrap, actions |
@@ -415,6 +446,21 @@ in `components/`.
 | `presentation.ts` | view-model shaping |
 
 Nav entries and preset copy go in `config.ts` — never inline in `App.tsx`.
+
+Search is debounced 250 ms (`hooks/useDebouncedValue.ts`); a newer page load aborts the older
+request (`catalogFetch.ts`) and the previous list stays on screen, dimmed. The home route's
+`shouldRevalidate` is `false` for in-page changes on `/` — the page fetches by itself.
+
+**Hydration safety.** Server and browser disagree on zone, locale and clock, so render paths must
+not read them. Dates go through `utils/format.ts` (`formatIsoDate`, UTC, pinned locale), numbers
+through `formatNumber`, and "now" comes from the route loader (`renderedAt`, passed down as `now`).
+Client-only code reads the clock via `utils/clock.ts`. ESLint `no-restricted-syntax` enforces it
+(`utils/`, `services/`, `routes/` and admin are exempt); `tests/e2e/hydration-timezones.spec.ts`
+runs the public pages in LA / Auckland / Kolkata zones and non-US locales.
+
+Route errors: `components/RouteErrorPage.tsx` is the shared `ErrorBoundary` (root, home, game);
+loaders forward `request.signal` and the client IP (`clientForwardHeaders`), and `headers()` use
+`utils/cacheHeaders.ts` so a thrown 429/503 is never cached.
 
 `PAGE_SIZE = 24`. Default sort is `rank_score` desc. `SIDEBAR_GROUPS` currently holds one group
 ("Deals": Best Deals, Free Games); collection pages come from `collectionNavItems`.
@@ -457,7 +503,7 @@ GET  /api/games/{slug}/similar       /series       /trailer
 GET  /api/integrations/status        GET /api/score-weights
 GET  /api/seo/genres                 GET /api/seo/curated/{collection}
 GET  /sitemap.xml  /sitemap-games-{chunk}.xml  /sitemap-static.xml
-POST /api/analytics/page-view  /api/analytics/event                GET /health
+POST /api/analytics/page-view  /api/analytics/event                GET /health  /health/ready
 ```
 
 Accounts (`/api/account`, gated by `require_account_enabled`):
@@ -489,7 +535,7 @@ GET  /api/rate-limits    live provider budget status
 ```
 
 Note `routers/ratings.py` has **no router-level admin dependency** — each route declares
-`_admin=Depends(require_admin_user)` individually. Only `GET /api/integrations/status` and
+`_admin=Depends(require_admin_user)` individually. Only `GET /api/integrations/status` (source + status only, no detail text) and
 `GET /api/score-weights` are public there; everything else in that module is admin. When adding a
 route to `ratings.py`, add the dependency explicitly or it ships unauthenticated.
 
@@ -581,6 +627,10 @@ A new rule never goes in AI.md; a new module never goes in AI_Guidelines.md.
 
 One line per session that changed the architecture. Newest first. Skip purely cosmetic work.
 
+- **2026-11-18** — Frontend tur 2: filters and search live in the URL (`catalog/queryParams.ts`), debounced and abortable search, hydration-safe date/number/clock helpers + ESLint rule + multi-time-zone e2e, route `ErrorBoundary`s, About/score copy rewritten to the real weighted + reliability formula, Linux filter includes Proton-playable games, card actions collapsed into a labelled wishlist + "Lists" menu, About/Alerts/Settings CSS moved out of `App.css`.
+- **2026-11-18** — Backend/ops audit round 2: full-catalog scans run via `anyio.to_thread` on a separate long-timeout pool; request pool 8+4 with 8 s statement timeout and 503 on exhaustion; catalog offset <= 2400 and cached totals; genre filter via GIN containment, `lower(developer|publisher)` indexes (revision 0018); `/health/ready`; AI chain fixes (slot wait, settle, credential block); e-mail sends in BackgroundTasks and per-account login limit; images build only after CI succeeds and without `:latest`; `.deployed-sha`, `ops/notify.sh`, `ops/restore-test.sh`, logrotate, Dependabot, `docs/disaster-recovery.md`.
+- **2026-11-18** — Data identity: verified Steam ids (`steam_app_id_verified_at`, `claim_steam_app_id`, `resolve_steam_app_id`), `verify_steam_ids`/`fix_release_dates`/`consolidate_duplicates` commands, daily duplicate merge with 301 `slug_redirects`, weekly ProtonDB tiers, truthful freshness stamps + budget priority, DLC detection from appdetails `type`, HLTB-first playtime filter, normalized/trigram/alias title search (migration 0018).
+- **2026-11-17** — Audit fixes: public `/impressum`, `/privacy`, `/datenschutz` routes (noindex) and `SiteLegalFooter`; `GET /api/account/session` now reports `google_login`; SSR maps backend 429/5xx to 429/503 with `Retry-After` (the nginx `/game/` limit was reverted: the origin saw every visitor as the Docker gateway); sitemaps keep a process-local last-good copy; `/api/integrations/status` is source+status only.
 - **2026-11-16** — Added Cloudflare Web Analytics (cookieless beacon in `root.tsx`, enabled by the `VITE_CF_BEACON_TOKEN` repo variable in production images only; CSP in `nginx.conf`); `deploy-production.sh` now restarts nginx when `nginx.conf` changed (single-file bind mounts go stale after `git pull`).
 - **2026-11-14** — Removed dead code: the in-memory catalog filters (`game_filter.py`, `deduplication/in_memory.py`; filtering is SQL-only in `game_query.py`), the unused `integrations/itad.py` facade; `escape_like` moved to `services/like_escape.py`.
 - **2026-11-14** — Images are built in CI and pulled by production; `ops/auto-deploy.sh` deploys main automatically.

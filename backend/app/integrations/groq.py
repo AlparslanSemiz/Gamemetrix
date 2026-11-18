@@ -24,7 +24,10 @@ from .ai_types import (
     GenerationResult,
     ProviderFailure,
     classify_http_error,
+    MIN_OPENAI_COMPAT_OUTPUT_TOKENS,
     extract_openai_text,
+    json_mode_rejection,
+    mark_request_dispatched,
     openai_total_tokens,
     transport_failure,
 )
@@ -80,6 +83,11 @@ class GroqProvider:
     ) -> ProviderFailure:
         return classify_http_error(status_code, payload, headers)
 
+    async def wait_for_slot(self) -> None:
+        """Space request starts by GROQ_MIN_REQUEST_INTERVAL_SECONDS (free-tier pacing)."""
+        async with _request_lock:
+            await _wait_for_request_slot(get_settings().GROQ_MIN_REQUEST_INTERVAL_SECONDS)
+
     async def generate(
         self,
         request: GenerationRequest,
@@ -89,9 +97,11 @@ class GroqProvider:
             raise ProviderFailure(ErrorCategory.NOT_CONFIGURED)
 
         cfg = get_settings()
+        # The minimum-interval wait happens in wait_for_slot(), before the orchestrator
+        # reserves budget and starts its per-call timeout. Waiting here used to eat
+        # that timeout, so queued calls timed out before any HTTP request left.
         async with _request_lock:
             try:
-                await _wait_for_request_slot(cfg.GROQ_MIN_REQUEST_INTERVAL_SECONDS)
                 headers = {
                     **DEFAULT_HEADERS,
                     "Authorization": f"Bearer {cfg.GROQ_API_KEY}",
@@ -102,11 +112,14 @@ class GroqProvider:
                         {"role": "system", "content": request.system_prompt},
                         {"role": "user", "content": request.user_prompt},
                     ],
-                    "max_tokens": request.max_output_tokens,
+                    "max_tokens": max(request.max_output_tokens, MIN_OPENAI_COMPAT_OUTPUT_TOKENS),
                     "temperature": request.temperature,
                 }
+                if "gpt-oss" in cfg.GROQ_MODEL:
+                    payload["reasoning_effort"] = "low"
                 if request.json_object:
                     payload["response_format"] = {"type": "json_object"}
+                mark_request_dispatched()
                 async with httpx.AsyncClient(timeout=timeout_seconds) as client:
                     response = await client.post(
                         _GROQ_API_URL,
@@ -118,10 +131,9 @@ class GroqProvider:
                 except ValueError:
                     data = None
                 if not response.is_success:
-                    raise self.classify_error(
-                        response.status_code,
-                        data,
-                        response.headers,
+                    raise json_mode_rejection(
+                        request,
+                        self.classify_error(response.status_code, data, response.headers),
                     )
                 text = extract_openai_text(data)
                 return GenerationResult(
@@ -140,30 +152,3 @@ async def _wait_for_request_slot(interval_seconds: float) -> None:
     if wait_seconds > 0:
         await asyncio.sleep(wait_seconds)
     _last_request_started = time.monotonic()
-
-
-def _used_tokens(data: dict[str, object] | None) -> int:
-    """Tokens Groq reported for the call; 0 when it reported none."""
-    if data is None:
-        return 0
-    usage = data.get("usage")
-    if not isinstance(usage, dict):
-        return 0
-    total = usage.get("total_tokens")
-    return total if isinstance(total, int) and total >= 0 else 0
-
-
-def _extract_text(data: dict[str, object]) -> str | None:
-    choices = data.get("choices")
-    if not isinstance(choices, list) or not choices:
-        return None
-    first = choices[0]
-    if not isinstance(first, dict):
-        return None
-    message = first.get("message")
-    if not isinstance(message, dict):
-        return None
-    content = message.get("content")
-    if not isinstance(content, str) or not content.strip():
-        return None
-    return content.strip()

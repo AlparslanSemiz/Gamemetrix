@@ -6,7 +6,7 @@ import {
   useState,
   useSyncExternalStore,
 } from 'react'
-import { useLocation } from 'react-router'
+import { useLocation, useNavigate } from 'react-router'
 import './App.css'
 import { CatalogWorkspace } from './components/catalog-workspace'
 import type { ViewMode } from './components/CatalogToolbar'
@@ -14,6 +14,7 @@ import { MobileTabBar } from './components/MobileTabBar'
 import { SideRail } from './components/SideRail'
 import { TrailerModal } from './components/TrailerModal'
 import {
+  CURRENT_YEAR,
   DEFAULT_FILTERS,
   ROUTABLE_MAIN_PAGES,
   readUrlFilters,
@@ -21,12 +22,17 @@ import {
   type MainPage,
   type UtilityPage,
 } from './catalog/config'
+import { useDebouncedValue } from './hooks/useDebouncedValue'
+import {
+  mergeFiltersIntoSearch,
+  sameFilterSearch,
+} from './catalog/queryParams'
 import { catalogPageTitle, visibleCatalogGames } from './catalog/presentation'
 import {
   useCatalogActions,
   useCatalogFilterActions,
 } from './catalog/useCatalogActions'
-import { useCatalogBootstrap } from './catalog/useCatalogBootstrap'
+import { FACETS_ERROR, useCatalogBootstrap } from './catalog/useCatalogBootstrap'
 import { useCollectionGames } from './catalog/useCollectionGames'
 import { useCatalogScroll } from './catalog/useCatalogScroll'
 import {
@@ -41,8 +47,9 @@ import {
 import { useTrailer } from './catalog/useTrailer'
 import { useAccount } from './state/useAccount'
 import { useCollectionActions } from './state/useCollectionActions'
-import type { CatalogGame, Facets, GameFilters, ProviderStatus } from './types/game'
+import type { CatalogGame, Facets, GameFilters } from './types/game'
 import type { CatalogSnapshot } from './catalog/snapshot'
+import type { RankingGenre } from './server-api.server'
 
 export type { UtilityPage }
 
@@ -50,6 +57,7 @@ export type { UtilityPage }
 // loader payload remains in structured data and paints immediately on hydration.
 // Snapshot-based client returns bypass this cap and render every saved card.
 const SSR_CATALOG_CARD_COUNT = 1
+const SEARCH_DEBOUNCE_MS = 250
 const subscribeToHydration = () => () => undefined
 
 interface AppContentProps {
@@ -57,6 +65,7 @@ interface AppContentProps {
   initialTotal?: number
   initialPage?: UtilityPage
   initialSnapshot?: CatalogSnapshot | null
+  footerGenres?: RankingGenre[]
 }
 
 export function AppContent({
@@ -64,9 +73,18 @@ export function AppContent({
   initialTotal = 0,
   initialPage,
   initialSnapshot = null,
+  footerGenres = [],
 }: AppContentProps) {
   const location = useLocation()
+  const navigate = useNavigate()
   const lastLocationKeyRef = useRef(location.key)
+  // Last query string this component wrote itself, and one it adopted from a
+  // back/forward move whose filter state has not caught up yet.
+  const writtenSearchRef = useRef<string | null>(null)
+  const adoptedSearchRef = useRef<string | null>(null)
+  // Query string a catalog action is navigating to; the URL writer stands aside
+  // until it arrives so it cannot `replace` the entry the action is about to push.
+  const pendingSearchRef = useRef<string | null>(null)
   const hydrated = useSyncExternalStore(
     subscribeToHydration,
     () => true,
@@ -80,7 +98,14 @@ export function AppContent({
   // detail-page link and must apply its filter instead of the curated home list.
   const urlFilters = readUrlFilters(location.search)
   const hasUrlFilters = Object.keys(urlFilters).length > 0
-  const restoredSnapshot = catalogEnabled && !hasUrlFilters ? initialSnapshot : null
+  // A saved snapshot is reused when the URL carries no filters, or exactly the
+  // snapshot's filters (the address bar mirrors them, so a back-navigation lands
+  // on `/?q=…` for the very list that was saved).
+  const snapshotMatchesUrl = initialSnapshot !== null && (
+    !hasUrlFilters
+    || sameFilterSearch(location.search, mergeFiltersIntoSearch('', initialSnapshot.filters))
+  )
+  const restoredSnapshot = catalogEnabled && snapshotMatchesUrl ? initialSnapshot : null
   const seededGames = restoredSnapshot?.games ?? initialGames
   const [activePage, setActivePage] = useState<ActivePage>(
     restoredSnapshot?.activePage ?? routeInitialPage,
@@ -92,8 +117,15 @@ export function AppContent({
     restoredSnapshot?.filters ?? { ...DEFAULT_FILTERS, ...urlFilters }
   ))
   const [pendingApply, setPendingApply] = useState(0)
+  // Typing updates `filters.q` at once (the box stays responsive) but the catalog
+  // is only queried — and the address bar only written — once typing pauses.
+  const debouncedQuery = useDebouncedValue(filters.q, SEARCH_DEBOUNCE_MS, (next) => next.trim() === '')
+  const searchedFilters = useMemo(
+    () => (debouncedQuery === filters.q ? filters : { ...filters, q: debouncedQuery }),
+    [debouncedQuery, filters],
+  )
   const pagination = useCatalogPaginationState({
-    filters,
+    filters: searchedFilters,
     initialGames: seededGames,
     initialHasMore: restoredSnapshot?.hasMore,
     initialOffset: restoredSnapshot?.offset,
@@ -107,7 +139,6 @@ export function AppContent({
     retryLoadMore,
   } = pagination
   const { account } = useAccount()
-  const [providerStatuses, setProviderStatuses] = useState<ProviderStatus[]>([])
   const [catalogTotal, setCatalogTotal] = useState(
     restoredSnapshot?.catalogTotal ?? initialTotal,
   )
@@ -124,14 +155,38 @@ export function AppContent({
   useEffect(() => {
     if (lastLocationKeyRef.current === location.key) return
     lastLocationKeyRef.current = location.key
+    pendingSearchRef.current = null
     if (location.pathname !== '/') return
+    // Our own filter write: state already matches, nothing else to reset.
+    if (location.search === writtenSearchRef.current) return
+    if (routeInitialPage === 'catalog' && !sameFilterSearch(location.search, mergeFiltersIntoSearch('', searchedFilters))) {
+      // Back/forward (or a pasted link) to a different filter set.
+      adoptedSearchRef.current = location.search
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setFilters({ ...DEFAULT_FILTERS, ...readUrlFilters(location.search) })
+      setPendingApply((count) => count + 1)
+    }
     // The navigation actions already update state. This also covers browser
     // back/forward, where only the URL changes because `shouldRevalidate`
     // deliberately keeps the route loader dormant.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setActivePage(routeInitialPage)
     setActivePreset(null)
-  }, [location.key, location.pathname, routeInitialPage])
+  }, [location.key, location.pathname, location.search, routeInitialPage, searchedFilters])
+
+  useEffect(() => {
+    if (!catalogEnabled || activePage !== 'catalog' || location.pathname !== '/') return
+    const wanted = mergeFiltersIntoSearch(location.search, searchedFilters)
+    if (pendingSearchRef.current !== null) return
+    if (adoptedSearchRef.current !== null) {
+      // A back/forward move is still loading its filters into state; writing now
+      // would overwrite the entry the visitor navigated to.
+      if (!sameFilterSearch(location.search, wanted)) return
+      adoptedSearchRef.current = null
+    }
+    if (wanted === location.search) return
+    writtenSearchRef.current = wanted
+    void navigate({ search: wanted }, { replace: true, preventScrollReset: true })
+  }, [activePage, catalogEnabled, location.pathname, location.search, navigate, searchedFilters])
   const [mobileMoreOpen, setMobileMoreOpen] = useState(false)
   const catalogScroll = useCatalogScroll(restoredSnapshot)
   const {
@@ -154,7 +209,7 @@ export function AppContent({
       activePage,
       activePreset,
       catalogTotal,
-      filters,
+      filters: searchedFilters,
       filtersOpen,
       games,
       libraryTotal,
@@ -162,18 +217,17 @@ export function AppContent({
     },
   })
 
-  useCatalogBootstrap({
+  const { retry: retryBootstrap } = useCatalogBootstrap({
     enabled: catalogEnabled,
     setError,
     setFacets,
     setLibraryTotal,
-    setProviderStatuses,
   })
 
   useCatalogLoadEffects({
     catalogTotal,
     enabled: catalogEnabled,
-    filters,
+    filters: searchedFilters,
     filtersRef,
     pagination,
     pendingApply,
@@ -217,12 +271,14 @@ export function AppContent({
   )
     ? visibleGames.slice(0, SSR_CATALOG_CARD_COUNT)
     : visibleGames
+  // Cards held back from the first render are replaced by same-size placeholders
+  // so the footer below does not jump when hydration fills the list in.
+  const deferredCardCount = visibleGames.length - renderedGames.length
   const pageTitle = useMemo(
-    () => catalogPageTitle(activePage, activePreset, filters),
-    [activePage, activePreset, filters],
+    () => catalogPageTitle(activePage, activePreset, searchedFilters),
+    [activePage, activePreset, searchedFilters],
   )
 
-  const readyProviders = providerStatuses.filter((p) => p.status === 'ready').length
   const trailer = useTrailer()
   const actions = useCatalogActions({
     accountIsActive: Boolean(account),
@@ -232,13 +288,14 @@ export function AppContent({
     setActivePreset,
     setFilters,
     setMobileMoreOpen,
+    pendingSearchRef,
     setPendingApply,
     snapshotAnchorRef,
   })
   const filterActions = useCatalogFilterActions(setActivePage, setFilters)
 
   return (
-    <main className="app-shell">
+    <div className="app-shell">
       <SideRail
         activePage={activePage}
         activePreset={activePreset}
@@ -267,7 +324,9 @@ export function AppContent({
         catalogTotal={catalogTotal}
         collections={collections}
         collectionSets={collectionSets}
+        deferredCardCount={deferredCardCount}
         error={savedList.error ?? error}
+        onRetryError={!savedList.error && error === FACETS_ERROR ? retryBootstrap : undefined}
         facets={facets}
         filters={filters}
         filtersOpen={filtersOpen}
@@ -281,8 +340,6 @@ export function AppContent({
         mastheadVisible={mastheadVisible}
         pageTitle={pageTitle}
         pendingApply={pendingApply}
-        providerCount={providerStatuses.length}
-        readyProviders={readyProviders}
         viewMode={viewMode}
         visibleGames={renderedGames}
         onApplyFilters={() => setPendingApply((count) => count + 1)}
@@ -306,8 +363,15 @@ export function AppContent({
         <nav className="catalog-footer-nav" aria-label="GameMetrix information">
           <a href="/about">Scoring methodology</a>
           <a href="/best/linux-games">Best Linux games</a>
-          <a href="/best/steam-deck-games">Steam Deck games</a>
+          <a href="/best/steam-deck-games">Runs well on Linux / Deck</a>
           <a href="/deals">PC game deals</a>
+          <a href={`/best/games/${CURRENT_YEAR}`}>Best of {CURRENT_YEAR}</a>
+          <a href={`/best/games/${CURRENT_YEAR - 1}`}>Best of {CURRENT_YEAR - 1}</a>
+          {footerGenres.map((genre) => (
+            <a key={genre.slug} href={`/best/${genre.slug}-games`}>{genre.name}</a>
+          ))}
+          <a href="/impressum">Impressum</a>
+          <a href="/privacy">Privacy</a>
         </nav>
         <span>
           Supplementary catalog metadata and imagery may be provided by{' '}
@@ -326,6 +390,6 @@ export function AppContent({
           onClose={trailer.close}
         />
       ) : null}
-    </main>
+    </div>
   )
 }

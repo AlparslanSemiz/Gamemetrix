@@ -33,6 +33,7 @@ description here.
 | **I-7** | `applicable_for_game()` in `source_registry.py` is the authoritative function for which sources apply to a game. The `Game.applicable_primary_sources` property delegates to it — never re-implement this logic inline. |
 | **I-8** | Every writer of `Game.summary` must call `metadata.invalidate_summary_audit(game)`. A `summary_quality` verdict describes one specific text; a stale `unusable` keeps the row queued for provider re-enrichment forever. |
 | **I-9** | `summary_refreshed_at` moves only when the description text actually changed. `summary_checked_at` moves on every audit pass. Other jobs treat the former as "content changed" — never bump it just because a row was inspected. |
+| **I-10** | `games.steam_app_id` is written only through `services/steam_identity.claim_steam_app_id` and read only through `integrations/steam/client.resolve_steam_app_id`. Never derive an app id from a slug, and never let an unverified source (IGDB cross-reference, title search) replace an id. `ratings_refreshed_at` / `prices_refreshed_at` move only when a provider actually answered. |
 
 ---
 

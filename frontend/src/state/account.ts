@@ -6,6 +6,7 @@ export interface AccountContextValue {
   account: Account | null
   accountState: AccountState | null
   isLoading: boolean
+  googleLoginAvailable: boolean
   login: (email: string, password: string) => Promise<void>
   logout: () => Promise<void>
   refresh: () => Promise<void>

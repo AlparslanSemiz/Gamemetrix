@@ -24,7 +24,7 @@ export function AdminLogin({
   onSubmit,
 }: AdminLoginProps) {
   return (
-    <main className="admin-shell">
+    <main id="main-content" className="admin-shell">
       <section className="admin-login-panel">
         <div className="admin-login-mark">
           <ShieldCheck size={24} aria-hidden="true" />

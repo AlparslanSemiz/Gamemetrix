@@ -115,7 +115,7 @@ export interface DataFillRun {
   finished_at?: string | null
 }
 
-export interface PrimarySourceCoverage {
+interface PrimarySourceCoverage {
   live: number
   missing: number
   applicable: number
@@ -123,7 +123,7 @@ export interface PrimarySourceCoverage {
   configured: boolean
 }
 
-export interface PrimaryScoreTargetCoverage {
+interface PrimaryScoreTargetCoverage {
   sources: Record<string, PrimarySourceCoverage>
   total_games: number
   target_games: number
@@ -170,7 +170,7 @@ export interface DataFillStatus {
   last_run?: DataFillRun | null
 }
 
-export interface ApiSourceWindow {
+interface ApiSourceWindow {
   remaining: number
   limit: number
   usable_limit?: number

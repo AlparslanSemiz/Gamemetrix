@@ -16,9 +16,11 @@ export function AnalyticsConsentBanner() {
       <div>
         <strong>Privacy-conscious analytics</strong>
         <p>
-          Allow pseudonymous browser and session measurement so we can improve
-          GameMetrix. Google Analytics may be used when configured; advertising
-          personalization stays disabled. You can change this in Settings.
+          If you allow it, we measure page views and clicks with an anonymous
+          visitor ID stored in your browser (our own analytics, plus Google
+          Analytics where enabled). Advertising personalization stays off and
+          nothing is collected before you choose. Change it any time in Settings.{' '}
+          <a href="/privacy">Privacy policy</a>
         </p>
       </div>
       <div className="analytics-consent-actions">

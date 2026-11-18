@@ -173,6 +173,7 @@ function authIcon(mode: AuthMode) {
 }
 
 export function AccountAuth({ mode }: { mode: AuthMode }) {
+  const { googleLoginAvailable } = useAccount()
   const [searchParams] = useSearchParams()
   const [actionToken] = useState(() => {
     const queryToken = searchParams.get('token') ?? ''
@@ -186,7 +187,7 @@ export function AccountAuth({ mode }: { mode: AuthMode }) {
   const oauthError = searchParams.get('oauth') === 'cancelled' ? 'Google sign-in was cancelled.' : null
 
   return (
-    <main className="account-auth-shell">
+    <main id="main-content" className="account-auth-shell">
       <section className="account-auth-dialog" role="dialog" aria-modal="true" aria-labelledby="account-auth-title">
         <div className="account-auth-head">
           <Link to="/" className="account-auth-back" aria-label="Back to catalog"><ArrowLeft size={18} /></Link>
@@ -205,9 +206,15 @@ export function AccountAuth({ mode }: { mode: AuthMode }) {
           <button type="submit" className="account-auth-submit" disabled={form.isSubmitting}>
             {form.isSubmitting ? 'Working...' : TITLES[mode]}
           </button>
+          {mode === 'register' ? (
+            <p className="account-auth-legal">
+              We store your name, e-mail and a password hash to run your account. See the{' '}
+              <a href="/privacy">Privacy policy</a>.
+            </p>
+          ) : null}
         </form>
 
-        {mode === 'login' || mode === 'register' ? (
+        {(mode === 'login' || mode === 'register') && googleLoginAvailable ? (
           <>
             <div className="account-auth-divider"><span>or</span></div>
             <a className="account-auth-google" href={googleUrl}>Continue with Google</a>

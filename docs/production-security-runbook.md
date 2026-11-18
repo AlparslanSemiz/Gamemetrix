@@ -104,6 +104,28 @@ it builds them on the host as before. In registry mode the root cron
 `ops/auto-deploy.sh` (every 5 minutes) runs this script by itself once a new `main`
 has its images published, so merging a PR is the whole deployment.
 
+## Logs, notifications and restore checks
+
+Install log rotation for the cron jobs' log files (weekly, four copies):
+
+```bash
+sudo install -o root -g root -m 644 ops/logrotate-gamemetrix /etc/logrotate.d/gamemetrix
+```
+
+`ops/notify.sh` is used by the deploy, backup and watchdog scripts. Create
+`/etc/gamemetrix/notify.env` (root, mode `600`) with `NOTIFY_URL=<webhook>` for failure
+messages and optionally `NOTIFY_PING_URL=<Healthchecks.io ping base>` for the success pings
+(`watchdog`, `backup`, `restore-test` slugs). Without the file the scripts stay silent.
+
+A deploy is recorded in `.deployed-sha` (repo root) only after it succeeded, so
+`ops/auto-deploy.sh` retries a failed deploy every run and tells you once per commit. After
+a backup, prove it restores with `sudo ops/restore-test.sh`; the full rebuild procedure is in
+`docs/disaster-recovery.md`.
+
+The API's `/health/ready` checks that the database answers and the catalog is not empty; the
+backend container healthcheck, the deploy script and the uptime workflow use it. `/health`
+stays a plain process check.
+
 ## Origin TLS and Cloudflare
 
 Validate and deploy the production overlay:

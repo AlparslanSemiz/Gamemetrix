@@ -15,6 +15,7 @@ import {
 } from '../services/account'
 import { emptyCollections, loadCollections, type CollectionKey } from './collections'
 import { AccountContext } from './account'
+import { enqueueSync } from './syncQueue'
 import { useCollections } from './useCollections'
 
 const READ_KEY = 'gamemetrix.alerts.read.v1'
@@ -68,6 +69,7 @@ function useAccountHydration(
   const [account, setAccount] = useState<Account | null>(null)
   const [accountState, setAccountState] = useState<AccountState | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [googleLoginAvailable, setGoogleLoginAvailable] = useState(false)
 
   const applyState = useCallback((state: AccountState) => {
     setAccount(state.account)
@@ -78,6 +80,7 @@ function useAccountHydration(
 
   const hydrate = useCallback(async (mergeGuest: boolean) => {
     const current = await getAccountSession()
+    setGoogleLoginAvailable(current.google_login === true)
     if (!current.account) {
       setAccount(null)
       setAccountState(null)
@@ -101,7 +104,11 @@ function useAccountHydration(
     let active = true
     hydrate(true)
       .catch((error: unknown) => {
-        if (active && (!(error instanceof AccountApiError) || error.status !== 401)) {
+        // 401: no session. 503: the account system is switched off, which is
+        // a normal state, not something to warn about.
+        const expected = error instanceof AccountApiError
+          && (error.status === 401 || error.status === 503)
+        if (active && !expected) {
           console.warn('Account state could not be loaded.', error)
         }
       })
@@ -114,6 +121,7 @@ function useAccountHydration(
   return {
     account,
     accountState,
+    googleLoginAvailable,
     hydrate,
     isLoading,
     setAccount,
@@ -127,6 +135,7 @@ export function AccountProvider({ children }: { children: ReactNode }) {
   const {
     account,
     accountState,
+    googleLoginAvailable,
     hydrate,
     isLoading,
     setAccount,
@@ -152,7 +161,7 @@ export function AccountProvider({ children }: { children: ReactNode }) {
 
   const syncCollection = useCallback(async (collection: CollectionKey, slug: string, enabled: boolean) => {
     if (!account) return
-    await persistCollection(collection, slug, enabled)
+    await enqueueSync(`${slug}:${collection}`, () => persistCollection(collection, slug, enabled))
   }, [account])
 
   const updatePreferences = useCallback(async (next: Partial<AccountPreferences>) => {
@@ -171,6 +180,7 @@ export function AccountProvider({ children }: { children: ReactNode }) {
   const value = useMemo(() => ({
     account,
     accountState,
+    googleLoginAvailable,
     isLoading,
     login,
     logout,
@@ -178,7 +188,7 @@ export function AccountProvider({ children }: { children: ReactNode }) {
     syncCollection,
     updatePreferences,
     clearAccount,
-  }), [account, accountState, clearAccount, isLoading, login, logout, refresh, syncCollection, updatePreferences])
+  }), [account, accountState, clearAccount, googleLoginAvailable, isLoading, login, logout, refresh, syncCollection, updatePreferences])
 
   return <AccountContext.Provider value={value}>{children}</AccountContext.Provider>
 }

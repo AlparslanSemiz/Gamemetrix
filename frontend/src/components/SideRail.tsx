@@ -38,7 +38,7 @@ function MainNavigation({
     <>
       <div className="rail-group">
         {mainNavItems.map(({ icon: Icon, id, label }) => (
-          <button type="button" className={isActive(id) ? 'is-active' : ''} key={id} title={label} onClick={() => onOpenMainPage(id)}>
+          <button type="button" className={isActive(id) ? 'is-active' : ''} aria-current={isActive(id) ? 'page' : undefined} key={id} title={label} onClick={() => onOpenMainPage(id)}>
             <Icon size={22} aria-hidden="true" />
             <span>{label}</span>
           </button>
@@ -63,7 +63,7 @@ function CollectionNavigation({
           const count = collections[id].length
           const active = activePage === id && activePreset === null
           return (
-            <button type="button" data-collection={id} className={active ? 'is-active' : ''} key={id} title={label} onClick={() => onOpenMainPage(id)}>
+            <button type="button" data-collection={id} className={active ? 'is-active' : ''} aria-current={active ? 'page' : undefined} key={id} title={label} onClick={() => onOpenMainPage(id)}>
               <Icon size={18} aria-hidden="true" />
               <span>{label}</span>
               {count > 0 ? <small>{count}</small> : null}
@@ -87,7 +87,7 @@ function CuratedNavigation({
         {group.items.map((preset) => {
           const Icon = preset.icon
           return (
-            <button type="button" className={activePreset === preset.id ? 'is-active' : ''} key={preset.id} title={preset.label} onClick={() => onOpenPreset(preset)}>
+            <button type="button" className={activePreset === preset.id ? 'is-active' : ''} aria-current={activePreset === preset.id ? 'page' : undefined} key={preset.id} title={preset.label} onClick={() => onOpenPreset(preset)}>
               <Icon size={18} aria-hidden="true" />
               <span>{preset.label}</span>
             </button>
@@ -114,7 +114,7 @@ function UtilityNavigation({
         <span>{isSignedIn ? 'Account' : 'Login'}</span>
       </button>
       {utilityNavItems.map(({ icon: Icon, id, label }) => (
-        <button type="button" className={activePage === id ? 'is-active' : ''} key={id} title={label} onClick={() => onOpenUtilityPage(id)}>
+        <button type="button" className={activePage === id ? 'is-active' : ''} aria-current={activePage === id ? 'page' : undefined} key={id} title={label} onClick={() => onOpenUtilityPage(id)}>
           <Icon size={22} aria-hidden="true" />
           <span>{label}</span>
         </button>

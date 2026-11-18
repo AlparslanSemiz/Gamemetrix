@@ -22,6 +22,11 @@ repo_dir="${1:-/home/ubuntu/gamemetrix/Gamemetrix}"
 git_user="${DEPLOY_GIT_USER:-ubuntu}"
 repo_dir="$(realpath "$repo_dir")"
 
+# Root runs git in a checkout owned by $git_user; allow it for this process only.
+export GIT_CONFIG_COUNT=1
+export GIT_CONFIG_KEY_0=safe.directory
+export GIT_CONFIG_VALUE_0="$repo_dir"
+
 if [[ ! -f "$repo_dir/docker-compose.yml" || ! -f "$repo_dir/.env" ]]; then
   echo "GameMetrix repository or root .env was not found at $repo_dir." >&2
   exit 2
@@ -91,7 +96,10 @@ fi
 curl --fail --silent --show-error --max-time 15 \
   -H "Host: api.gamemetrix.me" \
   -H "X-Forwarded-Proto: https" \
-  http://127.0.0.1/health >/dev/null
+  http://127.0.0.1/health/ready >/dev/null
+
+# Only now is this commit "deployed" (ops/auto-deploy.sh compares against this file).
+git rev-parse HEAD > .deployed-sha
 
 echo ">>> Deployment completed successfully."
 "${compose[@]}" ps

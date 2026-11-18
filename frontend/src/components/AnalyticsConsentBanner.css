@@ -72,3 +72,5 @@
     justify-content: flex-end;
   }
 }
+
+.analytics-consent p a { color: #a78bfa; text-decoration: underline; }

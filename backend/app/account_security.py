@@ -20,11 +20,13 @@ from sqlalchemy.orm import Session
 from .config import get_settings
 from .database import get_db
 from .models import AccountSession, User
+from .services.trusted_devices import revoke_devices
 
 
 SESSION_COOKIE = "gm_session"
 CSRF_COOKIE = "gm_csrf"
 OAUTH_COOKIE = "gm_oauth"
+_DEVICE_COOKIE = "gm_device"
 MIN_SIGNING_SECRET_LENGTH = 32
 LINK_SIGNING_ALGORITHM = "HS256"
 _PASSWORD_HASHER = PasswordHasher(time_cost=3, memory_cost=65536, parallelism=2)
@@ -169,6 +171,23 @@ def set_account_cookies(response: Response, session_token: str, csrf_token: str)
     )
 
 
+def device_cookie_name() -> str:
+    # __Host- needs Secure, so it is production-only (dev runs over plain http).
+    return f"__Host-{_DEVICE_COOKIE}" if get_settings().is_production else _DEVICE_COOKIE
+
+
+def set_device_cookie(response: Response, raw_token: str) -> None:
+    response.set_cookie(
+        device_cookie_name(),
+        raw_token,
+        max_age=30 * 24 * 60 * 60,
+        httponly=True,
+        secure=get_settings().is_production,
+        samesite="lax",
+        path="/",
+    )
+
+
 def clear_account_cookies(response: Response) -> None:
     secure = get_settings().is_production
     response.delete_cookie(SESSION_COOKIE, path="/", secure=secure, samesite="lax")
@@ -261,4 +280,6 @@ def revoke_user_sessions(db: Session, user_id: str) -> None:
         )
     ).all():
         session.revoked_at = now
+    # Password resets and "sign out everywhere" also end the trust placed in browsers.
+    revoke_devices(db, user_id)
     db.flush()

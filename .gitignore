@@ -26,3 +26,5 @@ backend/*.db.*.bak
 !.env.example
 !backend/.env.example
 .deployed-nginx-conf.sha256
+.deployed-sha
+.deploy-failure-notified

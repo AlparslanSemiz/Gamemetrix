@@ -4,7 +4,6 @@ import type { ActivePage } from '../../catalog/config'
 import type { CollectionKey, Collections } from '../../state/collections'
 import type { CollectionSets } from '../../state/useCollectionActions'
 import type { CatalogGame, Facets, GameFilters } from '../../types/game'
-import type { ClearableFilterKey } from '../ActiveFilterChips'
 import type { ViewMode } from '../CatalogToolbar'
 
 export interface CatalogWorkspaceProps {
@@ -13,6 +12,7 @@ export interface CatalogWorkspaceProps {
   catalogTotal: number
   collections: Collections
   collectionSets: CollectionSets
+  deferredCardCount: number
   error: string | null
   facets: Facets
   filters: GameFilters
@@ -27,8 +27,6 @@ export interface CatalogWorkspaceProps {
   mastheadVisible: boolean
   pageTitle: string
   pendingApply: number
-  providerCount: number
-  readyProviders: number
   viewMode: ViewMode
   visibleGames: CatalogGame[]
   onApplyFilters: () => void
@@ -37,13 +35,14 @@ export interface CatalogWorkspaceProps {
   onChangeFiltersOpen: Dispatch<SetStateAction<boolean>>
   onChangeViewMode: Dispatch<SetStateAction<ViewMode>>
   onClearDealMode: () => void
-  onClearFilter: (key: ClearableFilterKey) => void
+  onClearFilter: (reset: Partial<GameFilters>) => void
   onFilterDeveloper: (developer: string) => void
   onFilterGenre: (genre: string) => void
   onFilterPublisher: (publisher: string) => void
   onFocusSearch: () => void
   onOpenDetail: (game: CatalogGame) => void
   onOpenTrailer: (game: CatalogGame) => void
+  onRetryError?: () => void
   onRetryLoadMore: () => void
   onToggleCollection: (collection: CollectionKey, slug: string) => void
 }

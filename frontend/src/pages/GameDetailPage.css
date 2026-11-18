@@ -46,7 +46,7 @@
 .dp-msg {
   padding: 4rem 2rem;
   text-align: center;
-  color: #6b7280;
+  color: var(--gm-muted);
   font-size: 1rem;
 }
 
@@ -57,14 +57,14 @@
   align-items: center;
   gap: 6px;
   font-size: 0.72rem;
-  color: #6b7280;
+  color: var(--gm-muted);
   text-transform: uppercase;
   letter-spacing: 0;
   margin-bottom: 1.5rem;
 }
 .dp-bc-sep { color: #374151; }
 .dp-bc-link {
-  color: #6b7280;
+  color: var(--gm-muted);
   cursor: pointer;
   background: none;
   border: none;
@@ -122,7 +122,7 @@
   font-weight: 600;
   color: #9ca3af;
 }
-.dp-header-playtime svg { color: #6b7280; }
+.dp-header-playtime svg { color: var(--gm-muted); }
 
 .dp-title {
   font-size: clamp(2rem, 5vw, 3.2rem);
@@ -134,7 +134,7 @@
 }
 .dp-subtitle {
   font-size: 0.82rem;
-  color: #6b7280;
+  color: var(--gm-muted);
   margin: 0 0 0.75rem;
 }
 .dp-subtitle-link {
@@ -301,13 +301,13 @@
 }
 .dp-score-label {
   font-size: 0.7rem;
-  color: #6b7280;
+  color: var(--gm-muted);
   text-transform: uppercase;
   letter-spacing: 0;
 }
 .dp-total-reviews {
   font-size: 0.7rem;
-  color: #4b5563;
+  color: var(--gm-muted);
 }
 /* Colored by confidence level, not by score — see .score-confidence in App.css */
 .dp-confidence {
@@ -322,7 +322,7 @@
   width: fit-content;
 }
 
-.dp-confidence-catalog { color: #6b7280; }
+.dp-confidence-catalog { color: var(--gm-muted); }
 .dp-confidence-limited,
 .dp-confidence-low { color: #d0a042; }
 .dp-confidence-solid { color: #4cc458; }
@@ -330,7 +330,7 @@
 
 .dp-score-stats {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
 }
 .dp-score-stats div {
@@ -356,7 +356,7 @@
   line-height: 1;
   white-space: nowrap;
 }
-.dp-stat-muted strong { color: #6b7280; }
+.dp-stat-muted strong { color: var(--gm-muted); }
 .dp-stat-pop {
   display: inline-flex;
   align-items: center;
@@ -420,7 +420,7 @@
 
 .dp-no-scores {
   font-size: 0.82rem;
-  color: #4b5563;
+  color: var(--gm-muted);
 }
 
 .dp-src-list {
@@ -464,7 +464,7 @@
   text-decoration: none;
   text-shadow: 0.3px 0 0 currentColor, -0.3px 0 0 currentColor;
 }
-.dp-src-secondary { color: #4b5563; font-style: italic; }
+.dp-src-secondary { color: var(--gm-muted); font-style: italic; }
 
 .dp-src-bar {
   position: relative;
@@ -562,7 +562,7 @@
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  color: var(--score-color, #93c5fd);
+  color: #a78bfa;
   text-decoration: none;
   font-weight: 600;
 }
@@ -712,7 +712,7 @@
 }
 
 .dp-price-age {
-  color: #6b7280;
+  color: var(--gm-muted);
   font-size: 0.68rem;
 }
 
@@ -918,7 +918,7 @@
   cursor: pointer;
   border: 1px solid rgba(255, 255, 255, 0.1);
   background: transparent;
-  color: #6b7280;
+  color: var(--gm-muted);
   transition: all 0.15s;
 }
 .dp-sysreq-tab:hover { color: #9ca3af; border-color: rgba(255, 255, 255, 0.18); }
@@ -1650,3 +1650,25 @@
 .dp-related-lazy {
   min-height: 1px;
 }
+
+/* ─── Score: "how is this calculated" disclosure ─────────────────────────── */
+.dp-score-how {
+  margin-top: 10px;
+  color: #9aa3b5;
+  font-size: 0.8rem;
+}
+.dp-score-how summary {
+  cursor: pointer;
+  font-weight: 700;
+  color: #b4bccb;
+}
+.dp-score-how dl {
+  display: flex;
+  gap: 18px;
+  margin: 10px 0 6px;
+}
+.dp-score-how dl div { display: grid; gap: 2px; }
+.dp-score-how dt { font-size: 0.66rem; font-weight: 800; text-transform: uppercase; color: #697386; }
+.dp-score-how dd { margin: 0; color: #eef2ff; font-weight: 800; }
+.dp-score-how p { margin: 6px 0 0; line-height: 1.5; }
+.dp-score-how a { color: #a78bfa; text-decoration: underline; }

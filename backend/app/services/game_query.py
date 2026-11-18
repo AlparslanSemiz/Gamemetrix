@@ -11,11 +11,13 @@ Public API:
   build_catalog_count_query(...)          -> Select[tuple[int]]
   apply_advanced_filters(query, filters)  -> Select
   apply_sort(query, sort, direction)      -> Select[tuple[Game]]
+  resolve_genre(db, raw)                  -> stored spelling of a genre filter
   json_array_values_statement(column)     -> Select[tuple[str]]
   build_platform_filters(platforms)       -> set[str]
 """
 
 import datetime
+import time
 from dataclasses import dataclass
 
 from sqlalchemy import (
@@ -23,6 +25,7 @@ from sqlalchemy import (
     ColumnElement,
     Float,
     Select,
+    Text,
     and_,
     asc,
     case,
@@ -35,10 +38,12 @@ from sqlalchemy import (
     true,
 )
 from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.orm import Session
 from sqlalchemy.sql.expression import TableValuedAlias
 
 from ..integrations.source_registry import CRITIC_SOURCES, PC_PLATFORM_KEYS, PRIMARY_SOURCES
-from ..models import Game, PriceSnapshot
+from ..models import Game, GameSearchAlias, PriceSnapshot
+from ..search_text import fuzzy_search_allowed, normalize_search_text
 from .like_escape import LIKE_ESCAPE_CHAR, escape_like
 
 _DEAL_FRESHNESS_HOURS = 24
@@ -47,6 +52,8 @@ _MAX_REVIEW_COUNT = 2_000_000_000
 _MAX_VALID_SCORE = 100
 _MINUTES_PER_HOUR = 60
 
+# ProtonDB tiers that count as playable on Linux (kept in step with routers/seo.py).
+
 # Catalogs that predate the game_modes column still carry the signal in their
 # genre tags, so a mode filter also accepts these equivalents.
 _PLAYER_MODE_GENRE_ALIASES: dict[str, frozenset[str]] = {
@@ -54,6 +61,8 @@ _PLAYER_MODE_GENRE_ALIASES: dict[str, frozenset[str]] = {
     "coop": frozenset({"co-op", "coop", "online co-op", "local co-op"}),
     "singleplayer": frozenset({"single player", "singleplayer"}),
 }
+
+_PROTON_PLAYABLE_TIERS = ("native", "platinum", "gold", "silver")
 
 _SOURCE_SORT_COLUMNS: dict[str, str] = {
     "metacritic_score": "Metacritic",
@@ -132,7 +141,7 @@ def _apply_base_filters(
     if content_type != "all":
         query = query.where(Game.content_type == content_type)
     if q:
-        query = query.where(Game.title.ilike(f"%{escape_like(q)}%", escape=LIKE_ESCAPE_CHAR))
+        query = query.where(title_search_condition(q))
     if year_min is not None:
         query = query.where(Game.release_year >= year_min)
     if year_max is not None:
@@ -142,6 +151,29 @@ def _apply_base_filters(
     if max_score is not None:
         query = query.where(Game.metrix_score <= max_score)
     return _apply_deal_filter(query, deal)
+
+
+def title_search_condition(q: str) -> ColumnElement[bool]:
+    """Title search: literal substring, normalized substring, alias, then trigram fallback.
+
+    The normalized column makes "spider man", "Marvel's Spider-Man" and "pokemon"
+    find "Pokémon" alike; the alias table covers "gta 5" / "bg3"; the pg_trgm `%`
+    operator (GIN-indexed) rescues small typos.
+    """
+    conditions: list[ColumnElement[bool]] = [
+        Game.title.ilike(f"%{escape_like(q)}%", escape=LIKE_ESCAPE_CHAR)
+    ]
+    normalized = normalize_search_text(q)
+    if normalized:
+        conditions.append(
+            Game.title_normalized.like(f"%{escape_like(normalized)}%", escape=LIKE_ESCAPE_CHAR)
+        )
+        conditions.append(
+            Game.id.in_(select(GameSearchAlias.game_id).where(GameSearchAlias.alias == normalized))
+        )
+        if fuzzy_search_allowed(normalized):
+            conditions.append(Game.title_normalized.op("%")(normalized))
+    return or_(*conditions)
 
 
 def _apply_deal_filter(query: Select, deal: str) -> Select:
@@ -207,7 +239,13 @@ def apply_sort(query: Select[tuple[Game]], sort: str, direction: str) -> Select[
 
 def apply_advanced_filters(query: Select, filters: CatalogFilters) -> Select:
     if filters.genre:
-        query = query.where(_json_array_match(Game.genres, {filters.genre.strip().lower()}))
+        # Containment on the cast expression is served by ix_games_genres_gin; the
+        # caller passes the canonical stored spelling (see resolve_genre).
+        query = query.where(
+            cast(Game.genres, JSONB).op("@>")(
+                func.jsonb_build_array(cast(filters.genre.strip(), Text))
+            )
+        )
     if filters.developer:
         query = query.where(func.lower(Game.developer) == filters.developer.lower())
     if filters.publisher:
@@ -216,21 +254,29 @@ def apply_advanced_filters(query: Select, filters: CatalogFilters) -> Select:
         terms = {filters.platform.lower()}
         if filters.platform.lower() == "steam":
             terms.add("pc")
-        query = query.where(_json_array_match(Game.platforms, terms, substring=True))
+        platform_match = _json_array_match(Game.platforms, terms, substring=True)
+        if filters.platform.lower() == "linux":
+            # Playable through Proton counts as Linux support alongside native builds.
+            platform_match = or_(platform_match, Game.proton_tier.in_(_PROTON_PLAYABLE_TIERS))
+        query = query.where(platform_match)
     if filters.player_mode:
         query = query.where(or_(
             _json_array_match(Game.game_modes, {filters.player_mode}),
             _json_array_match(Game.genres, _PLAYER_MODE_GENRE_ALIASES[filters.player_mode]),
         ))
     if filters.playtime_min_hours is not None:
+        playtime = _effective_playtime_minutes()
         query = query.where(
-            Game.playtime_minutes > 0,
-            Game.playtime_minutes >= filters.playtime_min_hours * _MINUTES_PER_HOUR,
+            playtime > 0,
+            Game.is_endless.is_(False),
+            playtime >= filters.playtime_min_hours * _MINUTES_PER_HOUR,
         )
     if filters.playtime_max_hours is not None:
+        playtime = _effective_playtime_minutes()
         query = query.where(
-            Game.playtime_minutes > 0,
-            Game.playtime_minutes <= filters.playtime_max_hours * _MINUTES_PER_HOUR,
+            playtime > 0,
+            Game.is_endless.is_(False),
+            playtime <= filters.playtime_max_hours * _MINUTES_PER_HOUR,
         )
     if filters.min_ratings is not None:
         query = query.where(_review_count_expression(require_live_score=True) >= filters.min_ratings)
@@ -243,6 +289,16 @@ def apply_advanced_filters(query: Select, filters: CatalogFilters) -> Select:
     if filters.require_critic:
         query = query.where(_has_live_critic_expression())
     return query
+
+
+def _effective_playtime_minutes() -> ColumnElement:
+    """HowLongToBeat main story when known, else the provider playtime estimate.
+
+    HLTB is the figure the card shows, so the filter has to use it; the raw
+    provider value (RDR2: 100 h) disagreed with it (51 h). Zero counts as unknown.
+    Endless games show "no fixed time" on the card, so the filters skip them too.
+    """
+    return func.coalesce(func.nullif(Game.hltb_main_story_minutes, 0), Game.playtime_minutes)
 
 
 def _json_array_match(
@@ -323,9 +379,45 @@ def _has_live_critic_expression() -> ColumnElement[bool]:
     ).correlate(Game)
 
 
+_GENRE_LOOKUP_TTL = 300.0
+_GENRE_LOOKUP_MISS_REFRESH = 60.0
+_genre_lookup: dict[str, str] = {}
+_genre_lookup_at = 0.0
+
+
+def resolve_genre(db: Session, raw: str | None) -> str | None:
+    """Map a user-typed genre to the stored spelling so the GIN containment index applies.
+
+    The stored values keep their original case ("FPS", "Role-Playing"), while filters
+    arrive in any case. Unknown genres are returned unchanged and simply match nothing.
+    """
+    global _genre_lookup, _genre_lookup_at
+    if not raw or not raw.strip():
+        return raw
+    now = time.monotonic()
+    wanted = raw.strip()
+    age = now - _genre_lookup_at
+    # Rebuild when stale, and also on a miss once the map is at least a minute old, so a
+    # brand-new genre does not stay unfilterable for the whole TTL.
+    if not _genre_lookup or age > _GENRE_LOOKUP_TTL or (
+        wanted.lower() not in _genre_lookup and age > _GENRE_LOOKUP_MISS_REFRESH
+    ):
+        values = db.scalars(json_array_values_statement(Game.genres)).all()
+        _genre_lookup = {value.lower(): value for value in values}
+        _genre_lookup_at = now
+    return _genre_lookup.get(wanted.lower(), wanted)
+
+
 def json_array_values_statement(column: ColumnElement) -> Select[tuple[str]]:
     """Distinct, trimmed, sorted values of a JSON array column across all games."""
-    values = func.jsonb_array_elements_text(cast(column, JSONB)).table_valued("value").lateral()
+    # A scalar or null JSON value makes jsonb_array_elements_text raise, which
+    # would fail the whole query (a 500 on /api/facets). Treat those as empty.
+    as_jsonb = cast(column, JSONB)
+    safe_array = case(
+        (func.jsonb_typeof(as_jsonb) == "array", as_jsonb),
+        else_=cast("[]", JSONB),
+    )
+    values = func.jsonb_array_elements_text(safe_array).table_valued("value").lateral()
     trimmed = func.trim(values.c.value).label("value")
     return (
         select(trimmed)

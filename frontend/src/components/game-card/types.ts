@@ -13,7 +13,7 @@ export interface GameCardCollectionState {
   isWatchlisted: boolean
 }
 
-export interface GameCardHandlers {
+interface GameCardHandlers {
   onOpenTrailer: (game: CatalogGame) => void
   onFilterDeveloper: (developer: string) => void
   onFilterGenre: (genre: string) => void

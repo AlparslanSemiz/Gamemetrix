@@ -74,7 +74,7 @@ def test_account_session_csrf_admin_separation_and_delete(postgres_client) -> No
     client, sessions = postgres_client
     anonymous = client.get("/api/account/session")
     assert anonymous.status_code == 200
-    assert anonymous.json() == {"account": None}
+    assert anonymous.json() == {"account": None, "google_login": False}
     register_and_verify(client, sessions)
     login(client)
     first_session_token = client.cookies["gm_session"]
@@ -91,7 +91,7 @@ def test_account_session_csrf_admin_separation_and_delete(postgres_client) -> No
     assert client.post("/api/account/logout", headers={"Origin": "http://localhost:5173"}).status_code == 403
     assert client.get("/admin/dashboard").status_code == 403
     assert client.post("/api/account/logout", headers=csrf_headers(client)).status_code == 200
-    assert client.get("/api/account/session").json() == {"account": None}
+    assert client.get("/api/account/session").json()["account"] is None
 
     login(client)
     with sessions() as db:

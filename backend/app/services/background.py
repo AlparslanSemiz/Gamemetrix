@@ -15,20 +15,22 @@ Public API:
   raw_analytics_retention_loop()               -> Awaitable[None]  (runs forever; cancel to stop)
 """
 
+import anyio
 import asyncio
 import logging
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import asc, desc, select, update
+from sqlalchemy import asc, desc, func, select, update
 from sqlalchemy.orm import Session, load_only, noload
 
 from ..config import get_settings
-from ..database import SessionLocal
+from ..database import BackgroundSessionLocal, SessionLocal
 from ..heavy_jobs import HEAVY_JOB_LOCK
 from ..models import Game, VisitEvent
 from ..integrations.hltb import backfill_hltb_playtimes
 from ..integrations.sync import game_needs_rating_refresh, refresh_game_sources
-from ..integrations.steam import extract_steam_app_id, get_steam_release_dates
+from ..integrations.sync.priority import top_refresh_candidates
+from ..integrations.steam import get_steam_release_dates, resolve_steam_app_id
 from .endless import backfill_endless_batch
 from .job_heartbeat import record_job_run
 from .metadata import fix_game_year
@@ -43,42 +45,52 @@ _RETENTION_INTERVAL_SECONDS = 6 * 60 * 60
 _CATALOG_SCAN_CHUNK = 500
 
 
+_PRIORITY_COLUMNS = (
+    Game.id,
+    Game.metrix_score,
+    Game.rank_score,
+    Game.platforms,
+    Game.source_scores,
+    Game.release_date,
+    Game.ratings_refreshed_at,
+    Game.data_complete,
+)
+
+
 def rating_refresh_candidates(db: Session, *, limit: int | None = None) -> list[Game]:
-    """Return stale games in refresh priority order using a bounded DB stream."""
-    now = datetime.now(UTC)
-    stale: list[Game] = []
-    games = db.scalars(
-        select(Game)
-        .order_by(
-            Game.ratings_refreshed_at.asc().nulls_first(),
-            Game.metrix_score.desc(),
-        )
-        .execution_options(yield_per=_CATALOG_SCAN_CHUNK)
+    """Return stale games in budget-priority order (see integrations/sync/priority.py)."""
+    ids = top_refresh_candidates(
+        db.scalars(
+            select(Game)
+            .where(Game.content_type == "game")
+            .options(load_only(*_PRIORITY_COLUMNS), noload(Game.price_snapshots))
+            .execution_options(yield_per=_CATALOG_SCAN_CHUNK)
+        ),
+        limit=limit,
+        release=db.expunge,
     )
-    for game in games:
-        if game_needs_rating_refresh(game, now):
-            stale.append(game)
-            if limit is not None and len(stale) >= limit:
-                break
-    return stale
+    if not ids:
+        return []
+    by_id = {game.id: game for game in db.scalars(select(Game).where(Game.id.in_(ids))).all()}
+    return [by_id[game_id] for game_id in ids if game_id in by_id]
 
 
-def _refresh_priority_key(game: Game) -> tuple[int, float, float]:
-    return (game.ratings_refreshed_at is not None, _refreshed_timestamp(game), -game.metrix_score)
+def _refresh_seo_states(db: Session | None = None) -> None:
+    """Full-catalog SEO pass; blocking, so callers run it off the event loop."""
+    from .seo import refresh_catalog_seo_states
 
-
-def _refreshed_timestamp(game: Game) -> float:
-    if game.ratings_refreshed_at is None:
-        return 0.0
-    ts = game.ratings_refreshed_at
-    if ts.tzinfo is None:
-        ts = ts.replace(tzinfo=UTC)
-    return ts.timestamp()
+    if db is not None:
+        refresh_catalog_seo_states(db)
+        db.commit()
+        return
+    with BackgroundSessionLocal() as own_db:
+        refresh_catalog_seo_states(own_db)
+        own_db.commit()
 
 
 def _rating_refresh_plan(force: bool) -> tuple[list[int], int]:
     """Return ordered candidate ids without retaining the full catalog in memory."""
-    with SessionLocal() as db:
+    with BackgroundSessionLocal() as db:
         if force:
             ids = list(
                 db.scalars(
@@ -89,33 +101,18 @@ def _rating_refresh_plan(force: bool) -> tuple[list[int], int]:
             )
             return ids, len(ids)
 
-        now = datetime.now(UTC)
-        candidates: list[tuple[tuple[int, float, float], int]] = []
-        total = 0
-        games = db.scalars(
-            select(Game)
-            .where(Game.content_type == "game")
-            .options(
-                load_only(
-                    Game.id,
-                    Game.metrix_score,
-                    Game.platforms,
-                    Game.source_scores,
-                    Game.ratings_refreshed_at,
-                    Game.data_complete,
-                ),
-                noload(Game.price_snapshots),
-            )
-            .execution_options(yield_per=_CATALOG_SCAN_CHUNK)
+        total = db.scalar(select(func.count()).select_from(Game).where(Game.content_type == "game")) or 0
+        ids = top_refresh_candidates(
+            db.scalars(
+                select(Game)
+                .where(Game.content_type == "game")
+                .options(load_only(*_PRIORITY_COLUMNS), noload(Game.price_snapshots))
+                .execution_options(yield_per=_CATALOG_SCAN_CHUNK)
+            ),
+            limit=None,
+            release=db.expunge,
         )
-        for game in games:
-            total += 1
-            if game_needs_rating_refresh(game, now):
-                candidates.append((_refresh_priority_key(game), game.id))
-            db.expunge(game)
-
-    candidates.sort(key=lambda row: row[0])
-    return [game_id for _priority, game_id in candidates], total
+    return ids, total
 
 
 # Shared with app/routers/imports.py — see app/heavy_jobs.py. Ensures an
@@ -141,7 +138,7 @@ async def refresh_all_games(
         return {"enriched": 0, "skipped": 0, "status": "already_running"}  # type: ignore[return-value]
 
     async with _REFRESH_ALL_LOCK:
-        game_ids, total_games = _rating_refresh_plan(force)
+        game_ids, total_games = await anyio.to_thread.run_sync(_rating_refresh_plan, force)
         game_id_iterator = iter(game_ids)
         now = datetime.now(UTC)
 
@@ -184,10 +181,7 @@ async def refresh_all_games(
         skipped = total_games - enriched
 
         if enriched:
-            with SessionLocal() as db:
-                from .seo import refresh_catalog_seo_states
-                refresh_catalog_seo_states(db)
-                db.commit()
+            await anyio.to_thread.run_sync(_refresh_seo_states)
 
         log.info("refresh_all_games done: %d refreshed, %d skipped", enriched, skipped)
         return {"enriched": enriched, "skipped": skipped}
@@ -209,9 +203,7 @@ async def refresh_rating_batch(limit: int) -> dict[str, int]:
             )
             enriched += 1
         if enriched:
-            from .seo import refresh_catalog_seo_states
-            refresh_catalog_seo_states(db)
-            db.commit()
+            await anyio.to_thread.run_sync(_refresh_seo_states, db)
     return {"enriched": enriched, "skipped": skipped}
 
 
@@ -248,7 +240,7 @@ async def _fix_steam_dates(db: Session, games: list[Game]) -> tuple[int, int]:
     games_by_app_id = {
         app_id: game
         for game in games
-        if (app_id := extract_steam_app_id(game.slug, game.cover_url)) is not None
+        if (app_id := resolve_steam_app_id(game)) is not None
     }
     steam_dates = await get_steam_release_dates(list(games_by_app_id.keys()))
     fixed = 0
@@ -371,6 +363,10 @@ async def raw_analytics_retention_loop() -> None:
     await asyncio.sleep(_RETENTION_STARTUP_DELAY_SECONDS)
     while True:
         try:
+            with SessionLocal() as db:
+                from .login_throttle import purge_expired
+
+                purge_expired(db)  # login counters and expired trusted devices
             with SessionLocal() as db:
                 redacted = purge_expired_raw_analytics(db)
             if redacted:

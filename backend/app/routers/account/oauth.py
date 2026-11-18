@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import timedelta
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
@@ -35,6 +36,7 @@ from ...services.google_identity import (
     validated_identity,
 )
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/oauth/google")
 
 # Each callback makes two outbound HTTPS requests to Google, so it must be bounded.
@@ -152,13 +154,16 @@ async def _resolve_google_account(
     try:
         userinfo = await fetch_userinfo(cfg, code, verifier)
     except GoogleOAuthError as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+        logger.warning("Google OAuth exchange failed: %s", exc)
+        raise HTTPException(status_code=502, detail="Google login could not be completed.") from exc
     try:
         return resolve_account(db, validated_identity(userinfo))
     except GoogleIdentityError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        logger.warning("Google identity rejected: %s", exc)
+        raise HTTPException(status_code=400, detail="Google login could not be completed.") from exc
     except AccountDisabledError as exc:
-        raise HTTPException(status_code=403, detail=str(exc)) from exc
+        logger.info("Login refused for disabled account: %s", exc)
+        raise HTTPException(status_code=403, detail="This account is unavailable.") from exc
 
 
 def _login_redirect(

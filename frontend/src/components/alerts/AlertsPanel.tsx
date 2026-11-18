@@ -4,10 +4,13 @@ import type { Account, AccountPreferences, AccountState } from '../../services/a
 import { useAccount } from '../../state/useAccount'
 import { AlertList } from './AlertList'
 import { AlertPreferencesForm, AlertsStatus, AlertsToolbar } from './AlertsChrome'
+import { GuestListNotice } from '../GuestListNotice'
+import { clientNow } from '../../utils/clock'
 import { buildAlerts } from './buildAlerts'
 import { useAlertPreferenceSync, useAlertReadActions, useWatchlistAlertGames } from './hooks'
 import { loadPreferences, loadStringSet } from './storage'
 import { DISMISSED_KEY, READ_KEY, type AlertPreferences } from './types'
+import './Alerts.css'
 
 export function AlertsPanel({ watchlistSlugs }: { watchlistSlugs: string[] }) {
   const accountContext = useAccount()
@@ -66,7 +69,7 @@ function AlertsPanelContent({
   const { games, isLoading } = useWatchlistAlertGames(watchlistSlugs, refreshKey, setError)
 
   const alerts = useMemo(
-    () => buildAlerts(games, preferences).filter((alert) => !dismissedIds.has(alert.id)),
+    () => buildAlerts(games, preferences, clientNow()).filter((alert) => !dismissedIds.has(alert.id)),
     [dismissedIds, games, preferences],
   )
   const unreadCount = alerts.filter((alert) => !readIds.has(alert.id)).length
@@ -82,6 +85,7 @@ function AlertsPanelContent({
 
   return (
     <div className="alerts-panel">
+      <GuestListNotice subject="alerts" />
       <AlertsToolbar
         isLoading={isLoading}
         onMarkAllRead={actions.markAllRead}

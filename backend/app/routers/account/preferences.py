@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 import jwt
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
@@ -24,6 +26,7 @@ from ...services.account_state import (
 )
 from .schemas import MessageResponse, PreferencePatch, UnsubscribePayload
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 UNSUBSCRIBE_RATE_LIMIT = "20/minute"
@@ -51,7 +54,8 @@ def update_preferences(
                 dict(payload.settings),
             )
         except AccountStateLimitError as exc:
-            raise HTTPException(status_code=422, detail=str(exc)) from exc
+            logger.info("Preference settings rejected: %s", exc)
+            raise HTTPException(status_code=422, detail="Settings exceed the allowed limits.") from exc
     preference.updated_at = utcnow()
     db.commit()
     return account_state_payload(db, principal.user)["preferences"]

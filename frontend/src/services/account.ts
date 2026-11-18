@@ -79,7 +79,7 @@ async function accountFetch<T>(path: string, init: RequestInit = {}): Promise<T>
   return response.json() as Promise<T>
 }
 
-export function getAccountSession(): Promise<{ account: Account | null }> {
+export function getAccountSession(): Promise<{ account: Account | null; google_login?: boolean }> {
   return accountFetch('/session')
 }
 

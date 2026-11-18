@@ -21,10 +21,10 @@ import {
 } from './detail/useGameDetailData'
 import './GameDetailPage.css'
 
-export function GameDetailPage({ initialGame }: { initialGame?: Game }) {
+export function GameDetailPage({ initialGame, renderedAt }: { initialGame?: Game; renderedAt?: number }) {
   const { slug } = useParams<{ slug: string }>()
   const navigate = useNavigate()
-  const { error, game } = useGameDetailGame(slug, initialGame)
+  const { error, game, loadedAt } = useGameDetailGame(slug, initialGame, renderedAt)
   const related = useNearViewport(slug)
   const similar = useSimilarGames(slug, initialGame, related.enabled)
   const trailer = useGameTrailer(game)
@@ -59,10 +59,10 @@ export function GameDetailPage({ initialGame }: { initialGame?: Game }) {
     )
   }
 
-  const model = buildGameDetailModel(game)
+  const model = buildGameDetailModel(game, loadedAt)
 
   return (
-    <main className="dp-shell" style={model.detailStyle}>
+    <main id="main-content" className="dp-shell" style={model.detailStyle}>
       {model.backgroundImage ? (
         <div
           className="dp-bg"
@@ -137,7 +137,7 @@ function GameDetailContent({
           {model.priceSnapshots.length > 0 ? (
             <div className="dp-side-panel">
               <h2 className="dp-section-title">Where to buy</h2>
-              <PricePanel prices={model.priceSnapshots} game={game} />
+              <PricePanel prices={model.priceSnapshots} game={game} now={model.renderedAt} />
             </div>
           ) : null}
           <DlcSection game={game} />

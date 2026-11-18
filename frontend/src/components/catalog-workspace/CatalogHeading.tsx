@@ -65,6 +65,7 @@ function YearPicker({
           key={year}
           type="button"
           className={selectedYear === year ? 'is-active' : ''}
+            aria-pressed={selectedYear === year}
           onClick={() => onSelectYear(year)}
         >
           {year === CURRENT_YEAR ? `${year} · So Far` : String(year)}

@@ -39,6 +39,10 @@ const proxy = http.createServer((request, response) => {
       upstreamResponse.pipe(response)
     },
   )
+  // A browser that cancels a request must cancel the upstream one too, as nginx does.
+  response.on('close', () => {
+    if (!response.writableFinished) upstream.destroy()
+  })
   upstream.on('error', (error) => {
     if (!response.headersSent) response.writeHead(502, { 'Content-Type': 'text/plain' })
     response.end(`Proxy error: ${error.message}`)

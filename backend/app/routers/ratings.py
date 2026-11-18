@@ -19,11 +19,11 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
-from ..database import get_db
+from ..database import get_db, get_long_db
 from ..models import Game
 from ..schemas import (
     MetadataFixResponse,
-    ProviderStatus,
+    PublicProviderStatus,
     RatingsEnrichResponse,
     RecalculateResponse,
     ScoreWeightsResponse,
@@ -45,9 +45,14 @@ from ..heavy_jobs import require_not_peak_hours
 router = APIRouter(tags=["ratings"])
 
 
-@router.get("/api/integrations/status", response_model=list[ProviderStatus])
+@router.get("/api/integrations/status", response_model=list[PublicProviderStatus])
 def integration_status() -> list[dict[str, str]]:
-    return get_provider_statuses()
+    # Public: expose only source and state. The detail text names provider
+    # chains and environment variables, which stay internal.
+    return [
+        {"source": item["source"], "status": item["status"]}
+        for item in get_provider_statuses()
+    ]
 
 
 def _rating_source_weights() -> dict[str, dict[str, float]]:
@@ -80,7 +85,7 @@ def update_score_weights(
 
 @router.post("/api/score-weights/recalculate", response_model=RecalculateResponse)
 def recalculate_scores(
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_long_db),
     _admin=Depends(require_admin_user),
 ) -> dict[str, int]:
     games = db.query(Game).all()
