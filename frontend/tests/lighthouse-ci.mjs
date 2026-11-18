@@ -11,6 +11,7 @@ const PUBLIC_PORT = 4173
 const FRONTEND_PORT = 4174
 const API_PORT = 8001
 const REPORT_DIRECTORY = 'test-results/lighthouse'
+const LIGHTHOUSE_RUNS = 3
 const CHROME_PROFILE = `${REPORT_DIRECTORY}/chrome-profile`
 
 function closeServer(server) {
@@ -123,15 +124,24 @@ try {
   })
 
   for (const [label, path] of [['home', '/'], ['game', '/game/complete-test-game']]) {
-    const result = await lighthouse(`http://${HOST}:${PUBLIC_PORT}${path}`, {
-      port: chrome.port,
-      logLevel: 'error',
-      output: 'json',
-      onlyCategories: ['performance', 'accessibility', 'best-practices', 'seo'],
-    })
-    if (!result) throw new Error(`Lighthouse returned no result for ${label}`)
-    await writeFile(`${REPORT_DIRECTORY}/${label}.json`, JSON.stringify(result.lhr, null, 2))
-    validate(result.lhr, label)
+    // One simulated-throttling run swings by a few hundred ms on shared CI runners;
+    // Lighthouse's own guidance is to judge the median of several runs.
+    const runs = []
+    for (let attempt = 0; attempt < LIGHTHOUSE_RUNS; attempt += 1) {
+      const result = await lighthouse(`http://${HOST}:${PUBLIC_PORT}${path}`, {
+        port: chrome.port,
+        logLevel: 'error',
+        output: 'json',
+        onlyCategories: ['performance', 'accessibility', 'best-practices', 'seo'],
+      })
+      if (!result) throw new Error(`Lighthouse returned no result for ${label}`)
+      runs.push(result.lhr)
+    }
+    runs.sort((a, b) => (metric(a, 'largest-contentful-paint') ?? 0) - (metric(b, 'largest-contentful-paint') ?? 0))
+    const median = runs[Math.floor(runs.length / 2)]
+    process.stdout.write(`${label} LCP runs: ${runs.map((lhr) => Math.round(metric(lhr, 'largest-contentful-paint') ?? 0)).join(', ')} ms\n`)
+    await writeFile(`${REPORT_DIRECTORY}/${label}.json`, JSON.stringify(median, null, 2))
+    validate(median, label)
   }
 } finally {
   if (chrome) {

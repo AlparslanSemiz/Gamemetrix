@@ -7,6 +7,7 @@ and the game lands on the admin review queue. Outages never count as refutation.
 """
 
 import asyncio
+import re
 from collections.abc import Awaitable, Callable, Collection, Iterator
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -41,7 +42,7 @@ class AuditFinding:
     slug: str
     title: str
     steam_app_id: int
-    verdict: str  # verified | reclassified | mismatch | removed | unknown
+    verdict: str  # verified | reclassified | doubtful | mismatch | removed | unknown
     reason: str
     steam_name: str | None = None
 
@@ -85,6 +86,9 @@ def _candidates(
     return iter(db.scalars(stmt).all())
 
 
+_EXPLICIT_YEAR = re.compile(r"\((?:19|20)\d{2}\)")
+
+
 def judge(game: Game, outcome: AppdetailsOutcome) -> tuple[str, str, SteamIdentity | None]:
     if outcome.status == "error":
         return "unknown", "appdetails unavailable (outage or rate limit)", None
@@ -97,6 +101,12 @@ def judge(game: Game, outcome: AppdetailsOutcome) -> tuple[str, str, SteamIdenti
         return "verified", "ok", identity
     if identity.name_matches and identity.steam_type and identity.steam_type != "game":
         return "reclassified", f"same product, Steam type {identity.steam_type}", identity
+    explicit_year = _EXPLICIT_YEAR.search(game.title or "") or _EXPLICIT_YEAR.search(str(data.get("name") or ""))
+    if identity.name_matches and identity.reason == "year_mismatch" and not explicit_year:
+        # Same name, years apart: a late PC port (The Last of Us Part I, POSTAL 2) or a
+        # same-name reboot (Doom 1993/2016). Too close to call by data alone, and
+        # clearing a correct id loses its scores: keep it unverified and ask a human.
+        return "doubtful", identity.reason, identity
     return "mismatch", identity.reason, identity
 
 
@@ -124,6 +134,8 @@ def _apply(db: Session, game: Game, verdict: str, reason: str, identity: SteamId
         clear_steam_app_id(db, game)
         purge_wrong_app_data(db, game)
         queue_steam_review(db, game, f"Steam app {app_id} refuted ({reason}); id cleared")
+    elif verdict == "doubtful":
+        queue_steam_review(db, game, f"Steam app {app_id} has the same name but another year ({reason}); id kept, please check")
     elif verdict == "removed":
         queue_steam_review(db, game, f"Steam app {app_id} returns no appdetails; id kept, please check")
     db.add(game)
