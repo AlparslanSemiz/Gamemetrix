@@ -168,3 +168,26 @@ authentication logs for at least 15 minutes.
 Account authentication may be enabled only after production SMTP credentials
 are installed and real verification and password-reset messages have completed
 end to end.
+
+## Content-Security-Policy (script nonce)
+
+`gamemetrix.me` HTML gets its CSP from the SSR app (`frontend/src/csp.server.ts`, set in
+`entry.server.tsx`): `script-src 'self' 'nonce-…' 'strict-dynamic' https:`, no `'unsafe-inline'`.
+nginx sends no CSP for that host (`map $host $gm_csp` in `nginx.conf`); `api.gamemetrix.me` keeps
+the static nginx policy. Never re-add a CSP header for `gamemetrix.me` in nginx: browsers enforce
+every CSP header, so two policies are intersected and the stricter one breaks the page.
+
+Cloudflare caches anonymous HTML (`s-maxage=900`, plus `stale-while-revalidate=3600`) together with
+its headers, so a cached page and its CSP carry the same nonce until the entry is refreshed. That is
+consistent and works, but the nonce is shared by every visitor served from that entry (up to ~75 min).
+Hashes are not an option: the hydration script embeds per-request loader data and streams in pieces,
+so its hash is unknown when headers are sent. Accepted residual risk: an attacker who already has an
+HTML injection point could read the current nonce from their own request. The policy still blocks
+inline event handlers, `javascript:` URLs and injected scripts without the nonce, and the nonce
+rotates on every origin render. If that is not acceptable, mark HTML `private, no-store` (costs the
+edge cache) instead of loosening the policy.
+
+Verify after deploy: `curl -sI https://gamemetrix.me/ | grep -i content-security` shows exactly one
+header with a `nonce-` and no `unsafe-inline` in `script-src`; open `/`, `/best`, a game page with the
+console open (no CSP violations), accept analytics and watch the GTM request. Roll back by redeploying
+the previous image and nginx.conf (the old nginx CSP returns with it); report-only is not wired.

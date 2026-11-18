@@ -6,6 +6,7 @@ import { ServerRouter } from "react-router";
 import { isbot } from "isbot";
 import type { RenderToPipeableStreamOptions } from "react-dom/server";
 import { renderToPipeableStream } from "react-dom/server";
+import { addBeaconNonce, buildContentSecurityPolicy, generateNonce } from "./csp.server";
 
 export const streamTimeout = 5_000;
 
@@ -13,10 +14,10 @@ export const streamTimeout = 5_000;
 // first paint as paint-blocking. The home page emitted ~20 modulepreloads (~140 KB)
 // that, throttled, pushed LCP to ~2.4 s although the real paint was at ~0.1 s. Only
 // the entry, runtime and framework chunks stay preloaded (tests/e2e/ssr-head.spec.ts pins this); the route chunks are fetched as the entry imports them.
-const ESSENTIAL_PRELOAD = /<link rel="modulepreload" href="\/assets\/(?!entry\.client|rolldown-runtime|framework)[^"]*"\/>/g;
+const ESSENTIAL_PRELOAD = /<link rel="modulepreload" href="\/assets\/(?!entry\.client|rolldown-runtime|framework)[^"]*"[^>]*\/>/g;
 
-/** Drops non-essential modulepreload hints from the document <head>, then passes the rest through. */
-function trimModulePreloads(): Transform {
+/** Drops non-essential modulepreload hints from the document <head> and nonces the beacon tag, then passes the rest through. */
+function trimModulePreloads(nonce: string): Transform {
   let pending = "";
   let done = false;
   return new Transform({
@@ -26,7 +27,7 @@ function trimModulePreloads(): Transform {
       const headEnd = pending.indexOf("</head>");
       if (headEnd === -1) return callback();
       done = true;
-      const html = pending.slice(0, headEnd).replace(ESSENTIAL_PRELOAD, "") + pending.slice(headEnd);
+      const html = addBeaconNonce(pending.slice(0, headEnd).replace(ESSENTIAL_PRELOAD, ""), nonce) + pending.slice(headEnd);
       pending = "";
       callback(null, html);
     },
@@ -50,6 +51,14 @@ export default function handleRequest(
     });
   }
 
+  // One nonce per response. The Cloudflare edge may cache the whole response (headers included)
+  // for s-maxage, so the nonce and the CSP header always travel together. See docs/production-security-runbook.md.
+  const nonce = generateNonce();
+  // Dev needs Vite's inline HMR/refresh scripts, which carry no nonce: enforce only in production builds.
+  if (import.meta.env.PROD) {
+    responseHeaders.set("Content-Security-Policy", buildContentSecurityPolicy(nonce));
+  }
+
   return new Promise((resolve, reject) => {
     let shellRendered = false;
     const userAgent = request.headers.get("user-agent");
@@ -69,8 +78,10 @@ export default function handleRequest(
     );
 
     const { pipe, abort } = renderToPipeableStream(
-      <ServerRouter context={routerContext} url={request.url} />,
+      <ServerRouter context={routerContext} url={request.url} nonce={nonce} />,
       {
+        // React's own streaming inline scripts (Suspense boundary swaps) need the nonce too.
+        nonce,
         [readyOption]() {
           shellRendered = true;
           const body = new PassThrough({
@@ -81,7 +92,7 @@ export default function handleRequest(
               callback();
             },
           });
-          const stream = createReadableStreamFromReadable(body.pipe(trimModulePreloads()));
+          const stream = createReadableStreamFromReadable(body.pipe(trimModulePreloads(nonce)));
 
           responseHeaders.set("Content-Type", "text/html");
 
