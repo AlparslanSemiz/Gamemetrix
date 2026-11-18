@@ -12,8 +12,8 @@ export const streamTimeout = 5_000;
 // Lighthouse's simulated paint timing counts every request that started before the
 // first paint as paint-blocking. The home page emitted ~20 modulepreloads (~140 KB)
 // that, throttled, pushed LCP to ~2.4 s although the real paint was at ~0.1 s. Only
-// the entry chunks stay preloaded; the route chunks are fetched as the entry imports them.
-const ESSENTIAL_PRELOAD = /<link rel="modulepreload" href="\/assets\/(?!entry\.client|rolldown-runtime)[^"]*"\/>/g;
+// the entry, runtime and framework chunks stay preloaded (tests/e2e/ssr-head.spec.ts pins this); the route chunks are fetched as the entry imports them.
+const ESSENTIAL_PRELOAD = /<link rel="modulepreload" href="\/assets\/(?!entry\.client|rolldown-runtime|framework)[^"]*"\/>/g;
 
 /** Drops non-essential modulepreload hints from the document <head>, then passes the rest through. */
 function trimModulePreloads(): Transform {
