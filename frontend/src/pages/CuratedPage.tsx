@@ -3,16 +3,15 @@ import { Link } from 'react-router'
 import type { RankingGenre } from '../server-api.server'
 import { useAccount } from '../state/useAccount'
 import { trackProductEvent } from '../services/analytics'
-import type { CatalogGame, PriceSnapshot } from '../types/game'
-import { thumbnailUrl } from '../utils/coverImage'
+import { smallCoverUrl } from '../utils/coverImage'
+import { CURATED_PRIMARY_SOURCES, type CuratedGameCard } from '../utils/curatedCards'
 import { formatIsoDate } from '../utils/format'
-import { ACTIONABLE_PRICE_MAX_AGE_MS, currentPriceSnapshots } from '../utils/prices'
-import { isProtonTier, PROTON_TIER_LABELS } from '../utils/proton'
-import { safeExternalUrl } from '../utils/url'
+import { PROTON_TIER_LABELS } from '../utils/proton'
 import './CuratedPage.css'
 
 export interface CuratedPageData {
-  games: CatalogGame[]
+  /** Row-sized projection (`toCuratedCard`), not the backend's full catalog payload. */
+  games: CuratedGameCard[]
   total: number
   title: string
   description: string
@@ -23,23 +22,6 @@ export interface CuratedPageData {
   renderedAt: number
   /** Genre landing pages to cross-link under Related rankings. */
   genres: RankingGenre[]
-}
-
-const PRIMARY_SOURCES = ['Metacritic', 'OpenCritic', 'Steam', 'IGDB'] as const
-
-function bestPrice(prices: PriceSnapshot[], now: number): PriceSnapshot | undefined {
-  return currentPriceSnapshots(prices, ACTIONABLE_PRICE_MAX_AGE_MS, now)
-    .filter((price) => price.is_free || price.sale_price != null || price.list_price != null)
-    .sort((left, right) => Number(left.sale_price ?? left.list_price ?? Infinity) - Number(right.sale_price ?? right.list_price ?? Infinity))[0]
-}
-
-function priceText(price: PriceSnapshot | undefined): string | null {
-  if (!price) return null
-  if (price.is_free || price.sale_price === 0) return 'Free'
-  const amount = price.sale_price ?? price.list_price
-  if (amount == null) return null
-  try { return new Intl.NumberFormat('en-US', { style: 'currency', currency: price.currency }).format(amount) }
-  catch { return `${amount.toFixed(2)} ${price.currency}` }
 }
 
 function itemListJson(data: CuratedPageData) {
@@ -117,17 +99,13 @@ export function CuratedPage({ data }: { data: CuratedPageData }) {
         {data.games.length ? (
           <ol className="curated-list">
             {data.games.map((game, index) => {
-              const scores = new Map(game.source_scores.map((score) => [score.source, score]))
-              const price = bestPrice(game.price_snapshots ?? [], data.renderedAt)
-              const priceLabel = priceText(price)
-              const storeUrl = safeExternalUrl(price?.url)
-              const proton = game.proton_tier && isProtonTier(game.proton_tier) ? PROTON_TIER_LABELS[game.proton_tier] : null
-              const playtime = game.hltb_main_story_minutes || game.hltb_all_styles_minutes || game.playtime_minutes
+              const price = game.price
+              const proton = game.proton_tier ? PROTON_TIER_LABELS[game.proton_tier] : null
               return (
                 <li key={game.slug}>
                   <span className="curated-rank">{index + 1}</span>
                   <Link className="curated-cover" to={`/game/${game.slug}`} aria-label={`Open ${game.title}`}>
-                    <img src={thumbnailUrl(game.cover_url || game.image_url || '/favicon.svg')} alt="" loading={index < 4 ? 'eager' : 'lazy'} />
+                    <img src={game.cover ? smallCoverUrl(game.cover) : '/favicon.svg'} alt="" loading={index < 4 ? 'eager' : 'lazy'} />
                   </Link>
                   <article>
                     <div className="curated-game-head">
@@ -142,19 +120,18 @@ export function CuratedPage({ data }: { data: CuratedPageData }) {
                           {game.developer ? ` · ${game.developer}` : ''}
                         </p>
                       </div>
-                      <strong>{Math.round(game.metrix_score)}</strong>
+                      <strong>{game.score}</strong>
                     </div>
                     <div className="curated-scores" aria-label={`${game.title} source scores`}>
-                      {PRIMARY_SOURCES.map((source) => {
-                        const score = scores.get(source)
-                        return <span key={source}><small>{source}</small><b>{score?.status === 'live' && score.score > 0 ? Math.round(score.score) : '—'}</b></span>
-                      })}
+                      {CURATED_PRIMARY_SOURCES.map((source, slot) => (
+                        <span key={source}><small>{source}</small><b>{game.sourceScores[slot] ?? '—'}</b></span>
+                      ))}
                     </div>
                     <div className="curated-context">
                       {proton ? <span className={`is-proton-${game.proton_tier}`}>Linux: {proton}</span> : null}
-                      {playtime > 0 ? <span><Clock3 size={13} />{Math.max(1, Math.round(playtime / 60))}h HLTB</span> : null}
-                      {priceLabel ? <span><Tag size={13} />{priceLabel}{(price?.discount_percent ?? 0) > 0 ? ` · ${price?.discount_percent}% off` : ''}</span> : null}
-                      {storeUrl && price ? <a href={storeUrl} target="_blank" rel="noopener noreferrer" onClick={() => trackProductEvent('store_outbound', { game_slug: game.slug, store: price.store })}>Store <ExternalLink size={12} /></a> : null}
+                      {game.playtimeHours > 0 ? <span><Clock3 size={13} />{game.playtimeHours}h HLTB</span> : null}
+                      {price ? <span><Tag size={13} />{price.label}{price.discountPercent > 0 ? ` · ${price.discountPercent}% off` : ''}</span> : null}
+                      {price?.url ? <a href={price.url} target="_blank" rel="noopener noreferrer" onClick={() => trackProductEvent('store_outbound', { game_slug: game.slug, store: price.store })}>Store <ExternalLink size={12} /></a> : null}
                     </div>
                   </article>
                 </li>

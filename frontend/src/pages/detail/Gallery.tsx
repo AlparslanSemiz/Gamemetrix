@@ -11,12 +11,15 @@ import {
   fallbackCoverUrl,
   galleryImages,
   looksLikePlaceholderImage,
+  responsiveImage,
   thumbnailUrl,
 } from '../../utils/coverImage'
 import { useModalFocus } from '../../hooks/useModalFocus'
 
 const GALLERY_INLINE_LIMIT = 10
 const GALLERY_EAGER_LIMIT = 2
+// The hero fills the left detail column: full width below the 900px breakpoint, 760px above.
+const HERO_SIZES = '(max-width: 900px) 100vw, 760px'
 
 function thumbErrorHandler(fullUrl: string) {
   return (event: SyntheticEvent<HTMLImageElement>) => {
@@ -134,6 +137,8 @@ function GalleryGrid({
   const overflowImage = overflowCount > 0 ? images[GALLERY_INLINE_LIMIT] : null
   const [first, ...rest] = inlineImages
   const [heroFallback, setHeroFallback] = useState<string | null>(null)
+  // Same asset, sized to the column; the lightbox keeps the original.
+  const hero = heroFallback ? { src: heroFallback } : responsiveImage(first, 1280)
 
   return (
     <div className="dp-gallery">
@@ -146,7 +151,7 @@ function GalleryGrid({
           <div className="dp-gallery-strip" aria-label={`${game.title} media thumbnails`}>
             {images.map((url, index) => (
               <button type="button" key={`${url}-${index}`} className="dp-gallery-strip-item" onClick={() => onOpen(index)} aria-label={`Open image ${index + 1}`}>
-                <img src={thumbnailUrl(url)} alt="" loading="lazy" decoding="async" onError={thumbErrorHandler(url)} />
+                <img src={responsiveImage(url, 420).src} alt="" loading="lazy" decoding="async" onError={thumbErrorHandler(url)} />
               </button>
             ))}
           </div>
@@ -154,7 +159,9 @@ function GalleryGrid({
       </div>
       <button type="button" className="dp-gallery-main" onClick={() => onOpen(0)}>
         <img
-          src={heroFallback ?? first}
+          src={hero.src}
+          srcSet={hero.srcSet}
+          sizes={hero.srcSet ? HERO_SIZES : undefined}
           alt={`${game.title} cover`}
           className="dp-gallery-hero"
           loading="eager"
@@ -166,7 +173,11 @@ function GalleryGrid({
               setHeroFallback(images.find((url) => url !== first) ?? fallbackCoverUrl(game.title))
             }
           }}
-          onError={() => setHeroFallback(fallbackCoverUrl(game.title))}
+          onError={() => {
+            // A missing resized variant falls back to the original before the placeholder.
+            if (!heroFallback && hero.src !== first) setHeroFallback(first)
+            else setHeroFallback(fallbackCoverUrl(game.title))
+          }}
         />
         <div className="dp-gallery-zoom-hint">🔍</div>
       </button>

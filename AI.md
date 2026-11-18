@@ -467,6 +467,19 @@ Client-only code reads the clock via `utils/clock.ts`. ESLint `no-restricted-syn
 (`utils/`, `services/`, `routes/` and admin are exempt); `tests/e2e/hydration-timezones.spec.ts`
 runs the public pages in LA / Auckland / Kolkata zones and non-US locales.
 
+**Ranking pages** (`/best/:collection`, `/best/games/:year`, `/deals`) share `pages/CuratedPage.tsx`.
+Their loaders fetch `/api/seo/curated/*` (full `CatalogGame` rows) and return `curatedListPayload`
+(`utils/curatedCards.ts`): one `CuratedGameCard` per row — slug, title, cover, year, developer,
+rounded scores, Proton tier, playtime hours and the already-formatted best current price. Freshness
+(`updatedAt`) and price selection run on the full rows in the loader. This keeps 100-row pages'
+hydration data at ~40 KB instead of ~325 KB.
+
+**Image sizing** — `utils/coverImage.ts`: `thumbnailUrl` (RAWG 640 / Steam 600x338; cards and
+gallery), `smallCoverUrl` (RAWG 420, Steam `library_hero` -> `header.jpg`; ranking rows),
+`responsiveImage(url, maxWidth)` (RAWG 420/640/1280 and Steam screenshot srcsets; the detail hero
+with `sizes`, similar/series/DLC tiles). The home route preloads exactly the first card's
+`thumbnailUrl(bestCoverUrl(...))`.
+
 Route errors: `components/RouteErrorPage.tsx` is the shared `ErrorBoundary` (root, home, game);
 loaders forward `request.signal` and the client IP (`clientForwardHeaders`), and `headers()` use
 `utils/cacheHeaders.ts` so a thrown 429/503 is never cached.
@@ -640,6 +653,7 @@ A new rule never goes in AI.md; a new module never goes in AI_Guidelines.md.
 
 One line per session that changed the architecture. Newest first. Skip purely cosmetic work.
 
+- **2026-11-19** — Ranking-page loaders return a row projection (`utils/curatedCards.ts`) instead of full catalog rows (live `/best/linux-games` 517 KB -> 231 KB HTML, 99 KB -> 30 KB gzip); sized image variants (`smallCoverUrl`, `responsiveImage` srcset) for ranking rows, detail hero, similar/series/DLC tiles; budget spec `curated-payload.spec.ts`.
 - **2026-11-19** — `GET /api/account/session` is ungated and reports `accounts_enabled` (200 instead of 503 while accounts are off; UI hides Login/Register); nginx TLS listener no longer re-adds the security headers (`add_header_inherit off`), frontend paths 301 off a trailing slash; 390px no-overflow e2e.
 - **2026-11-19** — CSP for `gamemetrix.me` HTML moved from nginx to the SSR app (`frontend/src/csp.server.ts`, `entry.server.tsx`): per-response nonce + `'strict-dynamic'`, no `script-src 'unsafe-inline'`; nginx sends no CSP for that host (`map $host $gm_csp`), the API host keeps the static one; nonce/cache trade-off in `docs/production-security-runbook.md`.
 - **2026-11-19** — Catalog sort/filter values (review count, live source count, critic, per-source scores, platform/mode tags) are stored columns derived by `services/catalog_derived.py` and indexed (revision 20261119_0022); `game_query.py` no longer builds JSON sub-queries; sitemap endpoints use `load_only`.

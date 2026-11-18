@@ -4,7 +4,7 @@ import { clientForwardHeaders, fetchBackend, loadTopGenres, type RankingGenre } 
 import type { CatalogGameListResponse } from '../types/game'
 import { sharedCacheHeaders } from '../utils/cacheHeaders'
 import { curatedMetaTags } from '../utils/curatedMeta'
-import { latestContentUpdate } from '../utils/seo'
+import { curatedListPayload } from '../utils/curatedCards'
 
 const PAGES = {
   'linux-games': {
@@ -50,13 +50,11 @@ async function loadGenrePage(collection: string, init: RequestInit, related: Ran
     init,
   )
   return {
-    ...result,
+    ...curatedListPayload(result, Date.now()),
     label: genre.name,
     title: `Best ${genre.name} Games`,
     description: `The highest-rated ${genre.name} games, ranked by a reliability-weighted score across Metacritic, OpenCritic, IGDB and Steam — with Linux compatibility and playtime alongside.`,
     canonical: `https://gamemetrix.me/best/${collection}`,
-    updatedAt: latestContentUpdate(result.games),
-    renderedAt: Date.now(),
     genres: related,
   }
 }
@@ -68,7 +66,7 @@ export async function loader({ params, request }: LoaderFunctionArgs): Promise<C
   const genres = await loadTopGenres(init)
   if (page) {
     const result = await fetchBackend<CatalogGameListResponse>(`/api/seo/curated/${page.api}?limit=100`, init)
-    return { ...result, ...page, canonical: `https://gamemetrix.me/best/${key}`, updatedAt: latestContentUpdate(result.games), renderedAt: Date.now(), genres }
+    return { ...curatedListPayload(result, Date.now()), ...page, canonical: `https://gamemetrix.me/best/${key}`, genres }
   }
 
   const genrePage = await loadGenrePage(String(params.collection ?? ''), init, genres)

@@ -3,7 +3,7 @@ import { Link } from 'react-router'
 import type { SeriesGameItem } from '../types/game'
 import { getSeriesGames } from '../services/games'
 import { scoreColor } from '../utils/scoreColors'
-import { fallbackCoverUrl, isPlaceholderImageUrl } from '../utils/coverImage'
+import { fallbackCoverUrl, isPlaceholderImageUrl, responsiveImage } from '../utils/coverImage'
 import './SeriesRow.css'
 
 // Self-fetching "More from this series" strip. Renders nothing while loading or
@@ -35,7 +35,7 @@ export function SeriesRow({ enabled, slug }: { enabled: boolean; slug: string })
       <h2 className="series-row-title">More from this series</h2>
       <div className="series-row-grid">
         {games.map((item) => {
-          const coverSrc = isPlaceholderImageUrl(item.cover_url) ? fallbackCoverUrl(item.title) : item.cover_url
+          const coverSrc = isPlaceholderImageUrl(item.cover_url) ? fallbackCoverUrl(item.title) : responsiveImage(item.cover_url, 420).src
           const handleError = (event: SyntheticEvent<HTMLImageElement>) => {
             const fallback = fallbackCoverUrl(item.title)
             if (event.currentTarget.src !== fallback) event.currentTarget.src = fallback

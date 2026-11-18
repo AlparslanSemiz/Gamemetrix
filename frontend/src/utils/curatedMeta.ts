@@ -1,4 +1,3 @@
-import type { CatalogGame } from '../types/game'
 import { thumbnailUrl } from './coverImage'
 
 export const DEFAULT_SOCIAL_IMAGE = 'https://gamemetrix.me/og/home.png'
@@ -11,13 +10,13 @@ function trimDescription(value: string, max = 155): string {
 }
 
 // First game's thumbnail when it is an absolute https URL, else the brand image.
-function curatedSocialImage(games: CatalogGame[]): string {
-  const url = games[0]?.cover_url || games[0]?.image_url || ''
+function curatedSocialImage(games: Array<{ cover: string | null }>): string {
+  const url = games[0]?.cover ?? ''
   return /^https:\/\//.test(url) ? thumbnailUrl(url) : DEFAULT_SOCIAL_IMAGE
 }
 
 export function curatedMetaTags(
-  data: { title: string; description: string; canonical: string; games: CatalogGame[] },
+  data: { title: string; description: string; canonical: string; games: Array<{ cover: string | null }> },
   search: string,
   pageTitle: string,
 ) {

@@ -1,7 +1,7 @@
 import { type CSSProperties, type SyntheticEvent } from 'react'
 import { Link } from 'react-router'
 import type { Game, SeriesGameItem } from '../../types/game'
-import { fallbackCoverUrl, isPlaceholderImageUrl } from '../../utils/coverImage'
+import { fallbackCoverUrl, isPlaceholderImageUrl, responsiveImage } from '../../utils/coverImage'
 import { scoreColor } from '../../utils/scoreColors'
 import { safeExternalUrl } from '../../utils/url'
 import { normalizeSignal } from './format'
@@ -9,7 +9,7 @@ import { normalizeSignal } from './format'
 export const SIMILAR_DISPLAY_LIMIT = 10
 
 function CatalogSimilarCard({ game }: { game: SeriesGameItem }) {
-  const coverSrc = isPlaceholderImageUrl(game.cover_url) ? fallbackCoverUrl(game.title) : game.cover_url
+  const coverSrc = isPlaceholderImageUrl(game.cover_url) ? fallbackCoverUrl(game.title) : responsiveImage(game.cover_url, 420).src
   const handleError = (event: SyntheticEvent<HTMLImageElement>) => {
     const fallback = fallbackCoverUrl(game.title)
     if (event.currentTarget.src !== fallback) event.currentTarget.src = fallback
@@ -37,7 +37,7 @@ function ExternalSimilarCard({ game }: { game: ExternalSimilarGame }) {
   const content = (
     <>
       <div className="dp-similar-cover">
-        {game.cover_url ? <img src={game.cover_url} alt="" loading="lazy" /> : null}
+        {game.cover_url ? <img src={responsiveImage(game.cover_url, 420).src} alt="" loading="lazy" /> : null}
         {game.metacritic_score ? (
           <span className="dp-similar-score" style={{ '--score-color': scoreColor(Math.round(game.metacritic_score)) } as CSSProperties}>
             {Math.round(game.metacritic_score)}

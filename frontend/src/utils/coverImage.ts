@@ -82,6 +82,60 @@ export function thumbnailUrl(url: string): string {
   return url
 }
 
+// RAWG only serves a fixed set of widths; anything else (e.g. 320) redirects to
+// the API host instead of resizing. These three are verified to return images.
+export const RAWG_RESIZE_WIDTHS = [420, 640, 1280] as const
+type RawgWidth = (typeof RAWG_RESIZE_WIDTHS)[number]
+
+function rawgOriginalPath(url: string): string | null {
+  if (!url.startsWith(RAWG_MEDIA_PREFIX)) return null
+  const path = url.slice(RAWG_MEDIA_PREFIX.length)
+  return RAWG_TRANSFORM_MARKERS.some((marker) => path.startsWith(marker)) ? null : path
+}
+
+function rawgResized(path: string, width: RawgWidth): string {
+  return `${RAWG_MEDIA_PREFIX}resize/${width}/-/${path}`
+}
+
+// Steam's wide library hero (1920x620, ~330 KB). In a small cover box it is
+// cropped to a sliver either way, so the store header capsule of the same app
+// (460x215, ~40 KB) is the equivalent official asset.
+const STEAM_LIBRARY_HERO = /\/library_hero\.jpg(\?[^#]*)?$/
+
+// Variant for a small cover box (<= ~120 CSS px, e.g. a ranking row): RAWG at
+// 420 px, Steam screenshots at 600x338, Steam library hero -> header capsule.
+export function smallCoverUrl(url: string): string {
+  const rawgPath = rawgOriginalPath(url)
+  if (rawgPath !== null) return rawgResized(rawgPath, 420)
+  if (STEAM_LIBRARY_HERO.test(url)) return url.replace(STEAM_LIBRARY_HERO, '/header.jpg$1')
+  return thumbnailUrl(url)
+}
+
+export interface ResponsiveImage {
+  src: string
+  srcSet?: string
+}
+
+// `src` + `srcSet` for an image box up to `maxWidth` CSS px wide. Only CDNs with
+// known pre-scaled variants get a srcset; the shown asset never changes, only
+// which size of it is fetched. Pair with a `sizes` attribute at the call site.
+export function responsiveImage(url: string, maxWidth: RawgWidth): ResponsiveImage {
+  const rawgPath = rawgOriginalPath(url)
+  if (rawgPath !== null) {
+    const widths = RAWG_RESIZE_WIDTHS.filter((width) => width <= maxWidth)
+    return {
+      src: rawgResized(rawgPath, maxWidth),
+      srcSet: widths.map((width) => `${rawgResized(rawgPath, width)} ${width}w`).join(', '),
+    }
+  }
+  if (url.includes(STEAM_FULL_SEGMENT)) {
+    const small = url.replace(STEAM_FULL_SEGMENT, STEAM_THUMB_SEGMENT)
+    if (maxWidth <= 640) return { src: small }
+    return { src: url, srcSet: `${small} 600w, ${url} 1920w` }
+  }
+  return { src: url }
+}
+
 // Ordered, de-duplicated hero/gallery candidates with placeholder URLs removed.
 // Falls back to the generated cover when nothing usable exists.
 export function galleryImages(game: Pick<Game, 'title' | 'cover_url' | 'image_url' | 'screenshots'>): string[] {

@@ -146,6 +146,44 @@ function catalogProjection(value, includePrices = false) {
 
 const catalogGame = catalogProjection(game)
 
+// Production-shaped ranking rows: /best/* pages ask for 100 games, each with the
+// per-source detail text and several store snapshots the live API returns, so
+// the SSR payload budget (tests/e2e/curated-payload.spec.ts) measures a real load.
+const CURATED_STORES = ['Steam', 'GOG', 'Humble Store', 'Fanatical', 'GreenManGaming']
+function curatedRow(index) {
+  const base = catalogProjection(game, true)
+  if (index === 0) return base
+  const slug = `ranked-fixture-game-${index + 1}`
+  return {
+    ...base,
+    id: 1000 + index,
+    title: `Ranked Fixture Game ${index + 1}`,
+    slug,
+    summary_short: `Ranked fixture ${index + 1}: a mid-length summary like the catalog stores for every indexable game, long enough to weigh what a real row weighs.`,
+    // Local art keeps the tests offline; the last (lazy, never scrolled to) row
+    // carries a RAWG original so the cover sizing is visible in the markup.
+    cover_url: index === 99
+      ? 'https://media.rawg.io/media/games/f99/fixture-cover-99.jpg'
+      : `http://127.0.0.1:4173/favicon.svg?cover=${index + 1}`,
+    image_url: null,
+    hltb_url: `https://howlongtobeat.com/game/${2000 + index}`,
+    metrix_score: 90 - index * 0.2,
+    rank_score: 90 - index * 0.2,
+    source_scores: base.source_scores.map((score) => ({
+      ...score,
+      detail: `${score.source} score cached from the provider sync.`,
+    })),
+    price_snapshots: CURATED_STORES.slice(0, 1 + (index % CURATED_STORES.length)).map((store, slot) => ({
+      ...base.price_snapshots[0],
+      source: slot === 0 ? 'Steam' : 'CheapShark',
+      store,
+      sale_price: 29.99 - slot,
+      discount_percent: 50 + slot,
+      url: `https://www.cheapshark.com/redirect?dealID=${slug}-${store.replace(/\s+/g, '')}-deal`,
+    })),
+  }
+}
+
 function json(response, status, payload, headers = {}) {
   response.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', ...headers })
   response.end(JSON.stringify(payload))
@@ -246,7 +284,8 @@ const server = http.createServer(async (request, response) => {
     return json(response, 200, { genres: [{ slug: 'rpg', name: 'RPG', count: 12 }] })
   }
   if (url.pathname === '/api/seo/curated/home' || url.pathname.startsWith('/api/seo/curated/')) {
-    return json(response, 200, { games: [catalogProjection(game, true)], total: 400 })
+    const limit = Math.min(100, Math.max(1, Number(url.searchParams.get('limit') ?? 24)))
+    return json(response, 200, { games: Array.from({ length: limit }, (_, index) => curatedRow(index)), total: 400 })
   }
   if (
     url.pathname === '/api/catalog/games'

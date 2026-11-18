@@ -149,6 +149,8 @@ The score is a **reliability-adjusted weighted average**, not Bayesian prior shr
 - **CSS:** scoped `.css` files or `App.css`. No inline `style={{}}` for non-dynamic values.
 - **Compact grid is the DEFAULT view.** Any new card layout must preserve both `list` and `compact` modes.
 - **Score ring colors:** green = Strong, lime = Solid, amber = Limited. Do not change without updating both sides.
+- **SSR loader data is HTML weight.** Whatever a loader returns is serialized into the page. Ranking loaders (`/best/*`, `/deals`) return `CuratedGameCard` rows (`utils/curatedCards.ts`), never raw `CatalogGame`; a new row field goes into that projection. `tests/e2e/curated-payload.spec.ts` holds the budget.
+- **Never render a full-size remote original in a small box.** Use `thumbnailUrl` (cards, gallery), `smallCoverUrl` (boxes <= ~120 px) or `responsiveImage` (srcset, detail hero) from `utils/coverImage.ts`. Only the lightbox shows originals. RAWG resizes only to fixed widths (`RAWG_RESIZE_WIDTHS`); verify any new width with curl first.
 
 ---
 

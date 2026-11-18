@@ -4,7 +4,7 @@ import { clientForwardHeaders, fetchBackend, loadTopGenres } from '../server-api
 import type { CatalogGameListResponse } from '../types/game'
 import { sharedCacheHeaders } from '../utils/cacheHeaders'
 import { curatedMetaTags } from '../utils/curatedMeta'
-import { latestContentUpdate } from '../utils/seo'
+import { curatedListPayload } from '../utils/curatedCards'
 
 export async function loader({ params, request }: LoaderFunctionArgs): Promise<CuratedPageData> {
   const year = Number(params.year)
@@ -16,13 +16,11 @@ export async function loader({ params, request }: LoaderFunctionArgs): Promise<C
     loadTopGenres(init),
   ])
   return {
-    ...result,
+    ...curatedListPayload(result, Date.now()),
     label: `Games of ${year}`,
     title: `Best Games of ${year}`,
     description: `The strongest ${year} game releases with enough primary score coverage and decision context to pass the GameMetrix publication threshold.`,
     canonical: `https://gamemetrix.me/best/games/${year}`,
-    updatedAt: latestContentUpdate(result.games),
-    renderedAt: Date.now(),
     genres,
   }
 }
