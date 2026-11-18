@@ -57,8 +57,20 @@ def next_month(moment: datetime) -> datetime:
     return datetime(moment.year + (moment.month == 12), moment.month % 12 + 1, 1, tzinfo=UTC)
 
 
+_IDENT = re.compile(r"^[a-z_][a-z0-9_]{0,62}$")
+
+
+def _ident(name: str) -> str:
+    """Only our own table/partition names reach the dynamic SQL below; refuse anything else."""
+    base = name.removesuffix("_default")
+    base = re.sub(r"_p\d{6}$", "", base)
+    if base not in _KEYS or not _IDENT.match(name):
+        raise ValueError(f"unexpected table identifier: {name!r}")
+    return name
+
+
 def partition_name(table: str, start: datetime) -> str:
-    return f"{table}_p{start:%Y%m}"
+    return _ident(f"{table}_p{start:%Y%m}")
 
 
 def ensure_partitions(db: Session, table: str, now: datetime) -> list[str]:
@@ -77,17 +89,17 @@ def ensure_partitions(db: Session, table: str, now: datetime) -> list[str]:
             # Rows already routed to the DEFAULT partition inside this range (a partition that
             # was missing when they arrived) would make a plain CREATE ... PARTITION OF fail,
             # so build the table first, move them in, then ATTACH.
-            bounds = f"FROM ('{start.isoformat()}') TO ('{end.isoformat()}')"
-            db.execute(text(f"CREATE TABLE {name} (LIKE {table} INCLUDING DEFAULTS INCLUDING CONSTRAINTS)"))
+            bounds = f"FROM ('{start.isoformat()}') TO ('{end.isoformat()}')"  # nosec B608 - identifiers pass _ident(), values are bound
+            db.execute(text(f"CREATE TABLE {name} (LIKE {table} INCLUDING DEFAULTS INCLUDING CONSTRAINTS)"))  # nosec B608 - identifiers pass _ident(), values are bound
             db.execute(
                 text(
-                    f"WITH moved AS (DELETE FROM {table}_default "
+                    f"WITH moved AS (DELETE FROM {table}_default "  # nosec B608 - identifiers pass _ident(), values are bound
                     f"WHERE fetched_at >= :start AND fetched_at < :end RETURNING *) "
-                    f"INSERT INTO {name} SELECT * FROM moved"
+                    f"INSERT INTO {name} SELECT * FROM moved"  # nosec B608 - identifiers pass _ident(), values are bound
                 ),
                 {"start": start, "end": end},
             )
-            db.execute(text(f"ALTER TABLE {table} ATTACH PARTITION {name} FOR VALUES {bounds}"))
+            db.execute(text(f"ALTER TABLE {table} ATTACH PARTITION {name} FOR VALUES {bounds}"))  # nosec B608 - identifiers pass _ident(), values are bound
             created.append(name)
         start = end
     return created
@@ -104,6 +116,7 @@ def _expired_partitions(db: Session, table: str, horizon: datetime) -> list[tupl
     ).scalars()
     expired = []
     for relname in rows:
+        relname = _ident(relname)
         match = _PARTITION_NAME.match(relname)
         if not match or match["table"] != table:
             continue
@@ -124,10 +137,10 @@ def _latest_into_parent(db: Session, table: str, partition: str, upper: datetime
     db.execute(text("DROP TABLE IF EXISTS _retention_keep"))
     db.execute(
         text(
-            f"CREATE TEMP TABLE _retention_keep ON COMMIT DROP AS "
-            f"SELECT c.id FROM (SELECT DISTINCT ON ({key_p}) p.id, {key_p} AS k "
-            f"FROM {partition} p ORDER BY {key_p}, p.fetched_at DESC, p.id DESC) c "
-            f"WHERE NOT EXISTS (SELECT 1 FROM {table} n WHERE n.fetched_at >= :upper "
+            f"CREATE TEMP TABLE _retention_keep ON COMMIT DROP AS "  # nosec B608 - identifiers pass _ident(), values are bound
+            f"SELECT c.id FROM (SELECT DISTINCT ON ({key_p}) p.id, {key_p} AS k "  # nosec B608 - identifiers pass _ident(), values are bound
+            f"FROM {partition} p ORDER BY {key_p}, p.fetched_at DESC, p.id DESC) c "  # nosec B608 - identifiers pass _ident(), values are bound
+            f"WHERE NOT EXISTS (SELECT 1 FROM {table} n WHERE n.fetched_at >= :upper "  # nosec B608 - identifiers pass _ident(), values are bound
             f"AND {key_n} = c.k)"
         ),
         {"upper": upper},
@@ -135,8 +148,8 @@ def _latest_into_parent(db: Session, table: str, partition: str, upper: datetime
     db.execute(text("CREATE UNIQUE INDEX ON _retention_keep (id)"))
     db.execute(
         text(
-            f"INSERT INTO {table} SELECT p.* FROM {partition} p "
-            f"WHERE EXISTS (SELECT 1 FROM _retention_keep k WHERE k.id = p.id)"
+            f"INSERT INTO {table} SELECT p.* FROM {partition} p "  # nosec B608 - identifiers pass _ident(), values are bound
+            f"WHERE EXISTS (SELECT 1 FROM _retention_keep k WHERE k.id = p.id)"  # nosec B608 - identifiers pass _ident(), values are bound
         )
     )
 
@@ -151,9 +164,9 @@ def drop_expired_partitions(db_factory, table: str, now: datetime) -> list[str]:
         try:
             with db_factory() as db:
                 db.execute(text(f"SET LOCAL lock_timeout = '{_LOCK_TIMEOUT}'"))
-                db.execute(text(f"ALTER TABLE {table} DETACH PARTITION {relname}"))
+                db.execute(text(f"ALTER TABLE {table} DETACH PARTITION {relname}"))  # nosec B608 - identifiers pass _ident(), values are bound
                 _latest_into_parent(db, table, relname, upper)
-                db.execute(text(f"DROP TABLE {relname}"))
+                db.execute(text(f"DROP TABLE {relname}"))  # nosec B608 - identifiers pass _ident(), values are bound
                 db.commit()
             dropped.append(relname)
         except Exception:
@@ -167,7 +180,7 @@ def prune_default_partition(db: Session, table: str) -> int:
     key_d = _KEYS[table].format(a="d")
     result = db.execute(
         text(
-            f"DELETE FROM {table}_default d WHERE EXISTS (SELECT 1 FROM {table} n "
+            f"DELETE FROM {table}_default d WHERE EXISTS (SELECT 1 FROM {table} n "  # nosec B608 - identifiers pass _ident(), values are bound
             f"WHERE {key_n} = {key_d} AND (n.fetched_at > d.fetched_at "
             f"OR (n.fetched_at = d.fetched_at AND n.id > d.id)))"
         )
