@@ -218,9 +218,10 @@ function useRestoredCatalogScroll(
     ) return
     restoreScrollPosition(initialSnapshot, lastScrollYRef)
     // React Router's <ScrollRestoration> lives in the root layout, so its
-    // layout effect runs after this one and puts back the raw scrollY. That
-    // value was recorded with a different masthead state, which shifts the
-    // card by the header height. Re-anchor once after it has run.
+    // layout effect runs after this one and puts back the raw scrollY, which
+    // can disagree with the card anchor (it is recorded at a different moment
+    // than the anchor). Re-anchor once after it has run. The masthead state no
+    // longer matters here: it hides by transform and never changes layout.
     const frame = window.requestAnimationFrame(() => {
       restoreScrollPosition(initialSnapshot, lastScrollYRef)
     })

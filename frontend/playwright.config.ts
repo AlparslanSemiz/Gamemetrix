@@ -31,6 +31,9 @@ export default defineConfig({
       timeout: 180_000,
       env: {
         VITE_CATALOG_REQUEST_TIMEOUT_MS: '500',
+        // Build-time id so the CSP spec can prove the GA loader is allowed. No beacon token:
+        // the real beacon would call Cloudflare from every test page.
+        VITE_GA_MEASUREMENT_ID: 'G-E2ETEST123',
       },
     },
   ],

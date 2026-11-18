@@ -2529,24 +2529,18 @@ a.proton-badge-compact:hover {
     display: grid;
     grid-template-columns: 1fr;
     gap: 10px;
-    max-height: 128px;
-    overflow: visible;
     padding: 10px 0 12px;
     margin-bottom: 12px;
     transition:
       transform 0.26s cubic-bezier(0.22, 1, 0.36, 1),
-      opacity 0.18s ease,
-      max-height 0.24s ease,
-      padding 0.24s ease,
-      margin 0.24s ease;
+      opacity 0.18s ease;
   }
 
+  /* Hide by transform only, never by collapsing the box: a height change
+     shifts the page, the browser's scroll anchoring answers with a scroll
+     event, and the auto-hide reads that as the visitor scrolling. The header
+     then toggles on its own and moves the card under the visitor's finger. */
   .masthead.is-hidden {
-    max-height: 0;
-    overflow: hidden;
-    padding-top: 0;
-    padding-bottom: 0;
-    margin-bottom: 0;
     opacity: 0;
     transform: translateY(calc(-100% - 12px));
     pointer-events: none;
