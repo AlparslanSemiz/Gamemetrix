@@ -7,7 +7,17 @@ from sqlalchemy import delete, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
-from ...models import ExternalId, Game, PriceSnapshot, RatingSnapshot, SlugRedirect
+from ...models import (
+    AiCatalogChange,
+    CatalogQualityReview,
+    ExternalId,
+    Game,
+    GameSearchAlias,
+    PriceSnapshot,
+    RatingSnapshot,
+    SlugRedirect,
+    UserCollection,
+)
 from .matching import duplicate_key, duplicate_quality_key, games_are_duplicates
 from .merge import merge_game_data
 
@@ -258,8 +268,29 @@ def _reassign_related_rows(db: Session, keeper_id: int, duplicate_id: int) -> No
             db.delete(ext)
         else:
             ext.game_id = keeper_id
-    for model in (RatingSnapshot, PriceSnapshot):
+    for model in (RatingSnapshot, PriceSnapshot, CatalogQualityReview, AiCatalogChange, GameSearchAlias):
         db.execute(update(model).where(model.game_id == duplicate_id).values(game_id=keeper_id))
+    _reassign_user_collections(db, keeper_id, duplicate_id)
+
+
+def _reassign_user_collections(db: Session, keeper_id: int, duplicate_id: int) -> None:
+    """Users' lists must survive a merge: games.id deletes CASCADE into user_collections.
+
+    A user who saved both copies keeps one row (the unique key is user, game, list type);
+    every other row moves to the keeper before the duplicate is deleted.
+    """
+    kept = set(
+        db.execute(
+            select(UserCollection.user_id, UserCollection.collection_type).where(UserCollection.game_id == keeper_id)
+        ).all()
+    )
+    for row in db.scalars(select(UserCollection).where(UserCollection.game_id == duplicate_id)).all():
+        if (row.user_id, row.collection_type) in kept:
+            db.delete(row)
+        else:
+            row.game_id = keeper_id
+            kept.add((row.user_id, row.collection_type))
+    db.flush()
 
 
 def _steam_external_id_may_move(keeper: Game | None, ext: ExternalId) -> bool:

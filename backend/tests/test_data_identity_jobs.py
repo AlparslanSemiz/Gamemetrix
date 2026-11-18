@@ -181,3 +181,34 @@ def test_top_candidates_respects_limit_and_order() -> None:
     for index, game in enumerate(games, start=1):
         game.id = index
     assert top_refresh_candidates(games, limit=1) == [2]
+
+
+@requires_postgres
+def test_consolidation_keeps_users_lists(pg_session) -> None:
+    from app.models import User, UserCollection
+
+    keeper, duplicate = _pair(pg_session, duplicate_verified=False)
+    keeper_id = keeper.id
+    now = datetime.now(UTC)
+    for uid in ("u-both", "u-dup"):
+        pg_session.add(User(id=uid, email=f"{uid}@example.com", display_name=uid, created_at=now, updated_at=now))
+    pg_session.flush()
+    pg_session.add_all([
+        UserCollection(user_id="u-both", game_id=keeper.id, collection_type="wishlist", created_at=now),
+        UserCollection(user_id="u-both", game_id=duplicate.id, collection_type="wishlist", created_at=now),
+        UserCollection(user_id="u-dup", game_id=duplicate.id, collection_type="wishlist", created_at=now),
+        UserCollection(user_id="u-dup", game_id=duplicate.id, collection_type="played", created_at=now),
+    ])
+    pg_session.flush()
+
+    consolidate_duplicate_games(pg_session)
+    pg_session.expire_all()
+
+    rows = pg_session.execute(
+        select(UserCollection.user_id, UserCollection.game_id, UserCollection.collection_type)
+    ).all()
+    assert sorted(rows) == sorted([
+        ("u-both", keeper_id, "wishlist"),
+        ("u-dup", keeper_id, "wishlist"),
+        ("u-dup", keeper_id, "played"),
+    ])
