@@ -12,6 +12,34 @@ const FRONTEND_PORT = 4174
 const API_PORT = 8001
 const REPORT_DIRECTORY = 'test-results/lighthouse'
 const LIGHTHOUSE_RUNS = 3
+// Applied ("devtools") throttling instead of Lighthouse's default Lantern simulation.
+// Lantern re-plays the observed trace on a model and charged the home page for the whole
+// ~22-chunk module graph that finished before first paint, although the cover image (the
+// LCP element) paints with the first frame even with JavaScript disabled. That gave home
+// LCP 1.8-2.6 s on CI with up to 600 ms between runs of one job. With applied throttling
+// Chrome really runs on Lighthouse's mobile slow-4G profile (562.5 ms request latency,
+// 1.4 Mbps down, 4x CPU slowdown) and LCP is the paint the trace observed: the HTML ->
+// render-blocking CSS -> first-frame path.
+const THROTTLING_METHOD = 'devtools'
+// Budgets on the median of LIGHTHOUSE_RUNS, set from observed applied-throttling values
+// (2026-11-19; LCP == FCP on both pages in every baseline run):
+//   baseline single runs, CI (ubuntu-latest, 4 jobs): home 1359-1999, game 1388-2027 ms.
+//   baseline medians, local (Mac): home 1834-1910, game 1926-2032 ms.
+//   The values are two clusters ~560 ms apart (one request latency): this server is HTTP/1.1,
+//   and when the third render-blocking stylesheet loses the race for one of Chrome's six
+//   connections it starts a round trip later. The budget sits above the slower cluster.
+//   regression, a render-blocking stylesheet the server holds for 1 s: home median 2337-2357,
+//   game 2395-2442 ms -> fails LCP_BUDGET_MS.
+//   regression, home cover made lazy and its preload removed: LCP 1950-1993 ms (it no longer
+//   competes with the CSS) but LCP - FCP 442-519 ms -> fails LCP_AFTER_FCP_BUDGET_MS.
+// LCP_BUDGET_MS catches a slower critical path; LCP_AFTER_FCP_BUDGET_MS catches the LCP
+// element no longer painting with the first frame (it does today: LCP == FCP on both pages).
+const LCP_BUDGET_MS = 2200
+const LCP_AFTER_FCP_BUDGET_MS = 250
+const PAGES = [
+  { label: 'home', path: '/' },
+  { label: 'game', path: '/game/complete-test-game' },
+]
 const CHROME_PROFILE = `${REPORT_DIRECTORY}/chrome-profile`
 
 function closeServer(server) {
@@ -60,7 +88,18 @@ function metric(lhr, id) {
   return typeof value === 'number' && Number.isFinite(value) ? value : null
 }
 
-function validate(lhr, label) {
+function median(values) {
+  const sorted = [...values].sort((a, b) => a - b)
+  return sorted[Math.floor(sorted.length / 2)]
+}
+
+function lcpAfterFcp(lhr) {
+  const lcp = metric(lhr, 'largest-contentful-paint')
+  const fcp = metric(lhr, 'first-contentful-paint')
+  return lcp === null || fcp === null ? null : lcp - fcp
+}
+
+function validate(lhr, label, lcpGapMs) {
   const thresholds = {
     performance: 0.90,
     accessibility: 0.90,
@@ -73,17 +112,28 @@ function validate(lhr, label) {
     if (score < minimum) failures.push(`${category} ${(score * 100).toFixed(0)} < ${minimum * 100}`)
   }
   const lcp = metric(lhr, 'largest-contentful-paint')
+  const fcp = metric(lhr, 'first-contentful-paint')
   const cls = metric(lhr, 'cumulative-layout-shift')
   const inp = metric(lhr, 'interaction-to-next-paint')
-  if (lcp !== null && lcp > 2500) failures.push(`LCP ${Math.round(lcp)}ms > 2500ms`)
+  if (lcp !== null && lcp > LCP_BUDGET_MS) failures.push(`LCP ${Math.round(lcp)}ms > ${LCP_BUDGET_MS}ms`)
+  if (lcpGapMs !== null && lcpGapMs > LCP_AFTER_FCP_BUDGET_MS) {
+    failures.push(`LCP - FCP ${Math.round(lcpGapMs)}ms > ${LCP_AFTER_FCP_BUDGET_MS}ms`)
+  }
   if (cls !== null && cls > 0.1) failures.push(`CLS ${cls.toFixed(3)} > 0.1`)
   if (inp !== null && inp > 200) failures.push(`INP ${Math.round(inp)}ms > 200ms`)
 
   const summary = Object.fromEntries(
     Object.keys(thresholds).map((category) => [category, Math.round((lhr.categories[category]?.score ?? 0) * 100)]),
   )
-  process.stdout.write(`${label}: ${JSON.stringify({ ...summary, lcp_ms: lcp && Math.round(lcp), cls, inp_ms: inp && Math.round(inp) })}\n`)
-  if (failures.length) throw new Error(`${label} Lighthouse thresholds failed: ${failures.join(', ')}`)
+  process.stdout.write(`${label}: ${JSON.stringify({
+    ...summary,
+    lcp_ms: lcp && Math.round(lcp),
+    fcp_ms: fcp && Math.round(fcp),
+    lcp_after_fcp_ms: lcpGapMs === null ? null : Math.round(lcpGapMs),
+    cls,
+    inp_ms: inp && Math.round(inp),
+  })}\n`)
+  return failures.length ? `${label} Lighthouse thresholds failed: ${failures.join(', ')}` : null
 }
 
 let frontendProcess
@@ -123,9 +173,10 @@ try {
     userDataDir: CHROME_PROFILE,
   })
 
-  for (const [label, path] of [['home', '/'], ['game', '/game/complete-test-game']]) {
-    // One simulated-throttling run swings by a few hundred ms on shared CI runners;
-    // Lighthouse's own guidance is to judge the median of several runs.
+  const pageFailures = []
+  for (const { label, path } of PAGES) {
+    // Shared CI runners still vary from run to run; Lighthouse's own guidance is to judge
+    // the median of several runs.
     const runs = []
     for (let attempt = 0; attempt < LIGHTHOUSE_RUNS; attempt += 1) {
       const result = await lighthouse(`http://${HOST}:${PUBLIC_PORT}${path}`, {
@@ -133,16 +184,22 @@ try {
         logLevel: 'error',
         output: 'json',
         onlyCategories: ['performance', 'accessibility', 'best-practices', 'seo'],
+        throttlingMethod: THROTTLING_METHOD,
       })
       if (!result) throw new Error(`Lighthouse returned no result for ${label}`)
       runs.push(result.lhr)
     }
     runs.sort((a, b) => (metric(a, 'largest-contentful-paint') ?? 0) - (metric(b, 'largest-contentful-paint') ?? 0))
-    const median = runs[Math.floor(runs.length / 2)]
-    process.stdout.write(`${label} LCP runs: ${runs.map((lhr) => Math.round(metric(lhr, 'largest-contentful-paint') ?? 0)).join(', ')} ms\n`)
-    await writeFile(`${REPORT_DIRECTORY}/${label}.json`, JSON.stringify(median, null, 2))
-    validate(median, label)
+    const medianRun = runs[Math.floor(runs.length / 2)]
+    const gaps = runs.map(lcpAfterFcp).filter((value) => value !== null)
+    const runMs = (id) => runs.map((lhr) => Math.round(metric(lhr, id) ?? 0)).join(', ')
+    process.stdout.write(`${label} LCP runs: ${runMs('largest-contentful-paint')} ms; FCP: ${runMs('first-contentful-paint')} ms\n`)
+    await writeFile(`${REPORT_DIRECTORY}/${label}.json`, JSON.stringify(medianRun, null, 2))
+    // Report both pages before failing, so one CI log shows every number.
+    const failure = validate(medianRun, label, gaps.length ? median(gaps) : null)
+    if (failure) pageFailures.push(failure)
   }
+  if (pageFailures.length) throw new Error(pageFailures.join('; '))
 } finally {
   if (chrome) {
     const closed = new Promise((resolveClose) => chrome.process.once('close', resolveClose))
