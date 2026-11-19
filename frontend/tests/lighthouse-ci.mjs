@@ -21,10 +21,17 @@ const LIGHTHOUSE_RUNS = 3
 // 1.4 Mbps down, 4x CPU slowdown) and LCP is the paint the trace observed: the HTML ->
 // render-blocking CSS -> first-frame path.
 const THROTTLING_METHOD = 'devtools'
-// Budgets on the median of LIGHTHOUSE_RUNS, set from observed applied-throttling values:
-//   baseline (home / game median LCP): local 1834-1910 / 1926-2032 ms, CI see below.
-//   a render-blocking stylesheet held 1 s by the server: local home 2331-2337, game 2422-2442 ms.
-//   the home cover made lazy and its preload dropped: LCP 1993 ms but LCP - FCP 442-519 ms.
+// Budgets on the median of LIGHTHOUSE_RUNS, set from observed applied-throttling values
+// (2026-11-19; LCP == FCP on both pages in every baseline run):
+//   baseline single runs, CI (ubuntu-latest, 4 jobs): home 1359-1999, game 1388-2027 ms.
+//   baseline medians, local (Mac): home 1834-1910, game 1926-2032 ms.
+//   The values are two clusters ~560 ms apart (one request latency): this server is HTTP/1.1,
+//   and when the third render-blocking stylesheet loses the race for one of Chrome's six
+//   connections it starts a round trip later. The budget sits above the slower cluster.
+//   regression, a render-blocking stylesheet the server holds for 1 s: home median 2337-2357,
+//   game 2395-2442 ms -> fails LCP_BUDGET_MS.
+//   regression, home cover made lazy and its preload removed: LCP 1950-1993 ms (it no longer
+//   competes with the CSS) but LCP - FCP 442-519 ms -> fails LCP_AFTER_FCP_BUDGET_MS.
 // LCP_BUDGET_MS catches a slower critical path; LCP_AFTER_FCP_BUDGET_MS catches the LCP
 // element no longer painting with the first frame (it does today: LCP == FCP on both pages).
 const LCP_BUDGET_MS = 2200

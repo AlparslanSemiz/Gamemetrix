@@ -104,9 +104,11 @@ test('utility routes do not bootstrap or request a curated catalog', async ({ pa
 // catalog shell is back in the DOM. A real regression (refetching the catalog, re-rendering a
 // skeleton, a blocking chunk) is slow on every navigation; a CPU-starved shared runner is slow on
 // one. CI history before this change: two desktop failures at 339 and 381 ms against 300 ms on
-// otherwise green runs. So the test does two detail round trips, logs both and gates the faster
-// one. Every round trip still has to restore the filters, grid and card position without a
-// skeleton, so the second one is not a weaker check.
+// otherwise green runs. The first round trip is the slow one on CI (desktop first/second, ms:
+// 128/98, 237/138, 190/123, 117/106; locally ~50/41), so the test does two, logs both and gates the
+// faster one; a 400 ms render stall on the catalog mount still fails it (454/443 ms). Every
+// round trip still has to restore the filters, grid and card position without a skeleton, so
+// the second one is not a weaker check.
 const BACK_ROUND_TRIPS = 2
 
 async function openDetailAndMeasureBack(page: Page, cardTitle: string): Promise<number> {
