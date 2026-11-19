@@ -5,7 +5,7 @@ from typing import Protocol
 
 from sqlalchemy import delete, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, load_only
 
 from ...models import (
     AiCatalogChange,
@@ -18,6 +18,7 @@ from ...models import (
     SlugRedirect,
     UserCollection,
 )
+from ..keyset_scan import SCAN_BATCH_SIZE, keyset_batches
 from .matching import duplicate_key, duplicate_quality_key, games_are_duplicates
 from .merge import merge_game_data
 
@@ -28,6 +29,13 @@ class IndexedIdentity(Protocol):
     slug: str
     release_year: int
     content_type: str
+
+
+class _ScannedIdentity(Protocol):
+    id: int
+    title: str
+    slug: str
+    release_year: int
 
 
 DuplicateCandidateIndex = dict[tuple[str, str], dict[int, IndexedIdentity]]
@@ -114,9 +122,27 @@ def _build_external_id_groups(db: Session) -> dict[int, set[int]]:
     return groups
 
 
-def find_duplicate_groups(db: Session) -> list[list[Game]]:
-    """Detect duplicate clusters without modifying anything. Each group has 2+ games."""
-    games = list(db.scalars(select(Game).order_by(Game.id)).all())
+# Duplicate detection reads only these. The old `select(Game)` pulled every column of
+# the whole catalog (~50k rows with their JSON blobs) in one statement and hit the
+# statement timeout in production.
+_IDENTITY_COLUMNS = (Game.id, Game.title, Game.slug, Game.release_year)
+# What choosing a keeper (`duplicate_quality_key`) and describing a group read.
+_KEEPER_COLUMNS = (
+    Game.id, Game.title, Game.slug, Game.release_year, Game.developer, Game.publisher,
+    Game.summary, Game.cover_url, Game.screenshots, Game.platforms, Game.source_scores,
+    Game.rank_score, Game.metrix_score,
+)
+_GROUP_LOAD_CHUNK = 500
+
+
+def find_duplicate_id_groups(db: Session, *, batch_size: int = SCAN_BATCH_SIZE) -> list[list[int]]:
+    """Detect duplicate clusters as game ids (2+ per group), scanning identity columns
+    in keyset batches. Read-only; leaves the session's transaction to the caller."""
+    games = [
+        row
+        for batch in keyset_batches(db, select(*_IDENTITY_COLUMNS), Game.id, batch_size=batch_size, release=False)
+        for row in batch
+    ]
     games_by_id = {game.id: game for game in games}
     ids_by_key: dict[str, set[int]] = defaultdict(set)
     for game in games:
@@ -126,24 +152,45 @@ def find_duplicate_groups(db: Session) -> list[list[Game]]:
 
     ext_id_groups = _build_external_id_groups(db)
 
-    found: list[list[Game]] = []
+    found: list[list[int]] = []
     visited: set[int] = set()
     for game in games:
         if game.id in visited:
             continue
         group = _collect_group(game, games_by_id, ids_by_key, ext_id_groups, visited)
         if len(group) >= 2:
-            found.append(group)
+            found.append([item.id for item in group])
     return found
 
 
+def _load_groups(db: Session, id_groups: list[list[int]], *, full: bool) -> list[list[Game]]:
+    """Game objects for the grouped ids only; `full=False` loads just the keeper columns."""
+    ids = [game_id for group in id_groups for game_id in group]
+    by_id: dict[int, Game] = {}
+    for start in range(0, len(ids), _GROUP_LOAD_CHUNK):
+        stmt = select(Game).where(Game.id.in_(ids[start:start + _GROUP_LOAD_CHUNK]))
+        if not full:
+            stmt = stmt.options(load_only(*_KEEPER_COLUMNS))
+        by_id.update((game.id, game) for game in db.scalars(stmt))
+    groups = [[by_id[game_id] for game_id in group if game_id in by_id] for group in id_groups]
+    return [group for group in groups if len(group) >= 2]
+
+
+def find_duplicate_groups(db: Session, *, full: bool = True) -> list[list[Game]]:
+    """Detect duplicate clusters without modifying anything. Each group has 2+ games.
+
+    `full=False` loads only the columns keeper selection reads (previews, dry runs).
+    """
+    return _load_groups(db, find_duplicate_id_groups(db), full=full)
+
+
 def _collect_group(
-    game: Game,
-    games_by_id: dict[int, Game],
+    game: _ScannedIdentity,
+    games_by_id: dict[int, _ScannedIdentity],
     ids_by_key: dict[str, set[int]],
     ext_id_groups: dict[int, set[int]],
     visited: set[int],
-) -> list[Game]:
+) -> list[_ScannedIdentity]:
     candidate_ids: set[int] = set()
     for key in set(duplicate_key(game)):
         candidate_ids.update(ids_by_key.get(key, set()))
@@ -166,7 +213,7 @@ def _collect_group(
 def preview_duplicate_groups(db: Session) -> list[dict[str, object]]:
     """Read-only report of what consolidate_duplicate_games would merge."""
     preview: list[dict[str, object]] = []
-    for group in find_duplicate_groups(db):
+    for group in find_duplicate_groups(db, full=False):
         keeper = max(group, key=duplicate_quality_key)
         preview.append({
             "keeper": _describe(keeper),
@@ -186,7 +233,7 @@ def _describe(game: Game) -> dict[str, object]:
 
 def duplicate_group_game_ids(db: Session) -> list[int]:
     """Every game id that sits in a duplicate group (used to verify Steam ids first)."""
-    return [game.id for group in find_duplicate_groups(db) for game in group]
+    return [game_id for group in find_duplicate_id_groups(db) for game_id in group]
 
 
 def consolidate_duplicate_games(db: Session, *, dry_run: bool = False) -> dict[str, object]:
@@ -196,9 +243,9 @@ def consolidate_duplicate_games(db: Session, *, dry_run: bool = False) -> dict[s
     only travel from a duplicate to the keeper when they are verified; callers that
     want ids verified before merging run `audit_steam_ids` on `duplicate_group_game_ids`.
     """
-    groups = find_duplicate_groups(db)
+    id_groups = find_duplicate_id_groups(db)
     if dry_run:
-        previews = [_preview_group(group) for group in groups]
+        previews = [_preview_group(group) for group in _load_groups(db, id_groups, full=False)]
         return {
             "dry_run": True,
             "merged_groups": len(previews),
@@ -208,7 +255,12 @@ def consolidate_duplicate_games(db: Session, *, dry_run: bool = False) -> dict[s
 
     removed = 0
     merged_groups = 0
-    for group in groups:
+    for id_group in id_groups:
+        # Full rows (merge copies every field), one group at a time to bound memory.
+        loaded = _load_groups(db, [id_group], full=True)
+        if not loaded:
+            continue
+        group = loaded[0]
         keeper = max(group, key=duplicate_quality_key)
         for duplicate in (item for item in group if item.id != keeper.id):
             merge_game_data(keeper, duplicate)

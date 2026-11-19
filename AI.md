@@ -129,13 +129,15 @@ config.py           Every os.getenv call lives here. No other file may read the 
 config_validation.py Settings validation; reads no environment itself.
 database.py         Engines + session factories only. Request engine: pool 8+4, 5 s pool timeout, 8 s
                     statement_timeout. `BackgroundSessionLocal`/`get_long_db`: separate small pool with a
-                    15 min timeout for full-catalog scans (SEO refresh, completeness sweep, rating plan).
+                    15 min timeout for full-catalog scans (SEO refresh, completeness sweep, rating plan,
+                    maintenance scripts, duplicate consolidation, ProtonDB refresh).
 security.py         Admin JWT (require_admin_user).
 account_security.py Normal-account auth (Argon2id passwords, hashed opaque sessions).
 rate_limit.py       slowapi HTTP rate limiting (distinct from integrations/rate_limiter.py); keys IPv6 by /64.
 services/login_throttle.py  Postgres `login_throttle`: 429 per (e-mail, IP/64) 10/15 min, per-e-mail 20 then exponential `next_allowed_at` (<= 60 s, 429+Retry-After); atomic reserve before the password check.
 services/trusted_devices.py  `trusted_devices` (hashed random cookie token, 30 d; deleted on password reset / session revocation); loosens, never bypasses, the pair limit.
 services/count_cache.py     5-minute bounded cache for catalog COUNT(*) totals.
+services/keyset_scan.py     `keyset_batches`: id-keyset paging of column selects that ends each read transaction before the caller does network I/O (Steam audit, release dates, ProtonDB, duplicate scan).
 heavy_jobs.py       HEAVY_JOB_LOCK + peak-hour gate shared by all bulk jobs.
 ```
 
@@ -329,7 +331,11 @@ sources x staleness, so a new big release without scores is refreshed before an 
 exhaustion, missing config and transport errors do not count.
 
 Operator commands (all dry-run by default, `--apply` to write): `python -m app.scripts.verify_steam_ids`,
-`consolidate_duplicates`, `fix_release_dates`.
+`consolidate_duplicates`, `fix_release_dates`. They run on `BackgroundSessionLocal`, read projected
+columns in id-keyset batches of 1000, hold no transaction while calling Steam (read batch -> end transaction ->
+fetch -> write in a short transaction every 25 verdicts, apply mode only). The duplicate scan reads only
+id/title/slug/release_year and loads keeper columns (or, on `--apply`, full rows one group at a time) for
+grouped ids only.
 
 `_background_startup` runs the expensive full-catalog classify/rescore/dedupe pass **only** when
 `STARTUP_CATALOG_MAINTENANCE_ENABLED=true`. It is off by default so API readiness is not blocked
@@ -404,6 +410,9 @@ The production host has **1 GB RAM**. Several designs exist only because of it:
   `yield_per` alone does not bound memory; the old completeness sweep grew the backend to its
   400 MiB limit and got it OOM-killed on every data-fill run.
 - The single shared `HEAVY_JOB_LOCK`.
+- Jobs that pace external requests (`steam_id_audit`, `release_date_repair`, `protondb_refresh`) collect
+  verdicts in memory and write them in bursts: the server's 60 s idle-in-transaction timeout kills any
+  connection that waits on Steam/ProtonDB inside an open transaction.
 - `STARTUP_CATALOG_MAINTENANCE_ENABLED=false` by default.
 - Compose PostgreSQL is tuned for its 224 MiB cgroup limit (`shared_buffers=96MB`,
   `work_mem=4MB`, `maintenance_work_mem=32MB`, `max_connections=30`, `effective_cache_size=192MB`,
@@ -617,7 +626,7 @@ docker compose config
 ```
 
 PostgreSQL integration tests run only when `TEST_DATABASE_URL` names a dedicated database ending
-in `_test`. 58 backend test modules live in `backend/tests/`; `test_scoring.py`,
+in `_test`. 60 backend test modules live in `backend/tests/`; `test_scoring.py`,
 `test_sync_persistence.py` and `test_provider_budgets.py` are the ones most likely to catch a
 regression in the core pipeline. Frontend e2e specs are in `frontend/tests/e2e/`.
 
@@ -664,6 +673,7 @@ A new rule never goes in AI.md; a new module never goes in AI_Guidelines.md.
 
 One line per session that changed the architecture. Newest first. Skip purely cosmetic work.
 
+- **2026-11-19** — Maintenance scripts (`verify_steam_ids`, `fix_release_dates`, `consolidate_duplicates`) and the ProtonDB/duplicate loops use the background pool, column projections and id-keyset batches (`services/keyset_scan.py`) and never hold a transaction across a Steam/ProtonDB call.
 - **2026-11-19** — CI Lighthouse gate measures observed LCP under applied (`devtools`) throttling with an LCP - FCP check instead of Lantern-simulated LCP; the detail back-paint e2e budget gates the best of two round trips.
 - **2026-11-19** — Account availability is tri-state (`accountsStatus`): a failed `/session` read is a retryable error, not "accounts off"; the detail hero's placeholder-size check skips CDN-resized srcset picks (`loadedImageLooksLikePlaceholder`).
 - **2026-11-19** — The trailing-slash 301 is built from the raw `$request_uri` and always targets `https://gamemetrix.me` (the decoded-`$uri` rewrite was an open redirect via `/%5Cevil.com/`).

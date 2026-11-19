@@ -162,6 +162,10 @@ The score is a **reliability-adjusted weighted average**, not Bayesian prior shr
 - If you add a column to `models/` that should be API-exposed, also add it to `schemas.py`, then to `frontend/src/types/game.ts`.
 - **Schema changes are Alembic revisions** in `backend/alembic/versions/`. There is no `_run_migrations()` / `_add_column_if_missing()` in `main.py` — that mechanism was replaced by Alembic.
 - No `nullable=False` columns without a default unless you also back-fill existing rows.
+- Jobs and operator scripts that scan the catalog use `BackgroundSessionLocal`, select only the columns they read
+  (no `select(Game)` over the whole table) and page by id (`services/keyset_scan.py`). Never keep a transaction
+  open across a network call or sleep: read a batch, end the transaction, fetch, then write in a short
+  transaction (Postgres kills sessions idle in a transaction for 60 s).
 
 ---
 

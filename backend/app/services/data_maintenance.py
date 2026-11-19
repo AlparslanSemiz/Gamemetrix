@@ -4,7 +4,7 @@ import asyncio
 import logging
 
 from ..config import get_settings
-from ..database import SessionLocal
+from ..database import BackgroundSessionLocal
 from ..heavy_jobs import HEAVY_JOB_LOCK
 from .deduplication import consolidate_duplicate_games
 from .deduplication.store import duplicate_group_game_ids
@@ -21,20 +21,23 @@ _STARTUP_DELAY_SECONDS = 240
 async def run_duplicate_consolidation(*, dry_run: bool, verify_steam: bool = True) -> dict[str, object]:
     """Verify Steam ids of grouped games, then merge. `dry_run` writes nothing at all."""
     result: dict[str, object] = {}
-    with SessionLocal() as db:
+    # Background sessions: the duplicate scan and the merge legitimately take longer
+    # than the request pool's 8 s statement timeout. Each phase gets its own session so
+    # no transaction stays open across the Steam calls of the verification pass.
+    with BackgroundSessionLocal() as db:
         group_ids = await asyncio.to_thread(duplicate_group_game_ids, db)
-        db.expunge_all()  # one copy of the catalog in memory at a time (1 GB host)
-        if verify_steam and group_ids:
+    if verify_steam and group_ids:
+        with BackgroundSessionLocal() as db:
             report = await audit_steam_ids(
                 db, apply=not dry_run, limit=_VERIFY_LIMIT, game_ids=group_ids
             )
-            result["steam_verification"] = {"checked": report.checked, "counts": report.counts}
+        result["steam_verification"] = {"checked": report.checked, "counts": report.counts}
+    with BackgroundSessionLocal() as db:
         merged = await asyncio.to_thread(consolidate_duplicate_games, db, dry_run=dry_run)
         result.update(merged)
         if not dry_run and merged["removed"]:
             await asyncio.to_thread(_refresh_seo, db)
     return result
-
 
 def _refresh_seo(db) -> None:
     refresh_catalog_seo_states(db)

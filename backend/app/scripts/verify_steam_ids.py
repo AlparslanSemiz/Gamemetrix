@@ -30,12 +30,12 @@ def _arguments(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 async def _run(args: argparse.Namespace) -> int:
-    from app.database import SessionLocal
+    from app.database import BackgroundSessionLocal
     from app.services.steam_id_audit import audit_steam_ids
 
     if args.delay < 1.0:
         raise SystemExit("--delay must be at least 1.0 second (Steam store rate limit).")
-    with SessionLocal() as db:
+    with BackgroundSessionLocal() as db:
         report = await audit_steam_ids(
             db,
             apply=args.apply,
