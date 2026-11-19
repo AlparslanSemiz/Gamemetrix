@@ -8,12 +8,13 @@ and the game lands on the admin review queue. Outages never count as refutation.
 
 import asyncio
 import re
-from collections.abc import Awaitable, Callable, Collection, Iterator
+from collections.abc import Awaitable, Callable, Collection
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import httpx
-from sqlalchemy import delete, or_, select
+from sqlalchemy import Select, delete, or_, select
 from sqlalchemy.orm import Session
 
 from ..integrations.steam.client import AppdetailsOutcome, fetch_app_outcome
@@ -21,6 +22,7 @@ from ..integrations.steam.identity import SteamIdentity, identity_from_appdetail
 from ..integrations.steam.parsing import parse_release_date
 from ..integrations.sync import calculate_metrix_score, compute_rank_fields
 from ..models import Game, PriceSnapshot
+from .keyset_scan import SCAN_BATCH_SIZE, keyset_batches
 from .steam_identity import (
     apply_steam_product_type,
     claim_steam_app_id,
@@ -64,15 +66,16 @@ class AuditReport:
             self.findings.append(finding)
 
 
-def _candidates(
-    db: Session,
+_CANDIDATE_COLUMNS = (Game.id, Game.slug, Game.title, Game.release_year, Game.steam_app_id)
+
+
+def _candidate_query(
     *,
-    limit: int | None,
-    after_id: int,
     reverify_days: int | None,
     game_ids: Collection[int] | None = None,
-) -> Iterator[Game]:
-    stmt = select(Game).where(Game.steam_app_id.is_not(None), Game.id > after_id)
+) -> Select[Any]:
+    """Only the columns `judge` and the report need: no JSON blobs per scanned row."""
+    stmt = select(*_CANDIDATE_COLUMNS).where(Game.steam_app_id.is_not(None))
     if game_ids is not None:
         stmt = stmt.where(Game.id.in_(list(game_ids)))
     if reverify_days is not None:
@@ -80,16 +83,13 @@ def _candidates(
         stmt = stmt.where(
             or_(Game.steam_app_id_verified_at.is_(None), Game.steam_app_id_verified_at < cutoff)
         )
-    stmt = stmt.order_by(Game.id)
-    if limit is not None:
-        stmt = stmt.limit(limit)
-    return iter(db.scalars(stmt).all())
+    return stmt
 
 
 _EXPLICIT_YEAR = re.compile(r"\((?:19|20)\d{2}\)")
 
 
-def judge(game: Game, outcome: AppdetailsOutcome) -> tuple[str, str, SteamIdentity | None]:
+def judge(game: Any, outcome: AppdetailsOutcome) -> tuple[str, str, SteamIdentity | None]:
     if outcome.status == "error":
         return "unknown", "appdetails unavailable (outage or rate limit)", None
     if outcome.status == "removed":
@@ -141,6 +141,20 @@ def _apply(db: Session, game: Game, verdict: str, reason: str, identity: SteamId
     db.add(game)
 
 
+_Pending = tuple[int, int, str, str, SteamIdentity | None]  # game id, app id, verdict, reason, identity
+
+
+def _write_verdicts(db: Session, pending: list[_Pending]) -> None:
+    """One short write transaction for a burst of verdicts (apply mode only)."""
+    for game_id, app_id, verdict, reason, identity in pending:
+        game = db.get(Game, game_id)
+        if game is None or game.steam_app_id != app_id:
+            continue  # merged, deleted or re-pointed since it was read
+        _apply(db, game, verdict, reason, identity)
+    db.commit()
+    pending.clear()
+
+
 async def audit_steam_ids(
     db: Session,
     *,
@@ -152,7 +166,10 @@ async def audit_steam_ids(
     fetcher: Fetcher | None = None,
     commit_every: int = 25,
     game_ids: Collection[int] | None = None,
+    batch_size: int = SCAN_BATCH_SIZE,
 ) -> AuditReport:
+    """Read candidates in keyset batches, fetch appdetails with no transaction open,
+    then write verdicts in short transactions of `commit_every` (apply mode only)."""
     report = AuditReport(apply=apply)
     owned: httpx.AsyncClient | None = None
     if fetcher is None:
@@ -162,31 +179,36 @@ async def audit_steam_ids(
         async def fetcher(app_id: int) -> AppdetailsOutcome:  # noqa: F811
             return await fetch_app_outcome(app_id, client)
 
+    stmt = _candidate_query(reverify_days=reverify_days, game_ids=game_ids)
+    pending: list[_Pending] = []
     consecutive_errors = 0
+    fetched = 0
     try:
-        for index, game in enumerate(_candidates(
-            db, limit=limit, after_id=after_id, reverify_days=reverify_days, game_ids=game_ids
-        )):
-            if index and delay_seconds > 0:
-                await asyncio.sleep(delay_seconds)
-            app_id = int(game.steam_app_id or 0)
-            outcome = await fetcher(app_id)
-            verdict, reason, identity = judge(game, outcome)
-            report.add(AuditFinding(
-                game.id, game.slug, game.title, app_id, verdict, reason,
-                steam_name=str((outcome.data or {}).get("name") or "") or None,
-            ))
-            consecutive_errors = consecutive_errors + 1 if verdict == "unknown" else 0
-            if consecutive_errors >= 5:
-                report.stopped_early = "5 consecutive appdetails errors (rate limit?); stopped"
+        for batch in keyset_batches(db, stmt, Game.id, batch_size=batch_size, after=after_id, limit=limit):
+            for row in batch:
+                if fetched and delay_seconds > 0:
+                    await asyncio.sleep(delay_seconds)
+                app_id = int(row.steam_app_id or 0)
+                outcome = await fetcher(app_id)
+                fetched += 1
+                verdict, reason, identity = judge(row, outcome)
+                report.add(AuditFinding(
+                    row.id, row.slug, row.title, app_id, verdict, reason,
+                    steam_name=str((outcome.data or {}).get("name") or "") or None,
+                ))
+                consecutive_errors = consecutive_errors + 1 if verdict == "unknown" else 0
+                if consecutive_errors >= 5:
+                    report.stopped_early = "5 consecutive appdetails errors (rate limit?); stopped"
+                    break
+                if apply and verdict != "unknown":
+                    pending.append((row.id, app_id, verdict, reason, identity))
+                    if len(pending) >= commit_every:
+                        _write_verdicts(db, pending)
+            if report.stopped_early:
                 break
-            if apply and verdict != "unknown":
-                _apply(db, game, verdict, reason, identity)
-                if report.checked % commit_every == 0:
-                    db.commit()
-        if apply:
-            db.commit()
-        else:
+        if apply and pending:
+            _write_verdicts(db, pending)
+        if not apply:
             db.rollback()
     finally:
         if owned is not None:

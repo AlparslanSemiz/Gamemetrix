@@ -26,11 +26,11 @@ def main(argv: list[str] | None = None) -> int:
     if args.delay < 1.0:
         raise SystemExit("--delay must be at least 1.0 second (Steam store rate limit).")
 
-    from app.database import SessionLocal
+    from app.database import BackgroundSessionLocal
     from app.services.release_date_repair import repair_release_dates
 
     async def run() -> None:
-        with SessionLocal() as db:
+        with BackgroundSessionLocal() as db:
             report = await repair_release_dates(
                 db, apply=args.apply, scan_all=args.scan_all, limit=args.limit, delay_seconds=args.delay
             )

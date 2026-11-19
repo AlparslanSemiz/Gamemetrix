@@ -9,13 +9,14 @@ import asyncio
 import logging
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import httpx
-from sqlalchemy import or_, select
+from sqlalchemy import Row, or_, select
 from sqlalchemy.orm import Session
 
 from ..config import get_settings
-from ..database import SessionLocal
+from ..database import BackgroundSessionLocal
 from ..integrations.protondb import ProtonSummary, fetch_proton_summary
 from ..models import Game
 from .job_heartbeat import record_job_run
@@ -29,11 +30,14 @@ _CONSECUTIVE_ERROR_LIMIT = 5
 SummaryFetcher = Callable[[int], Awaitable[ProtonSummary]]
 
 
-def proton_refresh_candidates(db: Session, *, limit: int, max_age: timedelta) -> list[Game]:
-    """Verified-id PC games whose Proton data is missing or older than `max_age`."""
+def proton_refresh_candidates(db: Session, *, limit: int, max_age: timedelta) -> list[Row[Any]]:
+    """Verified-id PC games whose Proton data is missing or older than `max_age`.
+
+    Returns (id, steam_app_id, proton_tier, proton_score) rows, not Game objects.
+    """
     cutoff = datetime.now(UTC) - max_age
-    return list(db.scalars(
-        select(Game)
+    return list(db.execute(
+        select(Game.id, Game.steam_app_id, Game.proton_tier, Game.proton_score)
         .where(
             Game.content_type == "game",
             Game.steam_app_id.is_not(None),
@@ -43,6 +47,21 @@ def proton_refresh_candidates(db: Session, *, limit: int, max_age: timedelta) ->
         .order_by(Game.proton_refreshed_at.asc().nulls_first(), Game.rank_score.desc(), Game.id)
         .limit(limit)
     ).all())
+
+
+def _write_summaries(db: Session, pending: list[tuple[int, ProtonSummary]]) -> None:
+    """One short write transaction per burst; no transaction spans the HTTP calls."""
+    now = datetime.now(UTC)
+    for game_id, summary in pending:
+        game = db.get(Game, game_id)
+        if game is None:
+            continue
+        if summary.status == "ok":
+            game.proton_tier, game.proton_score = summary.tier, summary.score
+        game.proton_refreshed_at = now
+        db.add(game)
+    db.commit()
+    pending.clear()
 
 
 async def refresh_proton_tiers(
@@ -63,12 +82,15 @@ async def refresh_proton_tiers(
         async def fetcher(app_id: int) -> ProtonSummary:  # noqa: F811
             return await fetch_proton_summary(app_id, client)
 
+    candidates = proton_refresh_candidates(db, limit=limit, max_age=max_age)
+    db.rollback()  # end the read transaction before the paced HTTP calls (idle-in-transaction timeout)
+    pending: list[tuple[int, ProtonSummary]] = []
     consecutive_errors = 0
     try:
-        for index, game in enumerate(proton_refresh_candidates(db, limit=limit, max_age=max_age)):
+        for index, row in enumerate(candidates):
             if index:
                 await asyncio.sleep(delay)
-            summary = await fetcher(int(game.steam_app_id or 0))
+            summary = await fetcher(int(row.steam_app_id or 0))
             if summary.status == "error":
                 errors += 1
                 consecutive_errors += 1
@@ -77,18 +99,17 @@ async def refresh_proton_tiers(
                 continue
             consecutive_errors = 0
             if summary.status == "ok":
-                if (game.proton_tier, game.proton_score) == (summary.tier, summary.score):
+                if (row.proton_tier, row.proton_score) == (summary.tier, summary.score):
                     unchanged += 1
                 else:
-                    game.proton_tier, game.proton_score = summary.tier, summary.score
                     updated += 1
             else:
                 no_reports += 1
-            game.proton_refreshed_at = datetime.now(UTC)
-            db.add(game)
-            if (index + 1) % 50 == 0:
-                db.commit()
-        db.commit()
+            pending.append((row.id, summary))
+            if len(pending) >= 50:
+                _write_summaries(db, pending)
+        if pending:
+            _write_summaries(db, pending)
     finally:
         if owned is not None:
             await owned.aclose()
@@ -110,7 +131,7 @@ async def protondb_refresh_loop() -> None:
             async with record_job_run("protondb_refresh", interval_seconds) as run:
                 # No HEAVY_JOB_LOCK: the batch mostly sleeps between requests and
                 # touches one row at a time, so it must not block imports.
-                with SessionLocal() as db:
+                with BackgroundSessionLocal() as db:
                     run.set(await refresh_proton_tiers(
                         db,
                         limit=cfg.PROTONDB_REFRESH_BATCH_SIZE,
