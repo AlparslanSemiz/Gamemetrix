@@ -45,6 +45,29 @@ export function looksLikePlaceholderImage(naturalWidth: number, naturalHeight: n
   return ratio > 0.8 && ratio < 1.25 && naturalWidth < 600
 }
 
+// True when `url` is a pre-scaled variant we asked a CDN for (RAWG resize/crop,
+// Steam's 600x338 frame). Its decoded size is the size we requested, not the
+// asset's own, so it says nothing about whether the asset is a placeholder.
+export function isScaledVariantUrl(url: string): boolean {
+  if (url.includes(STEAM_THUMB_SEGMENT)) return true
+  if (!url.startsWith(RAWG_MEDIA_PREFIX)) return false
+  const path = url.slice(RAWG_MEDIA_PREFIX.length)
+  return RAWG_TRANSFORM_MARKERS.some((marker) => path.startsWith(marker))
+}
+
+// Placeholder check for a loaded <img>: `currentSrc` is the file the browser
+// picked from the srcset. A near-square RAWG cover fetched as the 420w variant
+// on a narrow screen must not be mistaken for a small logo capsule, so the size
+// heuristic only runs on original-size files.
+export function loadedImageLooksLikePlaceholder(
+  currentSrc: string,
+  naturalWidth: number,
+  naturalHeight: number,
+): boolean {
+  if (isScaledVariantUrl(currentSrc)) return false
+  return looksLikePlaceholderImage(naturalWidth, naturalHeight)
+}
+
 // Best real image for a card/detail cover: a valid cover, else a screenshot,
 // else image_url, else the generated fallback. Never returns a placeholder URL.
 export function bestCoverUrl(

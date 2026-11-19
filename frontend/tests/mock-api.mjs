@@ -195,6 +195,12 @@ function accountsDisabled(request) {
   return /(?:^|;\s*)gm_test_accounts=off(?:;|$)/.test(request.headers.cookie ?? '')
 }
 
+// gm_test_session=fail makes the session read fail like production load shedding
+// (503) does, so tests can tell "unknown" apart from "switched off".
+function sessionFails(request) {
+  return /(?:^|;\s*)gm_test_session=fail(?:;|$)/.test(request.headers.cookie ?? '')
+}
+
 function hasSession(request) {
   return /(?:^|;\s*)gm_session=test-session(?:;|$)/.test(request.headers.cookie ?? '')
 }
@@ -232,6 +238,9 @@ const server = http.createServer(async (request, response) => {
   if (url.pathname.startsWith('/api/analytics/')) {
     response.writeHead(204)
     return response.end()
+  }
+  if (url.pathname === '/api/account/session' && sessionFails(request)) {
+    return json(response, 503, { detail: 'Service temporarily overloaded.' })
   }
   if (url.pathname === '/api/account/session' && accountsDisabled(request)) {
     return json(response, 200, { account: null, google_login: false, accounts_enabled: false })
@@ -364,6 +373,25 @@ const server = http.createServer(async (request, response) => {
       id: Number(id),
       title: `Catalog Test Game ${id}`,
       slug,
+    })
+  }
+  // Hero-cover fixtures: the browser test serves the images itself (page.route), so
+  // it controls their decoded size. One is a near-square RAWG cover, the other an
+  // original-size small logo on a host without resized variants.
+  const coverFixtureMatch = url.pathname.match(/^\/api\/games\/(rawg-square-cover-game|small-logo-cover-game)(?:\/(similar|series|trailer))?$/)
+  if (coverFixtureMatch) {
+    const [, slug, related] = coverFixtureMatch
+    if (related === 'similar') return json(response, 200, { games: [], total: 0 })
+    if (related === 'series') return json(response, 200, { series_key: '', games: [], total: 0 })
+    if (related === 'trailer') return json(response, 200, { video_id: null, watch_url: null })
+    return json(response, 200, {
+      ...game,
+      id: slug === 'rawg-square-cover-game' ? 501 : 502,
+      title: slug === 'rawg-square-cover-game' ? 'Rawg Square Cover Game' : 'Small Logo Cover Game',
+      slug,
+      cover_url: slug === 'rawg-square-cover-game'
+        ? 'https://media.rawg.io/media/games/sq1/square-cover.jpg'
+        : 'https://images.example/small-logo.png',
     })
   }
   if (url.pathname.startsWith('/api/games/')) return json(response, 404, { detail: 'Game not found.' })

@@ -10,7 +10,7 @@ import type { Game } from '../../types/game'
 import {
   fallbackCoverUrl,
   galleryImages,
-  looksLikePlaceholderImage,
+  loadedImageLooksLikePlaceholder,
   responsiveImage,
   thumbnailUrl,
 } from '../../utils/coverImage'
@@ -169,7 +169,8 @@ function GalleryGrid({
           fetchPriority="high"
           onLoad={(event) => {
             if (heroFallback) return
-            if (looksLikePlaceholderImage(event.currentTarget.naturalWidth, event.currentTarget.naturalHeight)) {
+            const image = event.currentTarget
+            if (loadedImageLooksLikePlaceholder(image.currentSrc || image.src, image.naturalWidth, image.naturalHeight)) {
               setHeroFallback(images.find((url) => url !== first) ?? fallbackCoverUrl(game.title))
             }
           }}
