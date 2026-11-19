@@ -174,6 +174,25 @@ function AccountsUnavailable() {
   )
 }
 
+function AccountsUnreachable() {
+  const { refresh } = useAccount()
+  const [retrying, setRetrying] = useState(false)
+  const retry = () => {
+    setRetrying(true)
+    // In place, not a reload: a reset/verify token has already left the URL.
+    refresh().catch(() => undefined).finally(() => setRetrying(false))
+  }
+  return (
+    <div className="account-auth-unavailable" role="alert">
+      <p>Accounts could not be reached just now. Please try again in a moment.</p>
+      <button type="button" className="account-auth-submit" onClick={retry} disabled={retrying}>
+        {retrying ? 'Working...' : 'Try again'}
+      </button>
+      <Link to="/">Back to the catalog</Link>
+    </div>
+  )
+}
+
 function authIcon(mode: AuthMode) {
   if (mode === 'register') return <UserPlus size={22} />
   if (mode === 'forgot' || mode === 'reset') return <KeyRound size={22} />
@@ -182,8 +201,11 @@ function authIcon(mode: AuthMode) {
 }
 
 export function AccountAuth({ mode }: { mode: AuthMode }) {
-  const { accountsEnabled, googleLoginAvailable, isLoading } = useAccount()
-  const accountsOff = !isLoading && !accountsEnabled
+  const { accountsStatus, googleLoginAvailable } = useAccount()
+  // Only an explicit accounts_enabled=false means "switched off"; a failed
+  // session read is retryable. While unknown the form shows as before.
+  const accountsOff = accountsStatus === 'disabled'
+  const accountsUnreachable = accountsStatus === 'error'
   const [searchParams] = useSearchParams()
   const [actionToken] = useState(() => {
     const queryToken = searchParams.get('token') ?? ''
@@ -209,7 +231,7 @@ export function AccountAuth({ mode }: { mode: AuthMode }) {
         </div>
         <h1 id="account-auth-title">{accountsOff ? 'Accounts unavailable' : TITLES[mode]}</h1>
 
-        {accountsOff ? <AccountsUnavailable /> : (
+        {accountsOff ? <AccountsUnavailable /> : accountsUnreachable ? <AccountsUnreachable /> : (
           <>
             <form onSubmit={form.submit} className="account-auth-form">
               <AuthFields firstInput={firstInput} form={form} mode={mode} />

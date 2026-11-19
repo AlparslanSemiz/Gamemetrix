@@ -1,6 +1,11 @@
 import { expect, test } from '@playwright/test'
 import { buildGameCardModel } from '../../src/components/game-card/model'
-import { responsiveImage, smallCoverUrl, thumbnailUrl } from '../../src/utils/coverImage'
+import {
+  loadedImageLooksLikePlaceholder,
+  responsiveImage,
+  smallCoverUrl,
+  thumbnailUrl,
+} from '../../src/utils/coverImage'
 import { toCuratedCard } from '../../src/utils/curatedCards'
 import { sourceScoreUrl } from '../../src/utils/sourceLinks'
 import type { CatalogGame } from '../../src/types/game'
@@ -34,6 +39,22 @@ test.describe('sized image variants', () => {
       'https://images.example/library_hero.jpg.png',
       'data:image/svg+xml;base64,AAAA',
     ]) expect(smallCoverUrl(url)).toBe(url)
+  })
+
+  test('placeholder size check only judges original-size files', () => {
+    // A near-square RAWG cover fetched as the 420w srcset candidate is real art.
+    expect(loadedImageLooksLikePlaceholder(
+      'https://media.rawg.io/media/resize/420/-/games/c16/c160077f8977cb22f14e56408c1560ef.jpg', 420, 500,
+    )).toBe(false)
+    expect(loadedImageLooksLikePlaceholder('https://media.rawg.io/media/crop/600/400/games/a.jpg', 420, 420)).toBe(false)
+    expect(loadedImageLooksLikePlaceholder(
+      'https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/1/ss_a.600x338.jpg', 460, 460,
+    )).toBe(false)
+    // Original-size small near-square images are still treated as logo placeholders.
+    expect(loadedImageLooksLikePlaceholder(RAWG, 420, 500)).toBe(true)
+    expect(loadedImageLooksLikePlaceholder('https://cdn.akamai.steamstatic.com/steam/apps/1/capsule.jpg', 184, 184)).toBe(true)
+    expect(loadedImageLooksLikePlaceholder(RAWG, 1200, 1400)).toBe(false)
+    expect(loadedImageLooksLikePlaceholder(RAWG, 420, 236)).toBe(false)
   })
 
   test('the detail hero gets a RAWG srcset up to 1280px, never the original', () => {

@@ -14,7 +14,7 @@ import {
   type AccountState,
 } from '../services/account'
 import { emptyCollections, loadCollections, type CollectionKey } from './collections'
-import { AccountContext } from './account'
+import { AccountContext, type AccountsStatus } from './account'
 import { enqueueSync } from './syncQueue'
 import { useCollections } from './useCollections'
 
@@ -70,7 +70,8 @@ function useAccountHydration(
   const [accountState, setAccountState] = useState<AccountState | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [googleLoginAvailable, setGoogleLoginAvailable] = useState(false)
-  const [accountsEnabled, setAccountsEnabled] = useState(false)
+  const [accountsStatus, setAccountsStatus] = useState<AccountsStatus>('unknown')
+  const accountsEnabled = accountsStatus === 'enabled'
 
   const applyState = useCallback((state: AccountState) => {
     setAccount(state.account)
@@ -80,9 +81,16 @@ function useAccountHydration(
   }, [replaceCollections, setAccount, setAccountState])
 
   const hydrate = useCallback(async (mergeGuest: boolean) => {
-    const current = await getAccountSession()
+    let current: Awaited<ReturnType<typeof getAccountSession>>
+    try {
+      current = await getAccountSession()
+    } catch (error) {
+      // Not knowing is not the same as "switched off": keep it retryable.
+      setAccountsStatus('error')
+      throw error
+    }
     setGoogleLoginAvailable(current.google_login === true)
-    setAccountsEnabled(current.accounts_enabled === true)
+    setAccountsStatus(current.accounts_enabled === true ? 'enabled' : 'disabled')
     if (!current.account) {
       setAccount(null)
       setAccountState(null)
@@ -106,8 +114,8 @@ function useAccountHydration(
     let active = true
     hydrate(true)
       .catch((error: unknown) => {
-        // 401: no session. 503: the account system is switched off, which is
-        // a normal state, not something to warn about.
+        // 401: no session. 503: load shedding; the UI shows a retryable
+        // message, so neither is worth a console warning.
         const expected = error instanceof AccountApiError
           && (error.status === 401 || error.status === 503)
         if (active && !expected) {
@@ -124,6 +132,7 @@ function useAccountHydration(
     account,
     accountState,
     accountsEnabled,
+    accountsStatus,
     googleLoginAvailable,
     hydrate,
     isLoading,
@@ -139,6 +148,7 @@ export function AccountProvider({ children }: { children: ReactNode }) {
     account,
     accountState,
     accountsEnabled,
+    accountsStatus,
     googleLoginAvailable,
     hydrate,
     isLoading,
@@ -185,6 +195,7 @@ export function AccountProvider({ children }: { children: ReactNode }) {
     account,
     accountState,
     accountsEnabled,
+    accountsStatus,
     googleLoginAvailable,
     isLoading,
     login,
@@ -193,7 +204,7 @@ export function AccountProvider({ children }: { children: ReactNode }) {
     syncCollection,
     updatePreferences,
     clearAccount,
-  }), [account, accountState, accountsEnabled, clearAccount, googleLoginAvailable, isLoading, login, logout, refresh, syncCollection, updatePreferences])
+  }), [account, accountState, accountsEnabled, accountsStatus, clearAccount, googleLoginAvailable, isLoading, login, logout, refresh, syncCollection, updatePreferences])
 
   return <AccountContext.Provider value={value}>{children}</AccountContext.Provider>
 }
