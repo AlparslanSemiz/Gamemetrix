@@ -192,7 +192,7 @@ inline event handlers, `javascript:` URLs and injected scripts without the nonce
 rotates on every origin render. If that is not acceptable, mark HTML `private, no-store` (costs the
 edge cache) instead of loosening the policy.
 
-Verify after deploy: `curl -sI https://gamemetrix.me/ | grep -i content-security` shows exactly one
+Verify after deploy: `curl -s -D - -o /dev/null https://gamemetrix.me/ | grep -i content-security` (a GET: HEAD responses carry no CSP) shows exactly one
 header with a `nonce-` and no `unsafe-inline` in `script-src`; open `/`, `/best`, a game page with the
 console open (no CSP violations), accept analytics and watch the GTM request. Roll back by redeploying
 the previous image and nginx.conf (the old nginx CSP returns with it); report-only is not wired.

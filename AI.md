@@ -653,6 +653,7 @@ A new rule never goes in AI.md; a new module never goes in AI_Guidelines.md.
 
 One line per session that changed the architecture. Newest first. Skip purely cosmetic work.
 
+- **2026-11-19** — The trailing-slash 301 is built from the raw `$request_uri` and always targets `https://gamemetrix.me` (the decoded-`$uri` rewrite was an open redirect via `/%5Cevil.com/`).
 - **2026-11-19** — Ranking-page loaders return a row projection (`utils/curatedCards.ts`) instead of full catalog rows (live `/best/linux-games` 517 KB -> 231 KB HTML, 99 KB -> 30 KB gzip); sized image variants (`smallCoverUrl`, `responsiveImage` srcset) for ranking rows, detail hero, similar/series/DLC tiles; budget spec `curated-payload.spec.ts`.
 - **2026-11-19** — `GET /api/account/session` is ungated and reports `accounts_enabled` (200 instead of 503 while accounts are off; UI hides Login/Register); nginx TLS listener no longer re-adds the security headers (`add_header_inherit off`), frontend paths 301 off a trailing slash; 390px no-overflow e2e.
 - **2026-11-19** — CSP for `gamemetrix.me` HTML moved from nginx to the SSR app (`frontend/src/csp.server.ts`, `entry.server.tsx`): per-response nonce + `'strict-dynamic'`, no `script-src 'unsafe-inline'`; nginx sends no CSP for that host (`map $host $gm_csp`), the API host keeps the static one; nonce/cache trade-off in `docs/production-security-runbook.md`.
