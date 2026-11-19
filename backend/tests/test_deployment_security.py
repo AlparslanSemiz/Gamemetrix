@@ -81,7 +81,20 @@ def test_origin_tls_listener_does_not_repeat_security_headers() -> None:
 
 def test_frontend_paths_drop_trailing_slash_but_api_does_not() -> None:
     nginx = _read("nginx.conf")
-    site_root = nginx.rsplit("location / {", 1)[1].split("}", 1)[0]
-    assert "rewrite ^(.+)/$ $1 permanent;" in site_root
+    site_root = nginx.rsplit("location / {", 1)[1].split("set $frontend", 1)[0]
+    assert 'if ($request_uri ~ "^(/[^?]*[^/?])/(\\?.*)?$")' in site_root
+    assert "return 301 https://gamemetrix.me$1$2;" in site_root
     api_block = nginx.split("location /api/ {", 1)[1].split("}", 1)[0]
-    assert "rewrite" not in api_block
+    assert "rewrite" not in api_block and "return 301" not in api_block
+
+
+def test_trailing_slash_redirect_cannot_leave_the_host() -> None:
+    # A rewrite on the decoded $uri sent /%5Cevil.com/ to "Location: /\\evil.com",
+    # which browsers resolve to https://evil.com/. The redirect must be built from
+    # the raw request URI and always be absolute to this host.
+    nginx = _read("nginx.conf")
+    assert "rewrite ^(.+)/$" not in nginx
+    site_root = nginx.rsplit("location / {", 1)[1].split("set $frontend", 1)[0]
+    for line in site_root.splitlines():
+        if "return 30" in line:
+            assert "https://gamemetrix.me$" in line
