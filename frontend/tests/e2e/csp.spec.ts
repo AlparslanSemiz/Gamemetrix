@@ -65,6 +65,16 @@ test.describe('Content-Security-Policy', () => {
     expect(html).toContain(other)
   })
 
+  test('the inline beacon loader from root.tsx gets the nonce too', () => {
+    const loader = renderToStaticMarkup(createElement('script', {
+      'data-cf-loader': '',
+      dangerouslySetInnerHTML: { __html: '(function(){})()' },
+    }))
+    const html = addBeaconNonce(`${loader}<script>x()</script>`, 'abc123')
+    expect(html).toContain('<script nonce="abc123" data-cf-loader=""')
+    expect(html).toContain('<script>x()</script>')
+  })
+
   test('each response gets a fresh nonce', async ({ request }) => {
     const nonces = new Set<string>()
     for (let i = 0; i < 3; i += 1) {
