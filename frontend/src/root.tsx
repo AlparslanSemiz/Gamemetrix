@@ -15,8 +15,8 @@ const CLOUDFLARE_BEACON_TOKEN = String(import.meta.env.VITE_CF_BEACON_TOKEN ?? '
 // Automated browsers (navigator.webdriver: tests, audits, CI) are counted in a separate "testler"
 // site (CLOUDFLARE_TEST_BEACON_TOKEN), so real visits stay clean and test traffic is still measured.
 // Not loaded for the owner's own browsers (localStorage notrack=1; ?notrack=1 sets it, ?notrack=0 clears it).
-// localStorage can throw (private mode); then the beacon loads as usual. Inline script: the CSP
-// already allows 'unsafe-inline'. "<" is escaped so the token cannot close the script element.
+// localStorage can throw (private mode); then the beacon loads as usual. Inline script: it gets the
+// CSP nonce, and 'strict-dynamic' then allows the beacon it inserts. "<" is escaped so the token cannot close the script element.
 const CLOUDFLARE_TEST_BEACON_TOKEN = '0ead9632eeb34bfdbca243e769478158'
 
 const CLOUDFLARE_BEACON_LOADER = CLOUDFLARE_BEACON_TOKEN
@@ -35,7 +35,8 @@ export function Layout({ children }: { children: ReactNode }) {
         <Meta />
         <Links />
         {/* Cloudflare Web Analytics: cookieless page-view counts, no consent needed. */}
-        {CLOUDFLARE_BEACON_LOADER && <script dangerouslySetInnerHTML={{ __html: CLOUDFLARE_BEACON_LOADER }} />}
+        {/* data-cf-loader: entry.server gives this tag the CSP nonce (csp.server.ts addBeaconNonce). */}
+        {CLOUDFLARE_BEACON_LOADER && <script data-cf-loader="" dangerouslySetInnerHTML={{ __html: CLOUDFLARE_BEACON_LOADER }} />}
       </head>
       <body>
         <a className="skip-link" href="#main-content">Skip to main content</a>

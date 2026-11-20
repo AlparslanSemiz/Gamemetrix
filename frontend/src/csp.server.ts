@@ -32,7 +32,8 @@ export function buildContentSecurityPolicy(nonce: string): string {
   ].join('; ')
 }
 
-const BEACON_SCRIPT_TAG = /<script (?=[^>]*\bsrc="https:\/\/static\.cloudflareinsights\.com\/)/g
+// The beacon tag itself, or root.tsx's inline loader that inserts it (marked data-cf-loader).
+const BEACON_SCRIPT_TAG = /<script (?=[^>]*\b(?:src="https:\/\/static\.cloudflareinsights\.com\/|data-cf-loader=))/g
 
 /**
  * Gives the Cloudflare beacon tag from root.tsx its nonce. React's own components pick the nonce
