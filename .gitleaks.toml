@@ -1,4 +1,4 @@
-# Default gitleaks rules plus one narrow exception.
+# Default gitleaks rules plus two narrow exceptions.
 # The Cloudflare Web Analytics beacon token of the "testler" site is public by design:
 # browsers receive it in the page (frontend/src/root.tsx). It grants no access to anything.
 [extend]
@@ -7,3 +7,7 @@ useDefault = true
 [[allowlists]]
 description = "Public Cloudflare Web Analytics beacon token (testler site)"
 regexes = ['''0ead9632eeb34bfdbca243e769478158''']
+
+[[allowlists]]
+description = "detect-secrets baseline: holds only SHA1 hashes (hashed_secret) of known findings, no secrets"
+paths = ['''^\.secrets\.baseline\.json$''']
