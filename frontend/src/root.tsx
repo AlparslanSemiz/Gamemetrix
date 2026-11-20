@@ -17,7 +17,7 @@ const CLOUDFLARE_BEACON_TOKEN = String(import.meta.env.VITE_CF_BEACON_TOKEN ?? '
 // Not loaded for the owner's own browsers (localStorage notrack=1; ?notrack=1 sets it, ?notrack=0 clears it).
 // localStorage can throw (private mode); then the beacon loads as usual. Inline script: it gets the
 // CSP nonce, and 'strict-dynamic' then allows the beacon it inserts. "<" is escaped so the token cannot close the script element.
-const CLOUDFLARE_TEST_BEACON_TOKEN = '0ead9632eeb34bfdbca243e769478158'
+const CLOUDFLARE_TEST_BEACON_TOKEN = '0ead9632eeb34bfdbca243e769478158' // pragma: allowlist secret (public beacon token)
 
 const CLOUDFLARE_BEACON_LOADER = CLOUDFLARE_BEACON_TOKEN
   ? `(function(){try{var n=new URLSearchParams(location.search).get('notrack');if(n==='1')localStorage.setItem('notrack','1');else if(n==='0')localStorage.removeItem('notrack')}catch(e){}try{if(localStorage.getItem('notrack')==='1')return}catch(e){}var s=document.createElement('script');s.defer=true;s.src=${JSON.stringify(CLOUDFLARE_BEACON_URL)};s.setAttribute('data-cf-beacon',navigator.webdriver?${JSON.stringify(JSON.stringify({ token: CLOUDFLARE_TEST_BEACON_TOKEN }))}:${JSON.stringify(JSON.stringify({ token: CLOUDFLARE_BEACON_TOKEN })).replace(/</g, '\\u003c')});document.head.appendChild(s)})();`
