@@ -1,14 +1,14 @@
-fastapi==0.163.1
+fastapi==0.165.0
 starlette==1.10.0
 uvicorn[standard]==0.54.0
 SQLAlchemy==2.0.58
 psycopg[binary]==3.3.9
-pydantic==2.14.3
+pydantic==2.14.4
 httpx==0.28.1
 python-dotenv==1.2.4
 PyJWT==2.15.1
 bcrypt==5.0.0
-python-multipart==0.0.33
+python-multipart==0.0.34
 slowapi==0.1.10
 alembic==1.20.1
 argon2-cffi==25.1.0
